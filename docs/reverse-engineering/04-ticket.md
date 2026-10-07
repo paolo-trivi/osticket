@@ -347,7 +347,7 @@ Funzionalità "Merge Tickets" e "Link Tickets" (`/scp/ajax.php/tickets/<tid>/mer
 - `manageMerge`: il primo ticket della lista è il parent; gestisce cambio da link a merge, cambio parent, ordinamento (`sort`); eventi `merged`/`linked` su entrambi i ticket `{ticket:'Ticket #N', id}`; se reparti diversi (merge) → referral del parent al reparto del child + evento `referred`.
 - `merge` (non visual), per ogni child:
   - aggiunge al parent come collaboratori l'owner del child e (se `participants=all`) i suoi collaboratori;
-  - il thread del child diventa `object_type='C'` con `extra={ticket_id: parent, number}` e le sue entries ricevono `extra.thread` (origine) — vengono quindi visualizzate nel parent;
+  - **le entry del thread del child vengono spostate fisicamente nel thread del parent**: per ognuna si crea `thread_entry_merge` (`data = {"thread": <thread_id originale>}`), si imposta il flag `CHILD` e `thread_entry.thread_id = <thread del parent>`; il thread del child resta (vuoto) con `object_type='C'` e `extra={"ticket_id": <parent>, "number": "<numero child>"}` (serve a ricollegare eventuali email future e a ricostruire l'origine). Se il child era a sua volta il risultato di un merge precedente, le entry già spostate vengono riassegnate al nuovo parent;
   - stato del child forzato a `childStatusId` (chiusura forzata), parent eventualmente a `parentStatusId`;
   - `move-tasks` o `delete-child` → i task del child passano al parent; `delete-child` → elimina il child.
 - I messaggi successivi indirizzati al child (es. risposte email) finiscono nel parent.
