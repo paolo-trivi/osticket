@@ -273,7 +273,7 @@ Plugin "ufficiali" tipici (repo separato `osTicket-plugins`): auth-ldap, auth-oa
 | `Validator` | `process($fields, $vars, &$errors)` (regole: string, int, email, phone, url, ipaddr, cs-url, cs-domain, password, username, zipcode…), `is_email` (con verifica MX opz.), `is_ip`, `check_ip` (CIDR), `check_acl`, `is_username`, `is_url` |
 | `Messages` | messaggi flash (ERROR/WARNING/SUCCESS/INFO/DEBUG) in sessione |
 | `Pagenate` | paginazione (`getStart`, `getLimit`, `paginate`) |
-| `Crypto` | `encrypt($input, $key=SECRET_SALT, $subkey)` / `decrypt`: AES-256-CBC via openssl con HMAC; `Crypto::random($len)` |
+| `Crypto` | `encrypt($input, $masterKey, $subKey)` / `decrypt`: **AES-128-CBC** (openssl; fallback phpseclib), IV casuale, chiave = primi 16 byte di `HMAC-SHA512(key=IV, data=masterKey . md5(subKey))`; formato `$<libTag>$base64('$<cipherId>$' . IV . ciphertext)`; **nessun MAC di autenticazione**. Usato per credenziali email/OAuth (subkey = md5(username . namespace)) e campi password dei plugin. `Crypto::random($len)` |
 | `CSRF` | token per sessione (`__CSRFToken__`), TTL, rotazione |
 | `JsonDataParser/Encoder` | JSON con gestione errori |
 | `VariableReplacer` | sostituzione `%{a.b.c}` (doc 07) |
@@ -281,12 +281,20 @@ Plugin "ufficiali" tipici (repo separato `osTicket-plugins`): auth-ldap, auth-oa
 
 ## 7. Pattern di cancellazione (integrità manuale)
 
-Poiché non ci sono FK, ogni `delete()` di dominio ripulisce a mano. Esempi principali (dettagli nei rispettivi documenti):
+Poiché non ci sono FK, ogni `delete()` di dominio ripulisce a mano (comportamento verificato nel codice):
 
-- **Ticket::delete()**: stato → elimina thread (entries, eventi, collaboratori, referral, allegati orfani), form entries + valori, riga cdata, task collegati? (no: i task restano ma perdono il riferimento? → vedi doc 05), lock, indice di ricerca, emette `object.deleted`; se ha figli (merge) li gestisce.
-- **User::delete()**: elimina i ticket dell'utente (opzionale da UI), account, email, form entries, note, collaborazioni.
-- **Dept::delete()**: non eliminabile se default o con ticket; azzera `dept_id` su staff? (no: richiede che non abbia membri primari), elimina `staff_dept_access`, aggiorna help topic/email/filtri (flag `INACTIVE_DEPT`).
-- **Staff::delete()**: rilascia ticket/task assegnati (staff_id=0), rimuove da team, dept_access, lock, queue personali, config `staff.<id>`; non eliminabile se ultimo admin o se è sé stesso.
-- **Topic::delete()**: azzera `topic_id` sui ticket, aggiorna filtri (flag `INACTIVE_HT`), elimina `help_topic_form`, `faq_topic`.
-- **DynamicForm::delete()**: solo se DELETABLE; flag DELETED se ha dati.
-- **AttachmentFile::deleteOrphans()** (cron): file non referenziati da `attachment` e non logo/backdrop, più vecchi di 1 giorno.
+| Entità | Pre-condizioni | Effetti a cascata |
+|---|---|---|
+| **Ticket** | permesso `ticket.delete` | vedi doc 04 §14 (thread+entries+eventi+allegati, form entries, cdata, bozze; figli di merge "sganciati"; **task non eliminati**) |
+| **Task** | `task.delete` | thread, evento `deleted`, bozze, form entries |
+| **Staff** | non sé stessi; non l'ultimo admin attivo (controllo in update) | `ticket.staff_id=0` sui ticket assegnati; `thread_entry.staff_id=0` con `poster` = nome agente (storico preservato); elimina `team_member`, `staff_dept_access` |
+| **User** | **rifiutato se ha ticket** (la UI offre "elimina anche i ticket": li cancella prima) | elimina account, email, form entries (dati custom) |
+| **Organization** | — | `user.org_id=0` per i membri; elimina form entries |
+| **Dept** | non il reparto di default; non con membri (agenti primari) | ticket e task → reparto di default; agenti → default; `help_topic.dept_id=0`; `email.dept_id=0`; elimina `staff_dept_access`; filtri marcati |
+| **Topic** | non il topic di default | sotto-topic → `topic_pid=0`; elimina `faq_topic`; `ticket.topic_id=0`; filtri marcati |
+| **Team** | — | elimina membri; `ticket.team_id=0` |
+| **Role** | `isDeleteable()` (non in uso da agenti come ruolo primario) | `staff_dept_access.role_id=0` |
+| **Email (sistema)** | non default né alert email | elimina account mailbox/SMTP, config credenziali |
+| **DynamicForm** | flag DELETABLE | campi; tabella cdata ricostruita |
+| **FAQ / Category / Canned / Page** | pagine in uso non eliminabili | allegati; FAQ-topic |
+| **AttachmentFile** | — | cron `deleteOrphans()`: file `ft='T'` senza attachment, creati da >1 giorno |
