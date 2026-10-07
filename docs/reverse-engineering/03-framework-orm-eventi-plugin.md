@@ -162,7 +162,7 @@ Signal::send('ticket.created', $ticket, $data);
 | `object.view` | ticket/task/user | | visualizzazione |
 | `ticket.create.before` | null | `&$vars` | prima della validazione in `Ticket::create` (i plugin possono alterare i dati) |
 | `ticket.create.validated` | null | `&$vars` | dopo validazione |
-| `ticket.created` | Ticket | | ticket creato (dopo filtri e auto-assegnazioni, prima delle notifiche? vedi doc 05) |
+| `ticket.created` | Ticket | | ticket creato (dopo filtri e auto-assegnazioni, prima delle notifiche: vedi doc 04 §2.2) |
 | `ticket.view.more` | Ticket | `&$extras` | menu "More" nella vista ticket (plugin aggiungono voci) |
 | `task.created` | Task | | |
 | `threadentry.created` | ThreadEntry | | ogni nuovo post (messaggio/risposta/nota) |
@@ -202,7 +202,7 @@ Signal::send('ticket.created', $ticket, $data);
 - `Controller` (astratto): `access()` (true di default), `exerr($code,$msg)` → `onError` + risposta HTTP + exit.
 - `ApiController extends Controller`: gestione API key, parsing JSON/XML/email, `validateRequestStructure`, log errori (senza alert email per evitare loop/DoS).
 - `AjaxController extends ApiController`: `staffOnly()` (401 se non agente valido), `json_encode`, `get($var)`. Ogni classe `ajax.*.php` estende `AjaxController`; le azioni controllano manualmente permessi (`$thisstaff->hasPerm(...)`, `$ticket->checkStaffPerm(...)`).
-- Risposte AJAX: JSON (`Http::response(200, json, 'application/json')`) oppure frammenti HTML di dialog modali (template `templates/*.tmpl.php`), con codici speciali: **201** = successo "chiudi dialog" (il JS intercetta), **422** = errori di validazione (ri-renderizza il form). Vedi doc 14.
+- Risposte AJAX: JSON (`Http::response(200, json, 'application/json')`) oppure frammenti HTML di dialog modali (template `templates/*.tmpl.php`). Convenzione dialog: **201** = operazione riuscita (il JS chiude il popup e invoca la callback), **200** con HTML = form ri-renderizzato con gli errori, JSON `{redirect}` = navigazione; 422 usato raramente per input non validi in bozze/upload/context. Vedi doc 10 §6.
 
 ## 4. Configurazione (`Config`)
 
@@ -276,7 +276,7 @@ Plugin "ufficiali" tipici (repo separato `osTicket-plugins`): auth-ldap, auth-oa
 | `Crypto` | `encrypt($input, $masterKey, $subKey)` / `decrypt`: **AES-128-CBC** (openssl; fallback phpseclib), IV casuale, chiave = primi 16 byte di `HMAC-SHA512(key=IV, data=masterKey . md5(subKey))`; formato `$<libTag>$base64('$<cipherId>$' . IV . ciphertext)`; **nessun MAC di autenticazione**. Usato per credenziali email/OAuth (subkey = md5(username . namespace)) e campi password dei plugin. `Crypto::random($len)` |
 | `CSRF` | token per sessione (`__CSRFToken__`), TTL, rotazione |
 | `JsonDataParser/Encoder` | JSON con gestione errori |
-| `VariableReplacer` | sostituzione `%{a.b.c}` (doc 07) |
+| `VariableReplacer` | sostituzione `%{a.b.c}` (doc 05 §5) |
 | `ListObject` | array-like con `filter`, `findFirst` |
 
 ## 7. Pattern di cancellazione (integrità manuale)

@@ -189,7 +189,7 @@ Popolata in modo sincrono su creazione/modifica (`SearchInterface` ascolta i seg
 | team_id | int → team.team_id | team assegnato (0 = nessuno) |
 | email_id | int → email.email_id | email di sistema da cui è arrivato / con cui rispondere |
 | lock_id | int → lock.lock_id | lock attivo (0 = nessuno) |
-| flags | int | 0x01 COMBINE_THREADS, 0x02 SEPARATE_THREADS, 0x08 LINKED, 0x10 PARENT (vedi doc 05 merge) |
+| flags | int | 0x01 COMBINE_THREADS, 0x02 SEPARATE_THREADS, 0x08 LINKED, 0x10 PARENT (vedi doc 04 §12) |
 | sort | int | ordinamento dei child dentro un parent |
 | ip_address | varchar(64) | IP del creatore |
 | source | enum('Web','Email','Phone','API','Other') | canale |
@@ -531,7 +531,7 @@ Stato reparto derivato dai flag: Active (ACTIVE), Archived (ARCHIVED), Disabled 
 | permissions | text JSON | `{"ticket.create":1,"ticket.edit":1,...}` (permessi legati al reparto) |
 | notes | text | |
 | created, updated | datetime | |
-Seed: 1 All Access, 2 Expanded Access, 3 Limited Access, 4 View only. Elenco permessi in doc 08.
+Seed: 1 All Access, 2 Expanded Access, 3 Limited Access, 4 View only. Elenco permessi in doc 09 §5.
 
 #### `group` (LEGACY)
 Tabella dei vecchi "gruppi" (≤1.9) mantenuta per compatibilità/migrazione: `id, role_id, flags, name, notes, created, updated`. Il seed crea 3 gruppi (Lion Tamers, Elephant Walkers, Flea Trainers) solo per l'installer; il codice runtime **non la usa** più (sostituita da role + staff_dept_access). Può essere omessa in una riscrittura.
@@ -728,7 +728,7 @@ UNIQUE(filter_id, what, how, val).
 | **id** | int AI | |
 | filter_id | int → filter | |
 | sort | int | ordine |
-| type | varchar(24) | `reject` (rifiuta), `replyto` (usa Reply-To come utente), `noresp` (disabilita auto-risposta), `canned` (invia canned response automatica), `dept` (instrada a reparto), `pri` (imposta priorità), `sla`, `team` (assegna team), `agent` (assegna agente), `topic` (imposta help topic), `status` (imposta stato), `email` (invia email a indirizzi) — più tipi registrati da plugin (vedi doc 09) |
+| type | varchar(24) | `reject` (rifiuta), `replyto` (usa Reply-To come utente), `noresp` (disabilita auto-risposta), `canned` (invia canned response automatica), `dept` (instrada a reparto), `pri` (imposta priorità), `sla`, `team` (assegna team), `agent` (assegna agente), `topic` (imposta help topic), `status` (imposta stato), `email` (invia email a indirizzi) — più tipi registrati da plugin (vedi doc 04 §3 e doc 03) |
 | configuration | text JSON | parametri dell'azione |
 | updated | datetime | |
 

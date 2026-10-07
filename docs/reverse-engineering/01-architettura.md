@@ -1,7 +1,7 @@
 # 01 — Architettura generale, bootstrap e ciclo di vita della richiesta
 
 > Versione analizzata: **osTicket v1.18.4** (branch `develop` = `1.18.x`, commit `8d38b06`, giugno 2026).
-> `MAJOR_VERSION = '1.18'`, `THIS_VERSION = '1.18-git'`. PHP ≥ 8.1, MySQL/MariaDB obbligatorio.
+> `MAJOR_VERSION = '1.18'`, `THIS_VERSION = '1.18-git'`. PHP ≥ 8.2 (requisito dell'installer `SetupWizard::$prereq`), MySQL ≥ 5.5 / MariaDB obbligatorio.
 
 ## 1. Branch del repository e scelta della baseline
 
@@ -222,20 +222,20 @@ PJAX: se la richiesta ha header `X-PJAX`, header/footer emettono solo il frammen
 - Il path viene preso da `PATH_INFO` (es. `/scp/ajax.php/tickets/123/assign`).
 - I plugin possono aggiungere rotte via segnali `ajax.scp`, `ajax.client`, `api`, `apps.scp`, `apps.admin`.
 
-Le rotte complete sono documentate in **doc 14 (API & AJAX)**.
+Le rotte complete sono documentate in **doc 10 (API & AJAX)**.
 
 ## 8. Cron e processi batch
 
 Entry point: `php api/cron.php` (CLI), `POST /api/tasks/cron` (HTTP con API key `can_exec_cron`), oppure **autocron** (`scp/autocron.php`, chiamato via `<img>` da ogni pagina staff: risponde subito con una GIF 1×1, poi chiude la sessione e lavora; max 1 volta ogni 180 s per sessione agente). L'autocron esegue sempre `TicketMonitor`, con prob. 1/4 ricalcola i contatori delle code, con prob. 1/20 `CleanOrphanedFiles`, e **solo se `enable_auto_cron=1`** il `MailFetcher`; infine `Signal::send('cron', ['autocron'=>true])`.
 
 `Cron::run()` (se nessun upgrade pendente), ordine:
-1. `MailFetcher` → `osTicket\Mail\Fetcher::run()`: per ogni mailbox attiva con `fetchfreq` scaduto, scarica fino a `fetchmax` messaggi, li trasforma in ticket/risposte (doc 06).
+1. `MailFetcher` → `osTicket\Mail\Fetcher::run()`: per ogni mailbox attiva con `fetchfreq` scaduto, scarica fino a `fetchmax` messaggi, li trasforma in ticket/risposte (doc 05 §2).
 2. `TicketMonitor` → `Ticket::checkOverdue()` (marca overdue e manda alert) + `Lock::cleanup()` (lock scaduti).
 3. `PurgeLogs` → con probabilità 1/300 cancella `syslog` più vecchi di `log_graceperiod` mesi.
 4. `CleanExpiredSessions` → elimina sessioni scadute.
 5. `CleanPwResets` → elimina token reset password (`config` namespace `pwreset`) più vecchi di `pw_reset_window` minuti.
 6. `CleanOrphanedFiles` (prob. 1/9) → elimina `file` senza `attachment` (non logo/backdrop) creati da >1 giorno.
-7. `PurgeDrafts` → elimina bozze più vecchie (doc 06).
+7. `PurgeDrafts` → elimina bozze più vecchie (doc 05 §7).
 8. `MaybeOptimizeTables` → OPTIMIZE casuale di `lock`, `syslog`, `draft`.
 9. `Signal::send('cron', null, ['autocron'=>false])` → listener: ricostruzione tabelle `__cdata` mancanti, re-indicizzazione full-text (`MysqlSearchBackend::IndexOldStuff`, batch), plugin.
 
@@ -275,13 +275,13 @@ Pianificazione consigliata: ogni 5 minuti.
 - **mPDF 8.2.7**: PDF.
 - **htmLawed 1.2.15**: filtro HTML.
 - **PEAR**: `Mail`, `Net_SMTP`, `Net_Socket`, `Auth_SASL`, `Crypt_*` (legacy), `Math_BigInteger`.
-- **PasswordHash.php** (phpass) per hash password legacy; il core usa `password_hash` (bcrypt) — vedi doc 08.
+- **PasswordHash.php** (phpass) per hash password legacy; il core usa `password_hash` (bcrypt) — vedi doc 09 §6.5.
 - **Spyc** (YAML parser), `JSON.php` (encoder legacy), `html2text.php`, `tnef_decoder.php` (allegati winmail.dat), `class.base32.php` (TOTP).
 - JS: jQuery 3.7.0, jQuery UI 1.13.2, Redactor (editor WYSIWYG, licenza commerciale bundle), Select2, Typeahead, jquery.pjax, Raphael/gRaphael (grafici), fabric.js (crop avatar/immagini), jstz (timezone detection), filedrop (upload drag&drop), spectrum (color picker).
 
 ## 11. Requisiti runtime
 
-PHP 8.1–8.3 con estensioni: `mysqli` (obbl.), `gd`, `imap`/`laminas`, `mbstring`, `intl`, `json`, `xml`, `phar`, `openssl`, `fileinfo`, `zip` (opz.), `apcu` (consigliato: cache metadati ORM e cache modelli), `memcache` (opz.). MySQL ≥ 5.5 / MariaDB; charset `utf8` (3 byte; le emoji vengono rimosse con `Format::strip_emoticons`).
+PHP ≥ 8.2 (testato fino a 8.3/8.4) con estensioni: `mysqli` (obbl.), `gd`, `imap`/`laminas`, `mbstring`, `intl`, `json`, `xml`, `phar`, `openssl`, `fileinfo`, `zip` (opz.), `apcu` (consigliato: cache metadati ORM e cache modelli), `memcache` (opz.). MySQL ≥ 5.5 / MariaDB; charset `utf8` (3 byte; le emoji vengono rimosse con `Format::strip_emoticons`).
 
 ## 12. Gestione del tempo (CRITICO per una riscrittura)
 

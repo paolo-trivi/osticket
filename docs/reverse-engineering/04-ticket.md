@@ -378,7 +378,7 @@ Altre azioni singole via AJAX: `release` (`ticket.release` o manager del reparto
 ## 16. Esportazione/stampa
 - **PDF** (`?a=print&psize=Letter|A4…&notes=1&events=1`): `Ticket2PDF` (mPDF) con intestazione, dettagli, form, thread (note opzionali, eventi opzionali). La dimensione carta viene ricordata in sessione / preferenza agente.
 - **ZIP** (`?a=zip&notes=1&tasks=1`): `TicketZipExporter` (thread HTML + allegati + task).
-- **CSV** delle code (doc 09).
+- **CSV** delle code (doc 08).
 
 ## 17. Variabili template del ticket (`%{ticket.*}`)
 `id`, `number`, `subject`, `name` (PersonsName: `.first`, `.last`, `.full`, `.short`, `.shortformal`, `.legal`, `.lastfirst`, `.original`), `email`, `phone`, `source`, `status` (`.name`, `.state`), `priority` (`.desc`…), `dept` (`.name`, `.manager`, `.signature`…), `topic` (`.name`), `sla`, `staff` (agente assegnato/chiusura), `team`, `assigned`, `create_date`, `due_date`, `close_date`, `last_update` (FormattedDate: `.long`, `.short`, `.time`, `.full`, `.humanize`, `.date`…), `user` (`.name`, `.email`, `.phone`, `.org`, campi form utente), `recipients` (lista nomi), `thread` (`.original`, `.lastmessage`, `.complete`…), `client_link`, `staff_link`, `auth_token`, + ogni campo del form ticket per nome (`%{ticket.<field_name>}`). Vedi doc 05 per il motore delle variabili.
