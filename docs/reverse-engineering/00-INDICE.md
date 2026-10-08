@@ -24,6 +24,7 @@
 | 14 | [Sicurezza](14-sicurezza.md) | Controlli presenti, debolezze, **bug noti da non replicare**, patch di sicurezza recenti come test di regressione |
 | 15 | [Guida alla riscrittura](15-guida-riscrittura.md) | Mappatura su Laravel + PostgreSQL: moduli, servizi, job, API, frontend, ETL di migrazione, checklist di test, milestone |
 | 16 | [Schema PostgreSQL proposto](16-schema-postgresql-proposto.sql) | DDL PostgreSQL fedele allo schema MySQL con 97 FK reali (validato su PostgreSQL 16: 67 tabelle) |
+| 17 | [Contratto di scrittura](17-contratto-scrittura.md) | Righe scritte dal PHP per ogni operazione, che il nuovo frontend Next.js (`frontend-next/`) deve riprodurre; verificato con l'harness differenziale |
 
 ## Come usare questa documentazione
 1. **Per capire il prodotto**: 01 → 02 → 04 → 05 → 09.

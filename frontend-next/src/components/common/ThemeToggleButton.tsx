@@ -2,7 +2,8 @@ import { useTheme } from "@/context/ThemeContext";
 import React from "react";
 
 export const ThemeToggleButton: React.FC = () => {
-  const { toggleTheme } = useTheme();
+  const { toggleTheme, allowUserMode } = useTheme();
+  if (!allowUserMode) return null;
 
   return (
     <button

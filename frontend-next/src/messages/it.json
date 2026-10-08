@@ -81,5 +81,87 @@
     "error": "ERRORE",
     "message": "La pagina richiesta non esiste.",
     "backHome": "Torna alla home"
+  },
+  "admin": {
+    "home": "Amministrazione",
+    "open": "Apri",
+    "theme": {
+      "title": "Tema e aspetto",
+      "desc": "Colori, modalità chiaro/scuro, sidebar, font e identità della nuova interfaccia. Le modifiche valgono per tutti gli utenti.",
+      "colors": "Colore principale",
+      "colorsDesc": "La scala completa viene generata automaticamente dal colore scelto.",
+      "customColor": "Colore personalizzato",
+      "presets": {
+        "osticket": "osTicket",
+        "hospital": "Ospedaliero",
+        "blue": "Blu",
+        "green": "Verde",
+        "purple": "Viola",
+        "red": "Rosso",
+        "slate": "Ardesia"
+      },
+      "lowContrast": "Colore molto chiaro: il testo bianco sui pulsanti potrebbe essere poco leggibile.",
+      "appearance": "Aspetto",
+      "modeDefault": "Modalità predefinita",
+      "modes": {
+        "light": "Chiaro",
+        "dark": "Scuro",
+        "auto": "Automatica (sistema)"
+      },
+      "allowUserMode": "Consenti a ogni utente di scegliere chiaro/scuro",
+      "sidebar": "Barra laterale",
+      "sidebars": {
+        "light": "Chiara",
+        "dark": "Scura",
+        "brand": "Colore del marchio"
+      },
+      "font": "Carattere",
+      "fonts": {
+        "system": "Di sistema"
+      },
+      "radius": "Arrotondamento angoli",
+      "radii": {
+        "none": "Nessuno",
+        "sm": "Minimo",
+        "md": "Medio",
+        "lg": "Standard",
+        "xl": "Ampio"
+      },
+      "density": "Densità",
+      "densities": {
+        "comfortable": "Comoda",
+        "compact": "Compatta"
+      },
+      "identity": "Identità",
+      "appName": "Nome dell'applicazione",
+      "appNameHint": "Vuoto = titolo dell'helpdesk impostato in osTicket ({title}).",
+      "tagline": "Frase nella pagina di accesso",
+      "useOsticketLogos": "Usa i loghi caricati in osTicket (logo agenti, logo clienti, sfondo di accesso)",
+      "logos": {
+        "staff": "Logo agenti",
+        "client": "Logo clienti",
+        "backdrop": "Sfondo accesso",
+        "custom": "personalizzato",
+        "default": "predefinito osTicket"
+      },
+      "logosHint": "I loghi si caricano dal pannello classico (Admin › Impostazioni › Sistema): la nuova interfaccia li usa automaticamente.",
+      "openLegacy": "Apri nel pannello classico",
+      "preview": "Anteprima",
+      "sample": {
+        "primary": "Rispondi",
+        "secondary": "Annulla",
+        "badge": "Nuovo",
+        "open": "Aperto",
+        "overdue": "Scaduto",
+        "subject": "Stampante reparto Radiologia non risponde",
+        "meta": "Assistenza IT · aggiornato 5 minuti fa"
+      },
+      "save": "Salva tema",
+      "saving": "Salvataggio…",
+      "discard": "Annulla modifiche",
+      "resetDefaults": "Ripristina il tema predefinito osTicket",
+      "saved": "Tema salvato: è già attivo per tutti gli utenti.",
+      "error": "Impossibile salvare il tema"
+    }
   }
 }

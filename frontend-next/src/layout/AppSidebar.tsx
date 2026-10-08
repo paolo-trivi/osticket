@@ -4,6 +4,7 @@ import { Link, usePathname } from "@/i18n/navigation";
 import { ChevronDownIcon, HorizontaLDots } from "@/icons";
 import { cn } from "@/utils";
 import BrandLogo from "@/components/brand/BrandLogo";
+import { useBranding } from "@/context/BrandingContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useSidebar } from "../context/SidebarContext";
@@ -22,6 +23,7 @@ function matches(pathname: string, href: string, exact?: boolean): boolean {
 
 export default function AppSidebar({ sections, homeHref }: Props) {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { sidebarStyle } = useBranding();
   const pathname = usePathname();
   const open = isExpanded || isHovered || isMobileOpen;
   // Sottomenu aperto: quello che contiene la pagina corrente, finché l'utente non ne apre/chiude uno
@@ -140,6 +142,7 @@ export default function AppSidebar({ sections, homeHref }: Props) {
   };
 
   return (
+    <div className={sidebarStyle === "light" ? undefined : "dark"}>
     <aside
       className={cn(
         "fixed top-0 start-0 z-50 flex h-full flex-col border-e border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out xl:mt-0 dark:border-gray-800 dark:bg-gray-900",
@@ -147,12 +150,17 @@ export default function AppSidebar({ sections, homeHref }: Props) {
         isMobileOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full",
         "xl:translate-x-0 xl:rtl:translate-x-0",
       )}
+      style={sidebarStyle === "brand" ? { backgroundColor: "var(--color-brand-950)", borderColor: "var(--color-brand-900)" } : undefined}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className={cn("flex py-8", !isExpanded && !isHovered ? "xl:justify-center" : "justify-start")}>
         <Link href={homeHref}>
-          {open ? <BrandLogo height={44} /> : <BrandLogo variant="icon" height={36} />}
+          {open ? (
+            <BrandLogo height={44} forceDark={sidebarStyle !== "light"} />
+          ) : (
+            <BrandLogo variant="icon" height={36} />
+          )}
         </Link>
       </div>
       <div className="no-scrollbar flex flex-col overflow-y-auto duration-300 ease-linear">
@@ -175,5 +183,6 @@ export default function AppSidebar({ sections, homeHref }: Props) {
         </nav>
       </div>
     </aside>
+    </div>
   );
 }

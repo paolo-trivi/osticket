@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AuthLayout from "@/components/shell/AuthLayout";
 import { redirect } from "@/i18n/navigation";
 import { currentAgent } from "@/server/auth/staff-auth";
+import { loadTheme } from "@/server/theme/theme";
 
 import LoginForm from "./LoginForm";
 
@@ -22,8 +23,13 @@ export default async function AgentLoginPage({
   if (await currentAgent()) redirect({ href: "/agent", locale });
 
   const t = await getTranslations("auth");
+  const theme = await loadTheme();
   return (
-    <AuthLayout sideTitle={t("sideTitle")} sideText={t("sideText")}>
+    <AuthLayout
+      sideTitle={theme.displayName}
+      sideText={theme.login_tagline || t("sideText")}
+      backdropUrl={theme.backdropId ? "/api/branding/backdrop" : undefined}
+    >
       <LoginForm next={next} expired={expired === "1"} />
     </AuthLayout>
   );

@@ -81,5 +81,87 @@
     "error": "ERROR",
     "message": "The page you are looking for does not exist.",
     "backHome": "Back to home"
+  },
+  "admin": {
+    "home": "Administration",
+    "open": "Open",
+    "theme": {
+      "title": "Theme & appearance",
+      "desc": "Colors, light/dark mode, sidebar, font and identity of the new interface. Changes apply to every user.",
+      "colors": "Primary color",
+      "colorsDesc": "The full scale is generated automatically from the chosen color.",
+      "customColor": "Custom color",
+      "presets": {
+        "osticket": "osTicket",
+        "hospital": "Hospital",
+        "blue": "Blue",
+        "green": "Green",
+        "purple": "Purple",
+        "red": "Red",
+        "slate": "Slate"
+      },
+      "lowContrast": "Very light color: white text on buttons may be hard to read.",
+      "appearance": "Appearance",
+      "modeDefault": "Default mode",
+      "modes": {
+        "light": "Light",
+        "dark": "Dark",
+        "auto": "Automatic (system)"
+      },
+      "allowUserMode": "Let each user choose light/dark",
+      "sidebar": "Sidebar",
+      "sidebars": {
+        "light": "Light",
+        "dark": "Dark",
+        "brand": "Brand color"
+      },
+      "font": "Font",
+      "fonts": {
+        "system": "System"
+      },
+      "radius": "Corner radius",
+      "radii": {
+        "none": "None",
+        "sm": "Small",
+        "md": "Medium",
+        "lg": "Standard",
+        "xl": "Large"
+      },
+      "density": "Density",
+      "densities": {
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      },
+      "identity": "Identity",
+      "appName": "Application name",
+      "appNameHint": "Empty = helpdesk title set in osTicket ({title}).",
+      "tagline": "Sign-in page tagline",
+      "useOsticketLogos": "Use logos uploaded in osTicket (agent logo, client logo, sign-in backdrop)",
+      "logos": {
+        "staff": "Agent logo",
+        "client": "Client logo",
+        "backdrop": "Sign-in backdrop",
+        "custom": "custom",
+        "default": "osTicket default"
+      },
+      "logosHint": "Logos are uploaded from the classic panel (Admin › Settings › System): the new interface picks them up automatically.",
+      "openLegacy": "Open in classic panel",
+      "preview": "Preview",
+      "sample": {
+        "primary": "Reply",
+        "secondary": "Cancel",
+        "badge": "New",
+        "open": "Open",
+        "overdue": "Overdue",
+        "subject": "Radiology printer not responding",
+        "meta": "IT Support · updated 5 minutes ago"
+      },
+      "save": "Save theme",
+      "saving": "Saving…",
+      "discard": "Discard changes",
+      "resetDefaults": "Restore the default osTicket theme",
+      "saved": "Theme saved: it is already active for every user.",
+      "error": "Unable to save the theme"
+    }
   }
 }

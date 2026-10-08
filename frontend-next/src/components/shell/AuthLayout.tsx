@@ -8,16 +8,22 @@ export default function AuthLayout({
   children,
   sideTitle,
   sideText,
+  backdropUrl,
 }: {
   children: ReactNode;
   sideTitle: string;
   sideText: string;
+  /** sfondo di accesso caricato in osTicket (core.staff_backdrop_id) */
+  backdropUrl?: string;
 }) {
   return (
     <div className="relative z-1 bg-white p-6 sm:p-0 dark:bg-gray-900">
       <div className="relative flex h-screen w-full flex-col justify-center sm:p-0 lg:flex-row dark:bg-gray-900">
         {children}
-        <div className="hidden h-full w-full items-center bg-gray-900 lg:grid lg:w-1/2 dark:bg-white/5">
+        <div
+          className="hidden h-full w-full items-center bg-gray-900 bg-cover bg-center lg:grid lg:w-1/2 dark:bg-white/5"
+          style={backdropUrl ? { backgroundImage: `linear-gradient(rgb(16 24 40 / 0.75), rgb(16 24 40 / 0.75)), url(${backdropUrl})` } : undefined}
+        >
           <div className="relative z-1 flex items-center justify-center">
             <GridShape />
             <div className="flex max-w-xs flex-col items-center">

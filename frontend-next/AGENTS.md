@@ -13,36 +13,25 @@
 
 ## Repo Map
 
-> Route groups `(name)/` are Next.js App Router organizational folders —
-> they don't affect the URL path. Explore subfolders directly; this map
-> stops at the level needed to orient, not to enumerate.
-
 ```
 src/
-├── app/                      # routes (Next.js App Router)
-│   ├── [locale]/             # localized routes (next-intl)
-│   │   ├── (admin)/          # dashboard shell (sidebar+header via src/layout)
-│   │   │   ├── (home)/       # dashboard variants, e.g. analytics/, crm/, sales/
-│   │   │   ├── (others-pages)/ # feature pages, e.g. calendar/, chat/, (forms)/
-│   │   │   └── (ui-elements)/ # component demo pages (alerts, buttons, modals…)
-│   │   ├── (full-width-pages)/ # no dashboard shell, e.g. (auth)/, coming-soon/
-│   │   ├── (layouts-example)/ # sidebar layout variants (layout-one … six)
-│   │   └── layout.tsx, not-found.tsx
-│   ├── favicon.ico, globals.css
+├── app/
+│   ├── [locale]/
+│   │   ├── (staff)/agent/        # pannello agenti: login/, (panel)/ con sidebar, guard.ts, nav.tsx, actions.ts
+│   │   ├── (staff)/admin/        # area amministrazione (solo isadmin): theme/ …
+│   │   ├── layout.tsx            # tema dal DB (config nextui.theme), font, provider
+│   │   └── not-found.tsx
+│   └── api/branding/[kind]/      # loghi caricati in osTicket (staff/client/backdrop)
 ├── components/
-│   ├── ui/                    # primitives: button, modal, table, tabs…
-│   ├── form/                  # Form, Label, Select + input/, switch/
-│   ├── common/                # shared widgets: PageBreadCrumb, ThemeToggleButton…
-│   ├── header/                # header dropdowns
-│   └── <feature>/             # one folder per domain: ecommerce, crm, invoice…
-├── i18n/                     # routing.ts, request.ts, navigation.ts, languages.ts
-├── messages/                 # translation dictionaries (en.json, ar.json, es.json, de.json)
-├── layout/                    # admin shell: AppSidebar, AppHeader
-├── context/                   # SidebarContext, ThemeContext
-├── hooks/                     # useModal, useGoBack, useClickOutside
-├── icons/                     # .svg + index.tsx barrel (SVGR)
-├── proxy.ts                  # next-intl routing middleware
-└── utils/
+│   ├── brand/                    # BrandLogo (osTicket o logo caricato)
+│   ├── shell/                    # AppShell, UserMenu, AuthLayout
+│   ├── ui/, form/, common/       # primitive grafiche
+├── context/                      # Sidebar, Theme (chiaro/scuro), Branding (tema configurato)
+├── lib/                          # codice condiviso client/server: theme/ (schema, palette, css), fonts
+├── server/                       # SOLO server: db/, config/, auth/, domain/, theme/, format/, system/
+├── i18n/, messages/              # it (default), en
+├── layout/                       # AppSidebar, AppHeader, nav-types
+└── icons/
 ```
 
 ## Stack
@@ -58,7 +47,7 @@ src/
 - **New page** → add a folder under the matching `src/app/[locale]/(...)/` group; colocate route-only components there. Never place pages outside `[locale]`.
 - **New reusable component** → `components/<feature>/` if domain-specific, else `components/common/` or `components/ui/`.
 - **New icon** → drop the `.svg` in `icons/`, export it from the `index.tsx` barrel with a PascalCase name. Never inline SVG markup in components.
-- Route groups: `(admin)` is the only group with the sidebar/header shell; `(full-width-pages)` renders pages without chrome; `(layouts-example)` holds alternative sidebar layouts.
+- Route groups: `(staff)` contiene pannello agenti e area admin; il guscio con sidebar è `components/shell/AppShell`.
 - Component files are **PascalCase** (`MonthlySalesChart.tsx`) with a **default export**; route files stay lowercase (`page.tsx`, `layout.tsx`); hooks are camelCase (`useModal.ts`).
 - Root `app/[locale]/layout.tsx` is a Server Component setting up `NextIntlClientProvider`, fonts, direction (`dir="ltr"|"rtl"`), and providers. The `(admin)` shell layout and interactive UI are Client Components — add `"use client"` whenever using hooks, event handlers, or browser APIs.
 - Import via the alias (`@/context/...`, `@/icons/...`, `@/i18n/...`) for cross-folder imports; relative imports are fine within a feature folder.
@@ -66,7 +55,7 @@ src/
 ## Internationalization (next-intl) rules
 
 - **Navigation & Routing**: Always import navigation primitives (`Link`, `useRouter`, `usePathname`, `redirect`) from `@/i18n/navigation`, never directly from `next/link` or `next/navigation`.
-- **Routing Configuration**: Locales (`en`, `ar`, `es`, `de`) and routing settings are centralized in `src/i18n/routing.ts` (`localePrefix: "never"`).
+- **Routing Configuration**: Locales (`it`, `en`) and routing settings are centralized in `src/i18n/routing.ts` (`localePrefix: "never"`).
 - **Translations**:
   - In Client Components: use `useTranslations("namespace")`.
   - In Server Components: use `getTranslations("namespace")` from `next-intl/server`.
@@ -106,7 +95,8 @@ src/
 - **One feature, one folder**: new page UI goes in `src/components/<feature>/`, split into focused single-responsibility sub-components (e.g. `EcommerceMetrics.tsx`, `RecentOrders.tsx`) — never one monolithic file.
 - **Composition over prop drilling**: pass `children`, keep container/state logic separate from presentational components, extract section-level JSX into its own file, and define explicit typed prop interfaces per sub-component.
 - Prefer primitives from `src/components/ui/` and `src/components/form/` over raw HTML or new third-party equivalents.
-- Wrap demo/page sections in `ComponentCard` and add `PageBreadCrumb` at the top of pages, matching existing pages.
+- Wrap page sections in `ComponentCard`.
+- I colori del marchio (`brand-*`) sono configurabili dall'admin: usare sempre i token `brand-*`, mai colori fissi.
 - **Charts**: `react-apexcharts` must be dynamically imported — `const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false })`.
 - **Calendar & carousels**: `FullCalendar` and `Swiper` are also client-only libraries — dynamically import them the same way (`dynamic(() => import(...), { ssr: false })`) rather than importing directly, unless they're already isolated inside a component that's rendered client-side only (verify before assuming).- **Icons**: import from `@/icons` (SVGs are compiled to React components via `@svgr/webpack`, configured for both webpack and Turbopack).
 - Modals use the `useModal` hook (`isOpen`, `openModal`, `closeModal`, `toggleModal`).

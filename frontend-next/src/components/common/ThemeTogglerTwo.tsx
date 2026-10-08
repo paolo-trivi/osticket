@@ -3,7 +3,8 @@
 import { useTheme } from "@/context/ThemeContext";
 
 export default function ThemeTogglerTwo() {
-  const { toggleTheme } = useTheme();
+  const { toggleTheme, allowUserMode } = useTheme();
+  if (!allowUserMode) return null;
   return (
     <button
       onClick={toggleTheme}

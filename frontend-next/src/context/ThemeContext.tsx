@@ -3,7 +3,7 @@
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 
-type ThemeMode = "light" | "dark" | "auto";
+export type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 
 type ThemeContextType = {
@@ -11,35 +11,40 @@ type ThemeContextType = {
   themeMode: ThemeMode; // The configured preference ("light", "dark", or "auto")
   setThemeMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
+  /** l'amministratore consente all'utente di scegliere chiaro/scuro */
+  allowUserMode: boolean;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [themeMode, setThemeModeState] = useState<ThemeMode>("light");
+/** Chiave localStorage della preferenza utente (letta anche dallo script anti-flash del layout). */
+export const THEME_STORAGE_KEY = "theme-mode";
+
+export const ThemeProvider: React.FC<{
+  children: React.ReactNode;
+  /** modalità predefinita dal tema configurato in admin */
+  defaultMode?: ThemeMode;
+  allowUserMode?: boolean;
+}> = ({ children, defaultMode = "light", allowUserMode = true }) => {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(defaultMode);
   const [theme, setTheme] = useState<ResolvedTheme>("light");
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     // This code will only run on the client side
-    const savedMode = localStorage.getItem("theme-mode") as ThemeMode | null;
-    const legacySavedTheme = localStorage.getItem(
-      "theme",
-    ) as ResolvedTheme | null;
-    const initialMode = savedMode || (legacySavedTheme as ThemeMode) || "light";
+    const savedMode = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+    const initialMode = (allowUserMode && savedMode) || defaultMode;
 
     // Lettura di localStorage possibile solo dopo il mount (niente mismatch di idratazione)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeModeState(initialMode);
     setIsInitialized(true);
-  }, []);
+  }, [allowUserMode, defaultMode]);
 
   useEffect(() => {
     if (!isInitialized) return;
 
-    localStorage.setItem("theme-mode", themeMode);
+    if (allowUserMode) localStorage.setItem(THEME_STORAGE_KEY, themeMode);
 
     if (themeMode === "auto") {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -59,11 +64,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(themeMode as ResolvedTheme);
     }
-  }, [themeMode, isInitialized]);
+  }, [themeMode, isInitialized, allowUserMode]);
 
   useEffect(() => {
     if (isInitialized) {
-      localStorage.setItem("theme", theme);
       if (theme === "dark") {
         document.documentElement.classList.add("dark");
         document.documentElement.setAttribute("data-color-scheme", "dark");
@@ -75,19 +79,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [theme, isInitialized]);
 
   const setThemeMode = (mode: ThemeMode) => {
-    setThemeModeState(mode);
+    if (allowUserMode) setThemeModeState(mode);
   };
 
   const toggleTheme = () => {
-    setThemeModeState(() => {
-      const currentResolved = theme;
-      return currentResolved === "light" ? "dark" : "light";
-    });
+    if (allowUserMode) setThemeModeState(theme === "light" ? "dark" : "light");
   };
 
   return (
     <ThemeContext.Provider
-      value={{ theme, themeMode, setThemeMode, toggleTheme }}
+      value={{ theme, themeMode, setThemeMode, toggleTheme, allowUserMode }}
     >
       {children}
     </ThemeContext.Provider>

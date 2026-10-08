@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts"],
+    // i test differenziali hanno una configurazione dedicata (vitest.diff.config.mts)
+    exclude: ["test/diff/**", "node_modules/**"],
     // I test di integrazione usano il DB osTicket di sviluppo (frontend-next/dev)
     fileParallelism: false,
     setupFiles: ["./test/support/setup-env.ts"],
