@@ -1,0 +1,85 @@
+{
+  "common": {
+    "appName": "Helpdesk",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search",
+    "back": "Back",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "none": "None",
+    "legacyPanel": "Classic panel"
+  },
+  "nav": {
+    "groups": {
+      "agent": "Agent panel",
+      "admin": "Administration",
+      "account": "Account"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "tickets": "Tickets",
+      "tasks": "Tasks",
+      "users": "Users",
+      "organizations": "Organizations",
+      "kb": "Knowledgebase",
+      "canned": "Canned responses",
+      "newTicket": "New ticket",
+      "profile": "My profile",
+      "adminPanel": "Admin panel",
+      "agentPanel": "Agent panel",
+      "settings": "Settings",
+      "manage": "Manage",
+      "emails": "Emails",
+      "agents": "Agents"
+    }
+  },
+  "header": {
+    "searchPlaceholder": "Search tickets…",
+    "toggleSidebar": "Toggle sidebar",
+    "signOut": "Sign out",
+    "profile": "My profile",
+    "language": "Language",
+    "admin": "Administrator"
+  },
+  "auth": {
+    "agentLoginTitle": "Agent sign in",
+    "agentLoginSubtitle": "Use your osTicket credentials",
+    "username": "Username or email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "sideTitle": "Helpdesk",
+    "sideText": "A new interface on the same osTicket database: data stays shared with the classic panel.",
+    "errors": {
+      "invalid": "Invalid login",
+      "locked_out": "Maximum failed login attempts reached: try again later",
+      "too_many": "Too many failed attempts. Forgot your login info? Contact Admin.",
+      "inactive": "Account locked: contact the administrator",
+      "backend": "This account uses an external authentication backend that is not supported yet: use the classic panel",
+      "mfa_unsupported": "Two-factor verification is not available here yet: use the classic panel"
+    },
+    "sessionExpired": "Session expired: please sign in again"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome, {name}",
+    "primaryDept": "Primary department",
+    "role": "Role",
+    "departments": "Accessible departments",
+    "teams": "Teams",
+    "globalPerms": "Global permissions",
+    "rolePerms": "Primary role permissions",
+    "lastLogin": "Last login",
+    "limitedAccess": "Sees assigned tickets only"
+  },
+  "notFound": {
+    "error": "ERROR",
+    "message": "The page you are looking for does not exist.",
+    "backHome": "Back to home"
+  }
+}

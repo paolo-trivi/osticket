@@ -1,0 +1,85 @@
+{
+  "common": {
+    "appName": "Helpdesk",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "close": "Chiudi",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "search": "Cerca",
+    "back": "Indietro",
+    "loading": "Caricamento…",
+    "yes": "Sì",
+    "no": "No",
+    "none": "Nessuno",
+    "legacyPanel": "Pannello classico"
+  },
+  "nav": {
+    "groups": {
+      "agent": "Pannello agenti",
+      "admin": "Amministrazione",
+      "account": "Account"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "tickets": "Ticket",
+      "tasks": "Task",
+      "users": "Utenti",
+      "organizations": "Organizzazioni",
+      "kb": "Knowledge base",
+      "canned": "Risposte predefinite",
+      "newTicket": "Nuovo ticket",
+      "profile": "Il mio profilo",
+      "adminPanel": "Pannello amministrazione",
+      "agentPanel": "Pannello agenti",
+      "settings": "Impostazioni",
+      "manage": "Gestione",
+      "emails": "Email",
+      "agents": "Agenti"
+    }
+  },
+  "header": {
+    "searchPlaceholder": "Cerca ticket…",
+    "toggleSidebar": "Mostra/nascondi menu",
+    "signOut": "Esci",
+    "profile": "Il mio profilo",
+    "language": "Lingua",
+    "admin": "Amministratore"
+  },
+  "auth": {
+    "agentLoginTitle": "Accesso agenti",
+    "agentLoginSubtitle": "Accedi con le credenziali osTicket",
+    "username": "Utente o email",
+    "password": "Password",
+    "signIn": "Accedi",
+    "signingIn": "Accesso in corso…",
+    "sideTitle": "Helpdesk",
+    "sideText": "Nuova interfaccia sullo stesso database di osTicket: i dati restano condivisi con il pannello classico.",
+    "errors": {
+      "invalid": "Credenziali non valide",
+      "locked_out": "Numero massimo di tentativi raggiunto: riprova più tardi",
+      "too_many": "Troppi tentativi falliti. Hai dimenticato le credenziali? Contatta l'amministratore.",
+      "inactive": "Account bloccato: contatta l'amministratore",
+      "backend": "Questo account usa un sistema di autenticazione esterno non ancora supportato: usa il pannello classico",
+      "mfa_unsupported": "La verifica in due passaggi non è ancora disponibile qui: usa il pannello classico"
+    },
+    "sessionExpired": "Sessione scaduta: accedi di nuovo"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Benvenuto, {name}",
+    "primaryDept": "Reparto principale",
+    "role": "Ruolo",
+    "departments": "Reparti accessibili",
+    "teams": "Team",
+    "globalPerms": "Permessi globali",
+    "rolePerms": "Permessi del ruolo principale",
+    "lastLogin": "Ultimo accesso",
+    "limitedAccess": "Vede solo i ticket assegnati"
+  },
+  "notFound": {
+    "error": "ERRORE",
+    "message": "La pagina richiesta non esiste.",
+    "backHome": "Torna alla home"
+  }
+}

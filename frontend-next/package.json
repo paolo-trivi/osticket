@@ -1,0 +1,74 @@
+{
+  "name": "osticket-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "db:codegen": "node scripts/db-codegen.mjs",
+    "dev:services": "bash dev/start-services.sh",
+    "dev:osticket": "bash dev/setup-osticket.sh"
+  },
+  "dependencies": {
+    "@fullcalendar/react": "^7.1.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "apexcharts": "^7.1.0",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "flatpickr": "^4.6.13",
+    "jose": "^6.2.12",
+    "kysely": "^0.29.6",
+    "luxon": "^3.7.2",
+    "mysql2": "^3.24.5",
+    "next": "^16.3.4",
+    "next-intl": "^4.14.2",
+    "nodemailer": "^10.0.16",
+    "react": "^19.2.8",
+    "react-apexcharts": "^2.1.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^19.2.8",
+    "react-dropzone": "^20.1.1",
+    "sanitize-html": "^2.18.0",
+    "server-only": "^0.0.1",
+    "simplebar-react": "^3.3.2",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@svgr/webpack": "^8.1.0",
+    "@tailwindcss/forms": "^0.5.11",
+    "@types/luxon": "^3.7.6",
+    "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
+    "@types/sanitize-html": "^2.16.2",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.3.4",
+    "kysely-codegen": "^0.20.0",
+    "postcss": "^8.5.6",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tailwindcss": "^4.1.17",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "@react-jvectormap/core": {
+      "react": "^16.8.0 || ^17 || ^18 || ^19",
+      "react-dom": "^16.8.0 || ^17 || ^18 || ^19"
+    },
+    "@react-jvectormap/world": {
+      "react": "^16.8.0 || ^17 || ^18 || ^19",
+      "react-dom": "^16.8.0 || ^17 || ^18 || ^19"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<svg width="154" height="32" viewBox="0 0 154 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="32" height="32" rx="8" fill="#465FFF"/>
+<path d="M9 11.5C9 10.67 9.67 10 10.5 10H21.5C22.33 10 23 10.67 23 11.5V14C21.9 14 21 14.9 21 16C21 17.1 21.9 18 23 18V20.5C23 21.33 22.33 22 21.5 22H10.5C9.67 22 9 21.33 9 20.5V18C10.1 18 11 17.1 11 16C11 14.9 10.1 14 9 14V11.5Z" fill="white"/>
+<path d="M17 12.5V19.5" stroke="#465FFF" stroke-width="1.5" stroke-dasharray="1.5 1.5"/>
+<text x="42" y="22.5" font-family="Outfit, Arial, sans-serif" font-size="20" font-weight="600" fill="#FFFFFF">Helpdesk</text>
+</svg>
