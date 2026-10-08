@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "Helpdesk",
+    "appName": "osTicket",
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close",
@@ -53,8 +53,8 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "sideTitle": "Helpdesk",
-    "sideText": "A new interface on the same osTicket database: data stays shared with the classic panel.",
+    "sideTitle": "osTicket",
+    "sideText": "Support Ticket System — new interface, same data as the classic panel.",
     "errors": {
       "invalid": "Invalid login",
       "locked_out": "Maximum failed login attempts reached: try again later",

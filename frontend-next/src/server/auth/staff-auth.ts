@@ -12,9 +12,14 @@ import { checkPassword } from "./passwd";
 import { clearSession, clientIp, readSession, writeSession } from "./session";
 import { addStrike, isLockedOut, resetStrikes } from "./strikes";
 
-export type StaffLoginResult =
-  | { ok: true; mustChangePassword: boolean }
-  | { ok: false; error: "invalid" | "locked_out" | "too_many" | "inactive" | "backend" | "mfa_unsupported" };
+export type StaffLoginError = "invalid" | "locked_out" | "too_many" | "inactive" | "backend" | "mfa_unsupported";
+
+export type StaffLoginResult = { ok: true; mustChangePassword: boolean } | { ok: false; error: StaffLoginError };
+
+/** Esito della parte di dominio del login (senza cookie/sessione HTTP): usata anche dall'harness. */
+export type StaffAuthOutcome =
+  | { ok: true; staffId: number; passwdVersion: string; mustChangePassword: boolean }
+  | { ok: false; error: StaffLoginError };
 
 /** Backend di autenticazione che la app sa gestire (staff.backend NULL = qualunque, cioè locale). */
 const SUPPORTED_BACKENDS = new Set(["", "local"]);
@@ -27,10 +32,14 @@ const SUPPORTED_BACKENDS = new Set(["", "local"]);
  *  - eventuale rehash da MD5 (staff.passwd + updated)                        (check_passwd)
  *  - syslog "Agent Login" a livello Debug                                     (logDebug)
  */
-export async function staffLogin(login: string, password: string): Promise<StaffLoginResult> {
+export async function performStaffLogin(input: {
+  login: string;
+  password: string;
+  ip: string;
+}): Promise<StaffAuthOutcome> {
+  const { password, ip } = input;
   const cfg = await coreConfig();
-  const ip = await clientIp();
-  const username = login.trim();
+  const username = input.login.trim();
   await detectDbTimezone(db());
 
   if (isLockedOut("staff", ip, username, cfg.int("staff_login_timeout") * 60)) {
@@ -98,14 +107,27 @@ export async function staffLogin(login: string, password: string): Promise<Staff
     .select(["passwdreset", "change_passwd"])
     .where("staff_id", "=", agent.id)
     .executeTakeFirstOrThrow();
+  return {
+    ok: true,
+    staffId: agent.id,
+    passwdVersion: fresh.passwdreset ?? "",
+    mustChangePassword: !!fresh.change_passwd,
+  };
+}
+
+/** Login dal form: dominio + cookie di sessione. */
+export async function staffLogin(login: string, password: string): Promise<StaffLoginResult> {
+  const ip = await clientIp();
+  const outcome = await performStaffLogin({ login, password, ip });
+  if (!outcome.ok) return outcome;
   await writeSession({
     realm: "staff",
-    uid: agent.id,
-    pwv: fresh.passwdreset ?? "",
+    uid: outcome.staffId,
+    pwv: outcome.passwdVersion,
     ip,
     last: Math.floor(Date.now() / 1000),
   });
-  return { ok: true, mustChangePassword: !!fresh.change_passwd };
+  return { ok: true, mustChangePassword: outcome.mustChangePassword };
 }
 
 async function failed(
@@ -113,7 +135,7 @@ async function failed(
   ip: string,
   maxLogins: number,
   timeoutMin: number,
-): Promise<StaffLoginResult> {
+): Promise<StaffAuthOutcome> {
   const { strikes, lockedOut } = addStrike("staff", ip, username, maxLogins);
   const time = new Date().toUTCString();
   if (lockedOut) {

@@ -3,7 +3,7 @@
 import { Link, usePathname } from "@/i18n/navigation";
 import { ChevronDownIcon, HorizontaLDots } from "@/icons";
 import { cn } from "@/utils";
-import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useSidebar } from "../context/SidebarContext";
@@ -152,14 +152,7 @@ export default function AppSidebar({ sections, homeHref }: Props) {
     >
       <div className={cn("flex py-8", !isExpanded && !isHovered ? "xl:justify-center" : "justify-start")}>
         <Link href={homeHref}>
-          {open ? (
-            <>
-              <Image className="dark:hidden" src="/images/logo/logo.svg" alt="Logo" width={150} height={40} priority style={{ width: "auto", height: "auto" }} />
-              <Image className="hidden dark:block" src="/images/logo/logo-dark.svg" alt="Logo" width={150} height={40} priority style={{ width: "auto", height: "auto" }} />
-            </>
-          ) : (
-            <Image src="/images/logo/logo-icon.svg" alt="Logo" width={32} height={32} priority style={{ width: "auto", height: "auto" }} />
-          )}
+          {open ? <BrandLogo height={44} /> : <BrandLogo variant="icon" height={36} />}
         </Link>
       </div>
       <div className="no-scrollbar flex flex-col overflow-y-auto duration-300 ease-linear">

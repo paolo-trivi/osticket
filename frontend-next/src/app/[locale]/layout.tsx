@@ -3,6 +3,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { isRtl } from "@/i18n/languages";
 import { type Locale, routing } from "@/i18n/routing";
 import "flatpickr/dist/flatpickr.css";
+import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { Outfit } from "next/font/google";
@@ -13,6 +14,11 @@ import "../globals.css";
 const outfit = Outfit({
   subsets: ["latin"],
 });
+
+export const metadata: Metadata = {
+  title: { default: "osTicket", template: "%s · osTicket" },
+  description: "osTicket — Support Ticket System",
+};
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));

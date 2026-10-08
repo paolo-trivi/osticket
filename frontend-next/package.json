@@ -12,7 +12,8 @@
     "test:unit": "vitest run test/unit",
     "db:codegen": "node scripts/db-codegen.mjs",
     "dev:services": "bash dev/start-services.sh",
-    "dev:osticket": "bash dev/setup-osticket.sh"
+    "dev:osticket": "bash dev/setup-osticket.sh",
+    "test:diff": "vitest run -c vitest.diff.config.mts"
   },
   "dependencies": {
     "@fullcalendar/react": "^7.1.0",

@@ -18,7 +18,7 @@ interface Props {
   children: ReactNode;
 }
 
-/** Guscio TailAdmin (sidebar + header) condiviso da pannello agenti e area admin. */
+/** Guscio dell'applicazione (sidebar + header) condiviso da pannello agenti e area admin. */
 export default function AppShell({ sections, homeHref, user, searchHref, logoutAction, menuLinks, children }: Props) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
   const margin = isMobileOpen ? "ms-0" : isExpanded || isHovered ? "xl:ms-72.5" : "xl:ms-22.5";

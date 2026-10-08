@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "Helpdesk",
+    "appName": "osTicket",
     "save": "Salva",
     "cancel": "Annulla",
     "close": "Chiudi",
@@ -53,8 +53,8 @@
     "password": "Password",
     "signIn": "Accedi",
     "signingIn": "Accesso in corso…",
-    "sideTitle": "Helpdesk",
-    "sideText": "Nuova interfaccia sullo stesso database di osTicket: i dati restano condivisi con il pannello classico.",
+    "sideTitle": "osTicket",
+    "sideText": "Support Ticket System — nuova interfaccia, stessi dati del pannello classico.",
     "errors": {
       "invalid": "Credenziali non valide",
       "locked_out": "Numero massimo di tentativi raggiunto: riprova più tardi",
