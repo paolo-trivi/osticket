@@ -1,1 +1,119 @@
-{}
+{
+  "createTicket": {
+    "title": "Nuovo ticket",
+    "subtitle": "Apri un ticket per conto di un utente",
+    "forbidden": "Non hai il permesso di creare ticket.",
+    "back": "Torna ai ticket",
+    "sections": {
+      "user": "Utente e collaboratori",
+      "info": "Informazioni sul ticket",
+      "details": "Dettagli del ticket",
+      "response": "Risposta iniziale",
+      "note": "Nota interna"
+    },
+    "user": {
+      "search": "Cerca utente",
+      "searchPlaceholder": "Nome o indirizzo email (almeno 2 caratteri)",
+      "noResults": "Nessun utente trovato",
+      "selected": "Utente selezionato",
+      "change": "Cambia",
+      "newUser": "Nuovo utente",
+      "existingUser": "Utente esistente",
+      "newUserHint": "L'utente verrà creato all'apertura del ticket con i dati inseriti.",
+      "ccs": "Collaboratori (Cc)",
+      "ccsPlaceholder": "Aggiungi un collaboratore",
+      "remove": "Rimuovi",
+      "notice": "Avviso di apertura",
+      "noticeAll": "Utente e collaboratori",
+      "noticeUser": "Solo l'utente",
+      "noticeNone": "Non inviare avvisi"
+    },
+    "info": {
+      "source": "Sorgente",
+      "sources": { "Phone": "Telefono", "Email": "Email", "Other": "Altro" },
+      "topic": "Argomento (help topic)",
+      "topicPick": "— Seleziona un argomento —",
+      "dept": "Reparto",
+      "deptFromTopic": "— Reparto dell'argomento —",
+      "sla": "Piano SLA",
+      "slaDefault": "— Predefinito —",
+      "duedate": "Scadenza",
+      "duedateHint": "Facoltativa, deve essere nel futuro",
+      "assign": "Assegna a",
+      "assignNone": "— Nessuno —",
+      "agents": "Agenti",
+      "teams": "Team"
+    },
+    "details": {
+      "message": "Descrizione del problema",
+      "messagePlaceholder": "Dettagli della richiesta",
+      "attachments": "Allegati",
+      "loadingTopic": "Caricamento dei campi dell'argomento…"
+    },
+    "response": {
+      "placeholder": "Risposta iniziale (facoltativa)",
+      "attachments": "Allegati della risposta",
+      "status": "Stato del ticket",
+      "statusDefault": "— Predefinito —",
+      "signature": "Firma",
+      "sigNone": "Nessuna",
+      "sigMine": "La mia firma",
+      "sigDept": "Firma del reparto"
+    },
+    "note": {
+      "placeholder": "Nota interna facoltativa (con un'assegnazione diventa il commento dell'assegnazione)"
+    },
+    "submit": "Apri ticket",
+    "submitting": "Apertura in corso…",
+    "reset": "Annulla",
+    "errors": {
+      "session_expired": "Sessione scaduta: accedi di nuovo.",
+      "denied": "Non hai il permesso di creare ticket.",
+      "deptDenied": "Non hai il permesso di creare ticket in questo reparto.",
+      "invalid": "Dati mancanti o non validi: correggi gli errori indicati e riprova.",
+      "rejected": "Ticket rifiutato: l'helpdesk è riservato agli utenti autorizzati.",
+      "limit": "L'utente ha raggiunto il numero massimo di ticket aperti.",
+      "generic": "Impossibile creare il ticket. Correggi gli errori e riprova.",
+      "user": "Dati dell'utente incompleti o permesso di creare utenti mancante.",
+      "email": "Indirizzo email valido obbligatorio.",
+      "name": "Nome obbligatorio.",
+      "topicId": "Seleziona un argomento.",
+      "source": "Sorgente non valida.",
+      "duedate": "Scadenza non valida o già passata.",
+      "assignId": "Non hai il permesso di assegnare i ticket.",
+      "deptId": "Reparto non valido."
+    }
+  },
+  "dynamicForms": {
+    "select": "— Seleziona —",
+    "ext": "Interno",
+    "unsupported": "Tipo di campo non modificabile da qui",
+    "errors": {
+      "required": "Campo obbligatorio",
+      "email": "Indirizzo email non valido",
+      "phone": "Numero di telefono non valido",
+      "ip": "Indirizzo IP non valido",
+      "number": "Inserisci un numero",
+      "regex": "Valore non valido",
+      "formula": "Il contenuto non può iniziare con = - + @",
+      "phone_ext": "Interno non valido",
+      "phone_ext_missing": "Interno senza numero di telefono",
+      "files_max": "Troppi file",
+      "date_past": "La data deve essere nel futuro"
+    }
+  },
+  "attachments": {
+    "choose": "Scegli file",
+    "dropHint": "oppure trascina qui i file",
+    "uploading": "Caricamento…",
+    "remove": "Rimuovi",
+    "errors": {
+      "size": "{name}: file troppo grande",
+      "type": "{name}: tipo di file non ammesso",
+      "invalid": "{name}: file non valido",
+      "disabled": "Gli allegati sono disattivati",
+      "session_expired": "Sessione scaduta",
+      "network": "{name}: caricamento non riuscito"
+    }
+  }
+}

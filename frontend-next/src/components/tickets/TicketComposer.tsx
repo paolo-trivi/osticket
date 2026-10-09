@@ -3,6 +3,7 @@
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 
 import RichTextEditor, { type RichTextEditorHandle } from "@/components/editor/RichTextEditor";
+import AttachmentInput from "@/components/forms/AttachmentInput";
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/utils";
 
@@ -55,6 +56,10 @@ interface Props {
   deptSignature: boolean;
   defaultSignature: string;
   labels: ComposerLabels;
+  /** endpoint di upload degli allegati (assente = allegati non mostrati) */
+  uploadUrl?: string;
+  /** dimensione massima di un allegato in byte */
+  maxFileSize?: number;
 }
 
 const selectCls =
@@ -204,6 +209,7 @@ export default function TicketComposer(props: Props) {
           </fieldset>
         )}
         <RichTextEditor ref={replyEditor} name="response" placeholder={labels.replyPlaceholder} onActivity={lockMode === 2 ? acquire : undefined} labels={labels.editor} />
+        {props.uploadUrl && <AttachmentInput key={`r${replyState.nonce ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-theme-sm text-gray-600 dark:text-gray-400">
             {labels.signature}
@@ -233,6 +239,7 @@ export default function TicketComposer(props: Props) {
           className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
         />
         <RichTextEditor ref={noteEditor} name="note" placeholder={labels.notePlaceholder} onActivity={lockMode === 2 ? acquire : undefined} labels={labels.editor} />
+        {props.uploadUrl && <AttachmentInput key={`n${noteState.nonce ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
         <div className="flex flex-wrap items-end gap-4">
           {statusSelect}
           <button

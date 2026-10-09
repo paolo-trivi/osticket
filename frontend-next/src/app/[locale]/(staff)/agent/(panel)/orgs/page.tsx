@@ -2,8 +2,11 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import DataTable, { PageHeader, SearchBox } from "@/components/common/DataTable";
 import LinkPager from "@/components/common/LinkPager";
+import { NewRecordButton, OrgMassBar, RowSelect } from "@/components/people/directory/DirectoryButtons";
 import { Link } from "@/i18n/navigation";
 import { listOrgs } from "@/server/domain/directory/directory";
+import { newFormFields } from "@/server/domain/directory/ui";
+import { GlobalPerm } from "@/server/domain/staff/staff";
 import { pageSizeFor } from "@/server/domain/queue/context";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
@@ -42,10 +45,21 @@ export default async function OrgsPage({
   });
   return (
     <div className="space-y-5">
-      <PageHeader title={t("orgs")} subtitle={t("orgsCount", { n: total })} actions={<SearchBox action="/agent/orgs" value={sp.q} placeholder={t("searchOrgs")} />} />
+      <PageHeader
+        title={t("orgs")}
+        subtitle={t("orgsCount", { n: total })}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {agent.hasGlobalPerm(GlobalPerm.ORG_CREATE) && <NewRecordButton kind="org" fields={await newFormFields("O")} />}
+            <SearchBox action="/agent/orgs" value={sp.q} placeholder={t("searchOrgs")} />
+          </div>
+        }
+      />
+      <OrgMassBar canDelete={agent.hasGlobalPerm(GlobalPerm.ORG_DELETE)} />
       <DataTable
         empty={t("empty")}
         columns={[
+          { key: "sel", label: "" },
           { key: "name", label: t("name"), ...sortCol("name") },
           { key: "users", label: t("users"), ...sortCol("users") },
           { key: "created", label: t("created"), ...sortCol("created") },
@@ -54,6 +68,7 @@ export default async function OrgsPage({
         rows={rows.map((o) => ({
           key: o.id,
           cells: {
+            sel: <RowSelect id={o.id} group="org" />,
             name: (
               <Link href={`/agent/orgs/${o.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
                 {o.name}

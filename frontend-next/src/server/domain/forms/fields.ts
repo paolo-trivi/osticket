@@ -2,6 +2,8 @@ import "server-only";
 
 import { promises as dns } from "node:dns";
 
+import { DateTime } from "luxon";
+
 import type { ConfigNamespace } from "../../config/config";
 import { htmlChars, phpStripTags, stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
@@ -154,6 +156,82 @@ export function parseChoiceLines(text: string): Record<string, string> {
   return out;
 }
 
+/** Abbreviazioni di fuso riconosciute da strtotime/new DateTime (offset in minuti) */
+const TZ_ABBR: Record<string, number> = {
+  UTC: 0, GMT: 0, Z: 0, WET: 0, WEST: 60, BST: 60, CET: 60, CEST: 120, EET: 120, EEST: 180, MSK: 180,
+  EST: -300, EDT: -240, CST: -360, CDT: -300, MST: -420, MDT: -360, PST: -480, PDT: -420, IST: 330, JST: 540,
+};
+
+/**
+ * Format::parseDateTime / new DateTime($value): un valore senza fuso è letto nel fuso predefinito del
+ * PHP (bootstrap.php: UTC); offset espliciti e abbreviazioni (CEST, EST…) sono rispettati.
+ */
+export function phpParseDateTime(value: string): DateTime | null {
+  const v = String(value ?? "").trim();
+  if (!v) return null;
+  if (/^\d+$/.test(v)) return DateTime.fromSeconds(Number(v), { zone: "UTC" });
+  let base = v;
+  let zone = "UTC";
+  const abbr = /^(.*\d)\s+([A-Za-z]{1,5}|[+-]\d{2}(?::?\d{2})?)$/.exec(v);
+  if (abbr) {
+    const z = abbr[2].toUpperCase();
+    if (z in TZ_ABBR) {
+      const m = TZ_ABBR[z];
+      zone = m === 0 ? "UTC" : `UTC${m > 0 ? "+" : "-"}${Math.floor(Math.abs(m) / 60)}${Math.abs(m) % 60 ? `:${String(Math.abs(m) % 60).padStart(2, "0")}` : ""}`;
+      base = abbr[1];
+    } else if (/^[+-]\d/.test(z)) {
+      const mm = /^([+-])(\d{2}):?(\d{2})?$/.exec(z)!;
+      zone = `UTC${mm[1]}${Number(mm[2])}${mm[3] && mm[3] !== "00" ? `:${mm[3]}` : ""}`;
+      base = abbr[1];
+    }
+  }
+  const opts = { zone, setZone: true };
+  for (const dt of [
+    DateTime.fromISO(base, opts),
+    DateTime.fromSQL(base, opts),
+    DateTime.fromFormat(base, "M/d/yyyy", opts),
+    DateTime.fromFormat(base, "M/d/yyyy H:mm", opts),
+    DateTime.fromFormat(base, "M/d/yyyy h:mm a", opts),
+    DateTime.fromFormat(base, "M/d/yy", opts),
+  ]) {
+    if (dt.isValid) return dt;
+  }
+  return null;
+}
+
+/** DateTime::format('T') del PHP: abbreviazione del fuso (CEST, EST…) o offset "+03" / "+0530". */
+export function phpTzAbbr(dt: DateTime): string {
+  if (dt.zoneName === "UTC" || dt.zoneName === "Etc/UTC") return "UTC";
+  const name = (locale: string) =>
+    new Intl.DateTimeFormat(locale, { timeZone: dt.zoneName ?? "UTC", timeZoneName: "short" }).formatToParts(dt.toJSDate()).find((p) => p.type === "timeZoneName")?.value ?? "";
+  for (const locale of ["en-GB", "en-US"]) {
+    const n = name(locale);
+    if (n && !/^(GMT|UTC)[+-−]/.test(n)) return n;
+  }
+  const off = dt.offset;
+  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const m = Math.abs(off) % 60;
+  return `${off < 0 ? "-" : "+"}${h}${m ? String(m).padStart(2, "0") : ""}`;
+}
+
+/** Opzioni di formattazione delle date come Format::date/datetime (formati ICU della config core) */
+export interface DateFormatOptions {
+  cfg: ConfigNamespace;
+  /** fuso dell'utente corrente ($cfg->getTimezone()) */
+  timezone: string;
+}
+
+/** Format::date / Format::datetime: pattern personalizzato (date_formats = custom) o formato breve ICU della lingua */
+export function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = false): string {
+  const z = dt.setZone(o.timezone || "UTC");
+  if (o.cfg.str("date_formats") === "custom") return z.setLocale("en-US").toFormat(o.cfg.str(withTime ? "datetime_format" : "date_format") || "MM/dd/y");
+  const locale = (o.cfg.str("system_language") || "en_US").replace("_", "-");
+  const date = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeZone: z.zoneName ?? "UTC" }).format(z.toJSDate());
+  if (!withTime) return date;
+  const time = new Intl.DateTimeFormat(locale, { timeStyle: "short", timeZone: z.zoneName ?? "UTC" }).format(z.toJSDate());
+  return `${date} ${time}`.replace(/\u202f/g, " ");
+}
+
 /** Sorgente dei valori (POST/vars): per nome del campo o per id, come Widget::getValue. */
 export type FormSource = Record<string, unknown>;
 
@@ -163,8 +241,11 @@ export function rawValue(f: FieldDef, source: FormSource): unknown {
   return undefined;
 }
 
-/** Widget::getValue + FormField::parse per tipo. */
-export function parseField(f: FieldDef, source: FormSource): CleanValue {
+/**
+ * Widget::getValue + FormField::parse per tipo. `timezone` è il fuso dell'utente corrente
+ * ($cfg->getTimezone()) usato da DatetimePickerWidget.
+ */
+export function parseField(f: FieldDef, source: FormSource, timezone = "UTC"): CleanValue {
   const raw = rawValue(f, source);
   switch (f.type) {
     case "text": {
@@ -173,8 +254,9 @@ export function parseField(f: FieldDef, source: FormSource): CleanValue {
       return stripEmoticons(stripTags(String(raw)));
     }
     case "memo": {
+      // TextareaField::parse: nessun trim (solo Format::sanitize se HTML)
       if (raw === undefined || raw === null) return null;
-      const v = String(raw).trim();
+      const v = String(raw);
       return f.config.html ? sanitizeText(v) : v;
     }
     case "phone": {
@@ -200,7 +282,17 @@ export function parseField(f: FieldDef, source: FormSource): CleanValue {
       if (!raw || !Number.isFinite(id) || !f.choices || !(String(id) in f.choices)) return null;
       return { id, label: f.choices[String(id)] };
     }
-    case "datetime":
+    case "datetime": {
+      // DatetimePickerWidget::getValue: data letta in UTC, portata nel fuso del campo/utente,
+      // salvata come 'Y-m-d H:i:s T' (es. "2026-09-30 02:00:00 CEST"); valore non interpretabile invariato
+      if (raw === undefined || raw === null) return null;
+      const v = String(raw);
+      if (!v) return "";
+      const dt = phpParseDateTime(v);
+      if (!dt) return v.trim();
+      const z = dt.setZone(String(f.config.timezone || timezone || "UTC"));
+      return `${z.toFormat("yyyy-MM-dd HH:mm:ss")} ${phpTzAbbr(z)}`;
+    }
     case "timezone":
       return raw === undefined || raw === null || raw === "" ? null : String(raw).trim();
     case "files": {
@@ -337,10 +429,19 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
-/** FormField::toString per tipo (usato anche come dato per i filtri) */
-export function fieldToString(f: FieldDef, value: CleanValue): string {
+/**
+ * FormField::toString per tipo (usato anche come dato per i filtri e per l'indice). Le date sono
+ * formattate con Format::date/datetime se si passano le opzioni, altrimenti restano come salvate.
+ */
+export function fieldToString(f: FieldDef, value: CleanValue, dates?: DateFormatOptions): string {
   if (value === null || value === undefined) return f.type === "bool" ? "No" : "";
   switch (f.type) {
+    case "datetime": {
+      if (typeof value !== "string" || !dates) return typeof value === "string" ? value : "";
+      const dt = phpParseDateTime(value);
+      if (!dt || dt.toSeconds() <= 0) return "";
+      return phpFormatDate(dt, dates, !!f.config.time);
+    }
     case "bool":
       return value ? "Yes" : "No";
     case "phone": {
@@ -357,10 +458,10 @@ export function fieldToString(f: FieldDef, value: CleanValue): string {
 }
 
 /** FormField::searchable (null = non indicizzabile) */
-export function fieldSearchable(f: FieldDef, value: CleanValue): string | null {
+export function fieldSearchable(f: FieldDef, value: CleanValue, dates?: DateFormatOptions): string | null {
   if (["priority", "topic", "sla", "timezone", "department", "assignee", "thread", "break", "info"].includes(f.type)) return null;
   if (f.type === "memo") return htmlSearchable(value === null ? "" : String(value));
-  return searchable(fieldToString(f, value));
+  return searchable(fieldToString(f, value, dates));
 }
 
 /** FormField::to_database: valore e value_id per form_entry_values */

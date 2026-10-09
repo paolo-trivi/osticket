@@ -1,11 +1,12 @@
 import "server-only";
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { sql } from "kysely";
 
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
+import { installConfig } from "../../env";
 import { sanitizeText } from "../../format/text";
 
 /**
@@ -127,7 +128,7 @@ export async function uploadFile(
   executor: DbOrTx,
   input: UploadInput,
   rules: UploadRules,
-): Promise<{ ok: true; file: StoredFileRef } | { ok: false; error: UploadError }> {
+): Promise<{ ok: true; file: StoredFileRef; name: string } | { ok: false; error: UploadError }> {
   let name = input.name;
   try {
     name = decodeURIComponent(name.replace(/\+/g, " "));
@@ -138,7 +139,8 @@ export async function uploadFile(
   if (!name || !looksLikeImage(input.data, input.type)) return { ok: false, error: "invalid" };
   if (!isAllowedFileType(rules, name, input.type)) return { ok: false, error: "type" };
   if (input.data.length > rules.size) return { ok: false, error: "size" };
-  return { ok: true, file: await createAttachmentFile(executor, { ...input, name }) };
+  // `name` è il nome caricato (il file può essere uno già esistente con un altro nome, deduplicato)
+  return { ok: true, file: await createAttachmentFile(executor, { ...input, name }), name };
 }
 
 export interface AttachInput {
@@ -185,4 +187,53 @@ export async function entryAttachmentsForMail(executor: DbOrTx, entryId: number)
     out.push({ filename: r.aname || r.name, content: Buffer.concat(chunks.map((c) => c.filedata)), contentType: r.type || "application/octet-stream" });
   }
   return out;
+}
+
+/**
+ * Token di un file caricato, equivalente di $_SESSION[':uploadedFiles'] del PHP: un allegato può essere
+ * collegato a una voce solo da chi lo ha caricato. Il token firma (HMAC con SECRET_SALT) id del file,
+ * nome scelto e proprietario (es. "S<id agente>", "U<id utente>", "G<sessione ospite>") e scade dopo
+ * `ttlSec`. Formato: `<id>.<scadenza>.<firma>.<nome url-encoded>`.
+ */
+export function signUploadToken(fileId: number, name: string, owner: string, ttlSec = 6 * 3600): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSec;
+  return `${fileId}.${exp}.${uploadSig(fileId, exp, name, owner)}.${encodeURIComponent(name)}`;
+}
+
+function uploadSig(fileId: number, exp: number, name: string, owner: string): string {
+  return createHmac("sha256", `upload:${installConfig().secretSalt}`).update(`${fileId}|${exp}|${owner}|${name}`).digest("base64url").slice(0, 32);
+}
+
+/** Verifica i token ricevuti dal form: restituisce gli allegati validi ({id, name}), ignora gli altri. */
+export function verifyUploadTokens(tokens: string[], owner: string): AttachInput[] {
+  const out: AttachInput[] = [];
+  const seen = new Set<number>();
+  for (const t of tokens) {
+    const m = /^(\d+)\.(\d+)\.([\w-]{32})\.(.*)$/.exec(String(t));
+    if (!m) continue;
+    const id = Number(m[1]);
+    const exp = Number(m[2]);
+    let name: string;
+    try {
+      name = decodeURIComponent(m[4]);
+    } catch {
+      continue;
+    }
+    if (exp < Date.now() / 1000 || seen.has(id)) continue;
+    const a = Buffer.from(m[3]);
+    const b = Buffer.from(uploadSig(id, exp, name, owner));
+    if (a.length !== b.length || !timingSafeEqual(a, b)) continue;
+    seen.add(id);
+    out.push({ id, name });
+  }
+  return out;
+}
+
+/**
+ * Regole di upload per gli allegati di un thread (ThreadEntryField / campo `attachments` delle
+ * risposte): allow_attachments, max_file_size, allowed_filetypes della configurazione.
+ */
+export function threadUploadRules(cfg: ConfigNamespace): UploadRules | null {
+  if (!cfg.bool("allow_attachments")) return null;
+  return uploadRules({ size: cfg.int("max_file_size"), extensions: cfg.str("allowed_filetypes").trim() || undefined }, cfg);
 }

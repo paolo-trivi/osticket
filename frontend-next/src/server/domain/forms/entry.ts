@@ -4,17 +4,20 @@ import { sql } from "kysely";
 
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
+import { phpJsonDecode } from "../../format/php-json";
 import {
   fieldSearchKeys,
   fieldSearchable,
   fieldToDatabase,
   fieldToString,
   hasData,
+  isIdValue,
   isPresentationOnly,
   isStorable,
   parseField,
   validateField,
   type CleanValue,
+  type DateFormatOptions,
   type FieldDef,
   type FieldErrorCode,
   type FormSource,
@@ -36,8 +39,10 @@ export class FormInstance {
     readonly source: FormSource,
     public sort = 1,
     public extra: string | null = null,
+    /** fuso dell'utente corrente (campi data) e formati delle date per filtri e indice */
+    readonly opts: { timezone?: string; dates?: DateFormatOptions } = {},
   ) {
-    for (const f of def.fields) if (hasData(f)) this.values.set(f.id, parseField(f, source));
+    for (const f of def.fields) if (hasData(f)) this.values.set(f.id, parseField(f, source, opts.timezone ?? opts.dates?.timezone));
   }
 
   get fields(): FieldDef[] {
@@ -92,8 +97,36 @@ export class FormInstance {
     const out: Record<string, string> = {};
     for (const f of this.def.fields) {
       if (!hasData(f)) continue;
-      const v = isPresentationOnly(f) ? (this.source.message as string | undefined) ?? "" : fieldToString(f, this.effective(f));
+      const v = isPresentationOnly(f) ? (this.source.message as string | undefined) ?? "" : fieldToString(f, this.effective(f), this.opts.dates);
       if (v) out[`field.${f.id}`] = v;
+    }
+    return out;
+  }
+
+  /**
+   * SelectionField::getFilterData per i campi lista: per ogni voce scelta `field.<id>.abb` (extra) e le
+   * proprietà `field.<id>.<prop>`; DynamicListItem::getFilterData chiama DynamicList::getForm() che
+   * crea al volo il form "L<lista>" delle proprietà se manca (effetto collaterale replicato).
+   */
+  async listFilterData(executor: DbOrTx): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for (const f of this.def.fields) {
+      if (!f.type.startsWith("list-") || !hasData(f)) continue;
+      const v = this.effective(f);
+      if (!v || typeof v !== "object" || isIdValue(v)) continue;
+      const data: Record<string, string> = {};
+      for (const id of Object.keys(v)) {
+        const item = await executor.selectFrom("list_items").select(["id", "list_id", "extra", "properties"]).where("id", "=", Number(id)).executeTakeFirst();
+        if (!item || !item.list_id) continue;
+        const formId = await ensureListPropertiesForm(executor, item.list_id);
+        const props = phpJsonDecode<Record<string, unknown>>(item.properties, {}) ?? {};
+        const pf = formId ? await executor.selectFrom("form_field").select(["id"]).where("form_id", "=", formId).orderBy("sort").execute() : [];
+        const itemData: Record<string, string> = {};
+        for (const F of pf) itemData[`.${F.id}`] = props[String(F.id)] === undefined || props[String(F.id)] === null ? "" : String(props[String(F.id)]);
+        itemData[".abb"] = item.extra ?? "";
+        for (const [k, val] of Object.entries(itemData)) data[k] = k in data ? `${data[k]} ${val}` : val;
+      }
+      for (const [k, val] of Object.entries(data)) if (val) out[`field.${f.id}${k}`] = val;
     }
     return out;
   }
@@ -103,11 +136,24 @@ export class FormInstance {
     const out: string[] = [];
     for (const f of this.def.fields) {
       if (!hasData(f) || !isStorable(f) || isPresentationOnly(f) || skip.includes(f.name)) continue;
-      const v = fieldSearchable(f, this.effective(f));
+      const v = fieldSearchable(f, this.effective(f), this.opts.dates);
       if (v) out.push(v);
     }
     return out;
   }
+}
+
+/** DynamicList::getConfigurationForm(autocreate): form "L<id>" delle proprietà, creato se manca */
+export async function ensureListPropertiesForm(executor: DbOrTx, listId: number): Promise<number | null> {
+  const form = await executor.selectFrom("form").select("id").where("type", "=", `L${listId}`).orderBy("id").executeTakeFirst();
+  if (form) return form.id;
+  const list = await executor.selectFrom("list").select(["id", "name"]).where("id", "=", listId).executeTakeFirst();
+  if (!list) return null;
+  const res = await executor
+    .insertInto("form")
+    .values({ type: `L${listId}`, title: `${list.name} Properties`, created: NOW, updated: NOW })
+    .executeTakeFirstOrThrow();
+  return Number(res.insertId);
 }
 
 const CDATA: Record<string, { table: string; key: string }> = {

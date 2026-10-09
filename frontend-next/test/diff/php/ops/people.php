@@ -347,6 +347,9 @@ $OPS['org.create'] = function (array $op) {
 $OPS['org.update'] = function (array $op) {
     people_staff($op);
     $org = people_org($op);
+    // richiesta POST: le entry esistenti senza sorgente leggono $_POST (DynamicFormEntry::getSource)
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_POST = $op['args']['vars'];
     $errors = [];
     $ok = !empty($op['args']['profile'])
         ? $org->updateProfile($op['args']['vars'], $errors)
@@ -409,7 +412,9 @@ $OPS['profile.password'] = function (array $op) {
 
 // ajax.staff.php:configure2FA (stato validate → invio codice) ; verify con codice letto dalla sessione
 $OPS['profile.2fa'] = function (array $op) {
-    $staff = people_staff($op);
+    // StaffSession (come $thisstaff in scp/): onValidate() chiama clear2FA()
+    $staff = StaffSession::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $staff;
     $auth = Staff2FABackend::lookup('2fa-email');
     $config = ['config' => ['email' => $op['args']['email']], 'verified' => 0];
     $staff->updateConfig(['2fa-email' => JsonDataEncoder::encode($config)]);

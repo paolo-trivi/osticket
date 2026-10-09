@@ -62,14 +62,20 @@ export async function logThreadEvent(
   }
 
   // ThreadEvent::create: uid dall'utente passato, altrimenti $thisstaff ?: $thisclient
-  const uidActor = (typeof opts.who === "object" && opts.who) || opts.actor;
+  // $thisclient è un EndUser (non instanceof User): senza un $user esplicito uid resta NULL e uid_type 'S'
+  const uidActor = (typeof opts.who === "object" && opts.who) || (opts.actor?.kind === "staff" ? opts.actor : null);
   // ThreadEvents::log: username
   let username: string;
   if (typeof opts.who === "string") username = opts.who;
   else {
     const user = (typeof opts.who === "object" && opts.who) || opts.actor;
     if (user?.kind === "staff") username = user.username;
-    else if (opts.actor?.kind === "user") username = (opts.actor.hasAccount ? opts.actor.name : "") || opts.actor.email;
+    else if (opts.actor?.kind === "user") {
+      // PHP: se $user è un oggetto, $username resta quell'oggetto (truthy) e diventa (string)$user = nome
+      let u = typeof opts.who === "object" && opts.who ? opts.who.name : "";
+      if (opts.actor.hasAccount) u = opts.actor.name;
+      username = u || opts.actor.email;
+    }
     else username = "SYSTEM";
   }
 

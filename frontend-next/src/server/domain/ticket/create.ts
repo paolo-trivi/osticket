@@ -15,17 +15,31 @@ import {
   filterInput,
   loadActiveFilters,
   originToTarget,
+  prepareSupportedMatches,
   TicketRejected,
+  type FilterAction,
   type TicketVars,
 } from "../filter/ticket-filter";
 import { FormInstance, saveFormEntry } from "../forms/entry";
-import { cleanFromDb, FieldFlag, fieldToString, hasFlag, isEmail, isRequiredFor, isVisibleTo, type FieldDef, type FieldErrorCode } from "../forms/fields";
+import {
+  cleanFromDb,
+  FieldFlag,
+  fieldToString,
+  hasFlag,
+  isEmail,
+  isRequiredFor,
+  isVisibleTo,
+  type DateFormatOptions,
+  type FieldDef,
+  type FieldErrorCode,
+} from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
 import { loadAgent, TicketPerm } from "../staff/staff";
 import { createThreadEntry, EntryFlag, type EntryRecipients } from "../thread/write";
-import { isEmailBanned } from "./collab";
+import { deleteDraftsFor, isEmailBanned } from "./collab";
 import { agentDisplayName, type WriteContext } from "./context";
-import { onAssignAlert, onNewTicket, onOpenLimit, sendNewTicketNotice } from "./create-alerts";
+import { onAssignAlert, onNewTicket, onOpenLimit, sendFilterEmail, sendNewTicketNotice } from "./create-alerts";
+import { postCannedReply } from "./create-canned";
 import { newTicketNumber } from "./create-number";
 import { loadOrganization, lookupUser, lookupUserByEmail, organizationForDomain, userEmail, userFromVars, type UserRow } from "./create-user";
 import { logTicketEvent, type Actor } from "./events";
@@ -131,7 +145,13 @@ async function topicIsActive(executor: DbOrTx, id: number): Promise<boolean> {
 }
 
 /** Risposte salvate di un oggetto (utente/organizzazione) come dati per i filtri: field.<id> → testo */
-async function entryFilterData(ctx: WriteContext, objectType: "U" | "O", objectId: number, special: Record<string, string>): Promise<Record<string, string>> {
+async function entryFilterData(
+  ctx: WriteContext,
+  objectType: "U" | "O",
+  objectId: number,
+  special: Record<string, string>,
+  dates: DateFormatOptions,
+): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const entries = await ctx.tx.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", objectType).where("object_id", "=", objectId).orderBy("sort").orderBy("id").execute();
   for (const e of entries) {
@@ -142,7 +162,7 @@ async function entryFilterData(ctx: WriteContext, objectType: "U" | "O", objectI
     for (const v of values) {
       const f = def.fields.find((x) => x.id === v.field_id);
       if (!f) continue;
-      const s = fieldToString(f, cleanFromDb(f, v.value, v.value_id));
+      const s = fieldToString(f, cleanFromDb(f, v.value, v.value_id), dates);
       if (s) local[`field.${f.id}`] = s;
     }
     if (def.type === objectType) {
@@ -154,6 +174,16 @@ async function entryFilterData(ctx: WriteContext, objectType: "U" | "O", objectI
     for (const [k, v] of Object.entries(local)) if (!(k in out)) out[k] = v;
   }
   return out;
+}
+
+/** $cfg->getTimezone(): fuso dell'agente, altrimenti del cliente autenticato, altrimenti default_timezone */
+async function currentTimezone(ctx: WriteContext): Promise<string> {
+  if (ctx.agent?.row.timezone) return ctx.agent.row.timezone;
+  if (ctx.actor?.kind === "user") {
+    const a = await ctx.tx.selectFrom("user_account").select("timezone").where("user_id", "=", ctx.actor.id).executeTakeFirst();
+    if (a?.timezone) return a.timezone;
+  }
+  return ctx.cfg.str("default_timezone") || "UTC";
 }
 
 const addMissing = (vars: TicketVars, data: Record<string, unknown>) => {
@@ -171,42 +201,46 @@ async function filterTicketData(
   forms: FormInstance[],
   user: UserRow | null,
   post: { rec: TicketRecord; threadId: number } | null,
+  dates: DateFormatOptions,
 ): Promise<TicketVars> {
   const vars: TicketVars = {};
   for (const [k, v] of Object.entries(input)) if (!k.startsWith("field.")) vars[k] = v;
-  for (const F of forms) addMissing(vars, F.filterData());
+  for (const F of forms) addMissing(vars, { ...F.filterData(), ...(await F.listFilterData(ctx.tx)) });
 
   let userForm: FormInstance | null = null;
   if (!user) {
     const def = await loadFormDef(ctx.tx, ctx.cfg, { type: "U" });
     if (def) {
-      userForm = new FormInstance(def, vars);
+      userForm = new FormInstance(def, vars, 1, null, { dates });
       for (const n of ["name", "email"]) {
         const f = userForm.field(n);
-        if (f) vars[n] = fieldToString(f, userForm.values.get(f.id) ?? null);
+        if (f) vars[n] = fieldToString(f, userForm.values.get(f.id) ?? null, dates);
       }
     }
     user = await lookupUserByEmail(ctx.tx, String(vars.email ?? ""));
   }
   if (user) {
     const email = await userEmail(ctx.tx, user);
-    addMissing(vars, await entryFilterData(ctx, "U", user.id, { name: user.name, email }));
+    addMissing(vars, await entryFilterData(ctx, "U", user.id, { name: user.name, email }, dates));
     vars.email = email;
     vars.name = user.name;
     const org = await loadOrganization(ctx.tx, user.org_id);
-    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }));
+    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }, dates));
   } else {
-    if (userForm) for (const f of userForm.fields) vars[`field.${f.id}`] = fieldToString(f, userForm.values.get(f.id) ?? null);
+    if (userForm) for (const f of userForm.fields) vars[`field.${f.id}`] = fieldToString(f, userForm.values.get(f.id) ?? null, dates);
     const domain = String(vars.email ?? "").split("@")[1] ?? "";
     const org = await organizationForDomain(ctx.tx, domain);
-    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }));
+    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }, dates));
   }
 
   if (await isEmailBanned(ctx.tx, String(vars.email ?? ""))) throw new TicketRejected("SYSTEM BAN LIST", String(vars.email ?? ""));
 
+  await prepareSupportedMatches(ctx.tx);
   const filters = await loadActiveFilters(ctx.tx, originToTarget(origin), Number(vars.emailId ?? 0));
   const checks = { isActive: (id: number) => deptIsActive(ctx.tx, id), topicIsActive: (id: number) => topicIsActive(ctx.tx, id) };
-  const applied = await applyFilterActions(filters, filterInput(vars), vars, !!post, checks);
+  const submitter = { name: String(vars.name ?? ""), email: String(vars.email ?? "") };
+  const sendEmail = post ? (a: FilterAction) => sendFilterEmail(ctx, post.rec.id, a.config, submitter) : undefined;
+  const applied = await applyFilterActions(filters, filterInput(vars), vars, !!post, checks, sendEmail);
   if (post) {
     for (const f of applied) {
       for (const a of f.actions) {
@@ -383,7 +417,15 @@ async function assignFromForm(ctx: WriteContext, rec: TicketRecord, threadId: nu
   return true;
 }
 
-/** Data/ora inserita dall'utente (fuso dell'utente) → DateTime, null se non interpretabile */
+/**
+ * Fuso con cui il PHP interpreta la scadenza: bootstrap.php imposta date_default_timezone 'UTC' e
+ * Misc::user2gmtime/Format::parseDateTime fanno `new DateTime($input)` prima di setTimezone(), quindi un
+ * valore senza offset è letto come UTC (il fuso dell'agente è ignorato). Stranezza replicata: la UI invia
+ * la scadenza in ISO con offset esplicito, interpretata correttamente da entrambi.
+ */
+const PHP_TZ = "UTC";
+
+/** Data/ora inserita (strtotime / new DateTime) → DateTime, null se non interpretabile */
 function parseUserDate(value: string, zone: string): DateTime | null {
   const v = value.trim();
   for (const dt of [DateTime.fromISO(v, { zone }), DateTime.fromSQL(v, { zone }), DateTime.fromFormat(v, "MM/dd/yyyy", { zone }), DateTime.fromFormat(v, "MM/dd/yy", { zone })]) {
@@ -395,8 +437,6 @@ function parseUserDate(value: string, zone: string): DateTime | null {
 export interface CreateOptions {
   autorespond?: boolean;
   alertstaff?: boolean;
-  /** fuso dell'utente corrente per la data di scadenza (agente) */
-  timezone?: string;
 }
 
 /**
@@ -425,7 +465,8 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     const allowed = new Set(def.fields.filter((f) => isVisibleTo(f, "client") || f.type === "thread").flatMap((f) => [f.name, String(f.id)]));
     return Object.fromEntries(Object.entries(vars).filter(([k]) => allowed.has(k) || !def.fields.some((f) => f.name === k || String(f.id) === k)));
   };
-  const form = new FormInstance(ticketDef, sourceFor(ticketDef));
+  const dates: DateFormatOptions = { cfg, timezone: await currentTimezone(ctx) };
+  const form = new FormInstance(ticketDef, sourceFor(ticketDef), 1, null, { dates });
 
   let user: UserRow | null = isNum(vars.uid) ? await lookupUser(tx, Number(vars.uid)) : null;
 
@@ -439,7 +480,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     const v = vars[k];
     if (v === undefined || v === null || v === "") return;
     if (type === "int" && !isNum(v)) errors[k as keyof CreateErrors] = msg as never;
-    if (type === "date" && !parseUserDate(String(v), opts.timezone ?? cfg.str("default_timezone"))) errors[k as keyof CreateErrors] = msg as never;
+    if (type === "date" && !parseUserDate(String(v), PHP_TZ)) errors[k as keyof CreateErrors] = msg as never;
   };
   if (origin === "web") required("topicId", "Select a Help Topic", "int");
   else {
@@ -452,13 +493,12 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
 
   let duedate: DateTime | null = null;
   if (truthy(vars.duedate)) {
-    duedate = parseUserDate(String(vars.duedate), opts.timezone ?? cfg.str("default_timezone"));
+    duedate = parseUserDate(String(vars.duedate), PHP_TZ);
     if (!duedate) errors.duedate = "Invalid due date";
     else if (duedate.toMillis() <= Date.now()) errors.duedate = "Due date must be in the future";
   }
 
   const topicForms: FormInstance[] = [];
-  let validTopic: TopicRow | null = null;
   if (!Object.keys(errors).length) {
     if (truthy(vars.topicId)) {
       const t = await loadTopic(tx, Number(vars.topicId));
@@ -471,13 +511,13 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
             for (const f of form.fields) if (disabled.includes(f.id)) f.disabled = true;
             form.sort = idx;
             form.extra = extra;
-          } else topicForms.push(new FormInstance(F, sourceFor(F), idx, extra));
+          } else topicForms.push(new FormInstance(F, sourceFor(F), idx, extra, { dates }));
         });
       }
     }
 
     try {
-      vars = await filterTicketData(ctx, origin, vars, [form, ...topicForms], user, null);
+      vars = await filterTicketData(ctx, origin, vars, [form, ...topicForms], user, null, dates);
     } catch (ex) {
       if (!(ex instanceof TicketRejected)) throw ex;
       await logSystem("Warning", "Ticket denied", `Ticket rejected (${ex.email}) by filter "${ex.filterName}"`, requestIp, { executor: tx });
@@ -500,7 +540,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
       const canCreate = !ctx.agent || ctx.agent.hasGlobalPerm("user.create");
       let ok = false;
       if (udef) {
-        const uform = new FormInstance(udef, vars);
+        const uform = new FormInstance(udef, vars, 1, null, { dates });
         const uerr = await uform.validate(include, requiredFor, cfg);
         if (!Object.keys(uerr).length) {
           const clean: Record<string, unknown> = {};
@@ -510,7 +550,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
             if (f.name) clean[f.name] = v;
           }
           if (canCreate) {
-            user = await userFromVars(tx, cfg, clean, true);
+            user = await userFromVars(tx, cfg, clean, true, dates);
             ok = !!user;
           }
         } else errors.fields = { ...errors.fields, ...uerr };
@@ -524,9 +564,10 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   let topic: TopicRow | null = null;
   if (truthy(vars.topicId)) {
     const t = isNum(vars.topicId) ? await loadTopic(tx, Number(vars.topicId)) : null;
+    // Stranezza PHP replicata: `$topic = Topic::lookup()` è assegnato nella condizione, quindi un topic
+    // esistente ma disattivato resta in uso (reparto, priorità, numerazione…) anche se topicId diventa 0.
+    if (t) topic = t;
     if (t && t.flags & TopicFlagActive) {
-      topic = t;
-      validTopic = t;
       for (const tf of topicForms) {
         const e = await tf.validate(include, requiredFor, cfg);
         if (Object.keys(e).length) errors.fields = { ...errors.fields, ...e };
@@ -576,7 +617,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     if (p) form.setAnswer("priority", p);
   }
   deptId = deptId || cfg.int("default_dept_id");
-  statusId = statusId || cfg.int("default_ticket_status_id");
+  statusId = statusId || cfg.int("default_ticket_status_id", 1);
   const topicId = topic ? topic.topic_id : 0;
   const ip = String(vars.ip ?? "") || requestIp;
   source = source || "Web";
@@ -612,11 +653,14 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   for (const tf of topicForms) await saveFormEntry(tx, tf, "T", ticketId);
 
   // Evento "created" (agente o utente)
-  const creator: Actor = ctx.agent ? ctx.actor : { kind: "user", id: user.id, name: user.name, email: String(vars.email ?? ""), hasAccount: false, ip };
+  // $thisstaff ?: $user: (string) User = nome nel formato client_name_format
+  const creator: Actor = ctx.agent
+    ? ctx.actor
+    : { kind: "user", id: user.id, name: new PersonsName(user.name, cfg.str("client_name_format")).toString(), email: String(vars.email ?? ""), hasAccount: false, ip };
   await logTicketEvent(tx, rec.row, threadId, ctx.actor, "created", null, creator);
 
   if (rec.get("status_id") <= 0) {
-    rec.set("status_id", cfg.int("default_ticket_status_id"));
+    rec.set("status_id", cfg.int("default_ticket_status_id", 1));
     await rec.save();
   }
 
@@ -673,7 +717,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   }
 
   // Filtri post-creazione: eventi "edited" (e azioni email)
-  await filterTicketData(ctx, origin, vars, [form, ...topicForms], user, { rec, threadId });
+  await filterTicketData(ctx, origin, vars, [form, ...topicForms], user, { rec, threadId }, dates);
 
   if (messageId) {
     await tx
@@ -710,7 +754,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
       })
     : false;
   if (statusOk !== true) {
-    rec.set("status_id", cfg.int("default_ticket_status_id"));
+    rec.set("status_id", cfg.int("default_ticket_status_id", 1));
     await rec.save();
   }
 
@@ -729,14 +773,15 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   // Controlli dell'auto-risposta
   const ownerEmail = await userEmail(tx, user);
   if (autorespond && (await tx.selectFrom("email").select("email_id").where("email", "=", ownerEmail).executeTakeFirst())) autorespond = false;
-  // TODO canned response da filtro (postCannedReply): non ancora supportata, si mantiene l'auto-risposta standard
+  // Risposta predefinita automatica da filtro (disattiva l'auto-risposta del nuovo ticket)
+  if (truthy(vars.cannedResponseId) && (await postCannedReply(ctx, rec, threadId, Number(vars.cannedResponseId), autorespond, requestIp))) autorespond = false;
   if (autorespond && dept && !dept.ticket_auto_response) autorespond = false;
 
   await onNewTicket(ctx, { ticketId: rec.id, threadId, deptId: rec.get("dept_id"), messageId: messageId ?? 0, ownerId: user.id }, autorespond, alertstaff);
 
   const max = cfg.int("max_open_tickets");
   if (max > 0 && (await numOpenTickets(ctx, user.id)) === max) {
-    await onOpenLimit(ctx, { ticketId: rec.id, deptId: rec.get("dept_id"), email: ownerEmail, openTickets: max }, autorespond && origin !== "staff");
+    await onOpenLimit(ctx, { ticketId: rec.id, deptId: rec.get("dept_id"), email: ownerEmail, ip: requestIp, numOpenTickets: () => numOpenTickets(ctx, user.id) }, autorespond && origin !== "staff");
   }
 
   return { ok: true, ticketId: rec.id, number: rec.get("number"), messageId, threadId };
@@ -796,6 +841,9 @@ export async function openTicket(ctx: WriteContext, input: OpenTicketInput, opts
   if (Object.keys(errors).length) return { ok: false, errors };
   const res = await createTicket(ctx, createVars, "staff", { ...opts, autorespond: false });
   if (!res.ok) return res;
+  // scp/tickets.php: dopo l'apertura si eliminano le bozze dell'agente 'ticket.staff%'
+  // (qui prima delle notifiche, che partono comunque dopo il commit)
+  await deleteDraftsFor(tx, "ticket.staff%", agent.id);
 
   const rec = (await TicketRecord.load(tx, res.ticketId, true))!;
   const assigned = rec.get("staff_id") === agent.id || agent.isTeamMember(rec.get("team_id"));
@@ -813,6 +861,7 @@ export async function openTicket(ctx: WriteContext, input: OpenTicketInput, opts
       signature: input.signature,
       alert: alert && !cfg.bool("ticket_notice_active"),
       files: input.responseFiles,
+      source: input.source === undefined ? undefined : String(input.source),
     });
     if ("entryId" in r) responseId = r.entryId;
   }

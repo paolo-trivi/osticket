@@ -18,6 +18,11 @@ export async function agentLoginAction(_prev: LoginState, form: FormData): Promi
 
   const next = String(form.get("next") ?? "");
   const locale = await getLocale();
+  // 2FA via email: secondo passo con il codice inviato (area people, login/verify)
+  if (result.mfa) {
+    const after = result.mustChangePassword ? "/agent/profile?pwchange=1" : next;
+    redirect({ href: `/agent/login/verify${after ? `?next=${encodeURIComponent(after)}` : ""}`, locale });
+  }
   // Solo percorsi interni del pannello (niente open redirect)
   const dest = result.mustChangePassword
     ? "/agent/profile?pwchange=1"

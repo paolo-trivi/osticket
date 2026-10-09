@@ -266,3 +266,29 @@ export async function actionEventData(executor: DbOrTx, a: FilterAction, filterN
   }
   return null;
 }
+
+/**
+ * Effetto collaterale di `new TicketFilter()` → Filter::getSupportedMatchFields(): i gruppi "User Data",
+ * "Ticket Data", "Custom Forms" e "Organization Data" percorrono i campi dei form U, T, G e O e per i
+ * campi lista chiamano hasSubFields() → DynamicList::getForm(), che crea il form "L<lista>" delle
+ * proprietà se manca. Si replica creando i form mancanti nello stesso ordine.
+ */
+export async function prepareSupportedMatches(executor: DbOrTx): Promise<void> {
+  const { ensureListPropertiesForm } = await import("../forms/entry");
+  const firstOf = async (type: string) => (await executor.selectFrom("form").select("id").where("type", "=", type).orderBy("id").executeTakeFirst())?.id;
+  const formIds: number[] = [];
+  for (const type of ["U", "T"]) {
+    const id = await firstOf(type);
+    if (id) formIds.push(id);
+  }
+  formIds.push(...(await executor.selectFrom("form").select("id").where("type", "=", "G").orderBy("id").execute()).map((f) => f.id));
+  const org = await firstOf("O");
+  if (org) formIds.push(org);
+  for (const formId of formIds) {
+    const fields = await executor.selectFrom("form_field").select(["type"]).where("form_id", "=", formId).where("type", "like", "list-%").orderBy("sort").orderBy("id").execute();
+    for (const f of fields) {
+      const listId = Number(/^list-(\d+)$/.exec(f.type)?.[1] ?? 0);
+      if (listId) await ensureListPropertiesForm(executor, listId);
+    }
+  }
+}

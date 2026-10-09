@@ -325,7 +325,7 @@ async function reopenTicket(ctx: WriteContext, ticketId: number): Promise<void> 
 }
 
 /** Campi del form del task obbligatori per la chiusura e senza valore (Task::getMissingRequiredFields). */
-async function missingRequiredFields(executor: DbOrTx, taskId: number): Promise<number> {
+export async function missingRequiredFields(executor: DbOrTx, taskId: number): Promise<number> {
   const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("form_entry")} E
     JOIN ${table("form_entry_values")} V ON (V.entry_id = E.id)
     JOIN ${table("form_field")} F ON (F.id = V.field_id)

@@ -51,6 +51,8 @@ export interface OutgoingMail {
   autoreply?: boolean;
   bulk?: boolean;
   attachments?: Mail.Attachment[];
+  /** opzione 'text' del PHP (es. osTicket::alertAdmin): messaggio solo testo */
+  text?: boolean;
 }
 
 export async function loadSystemEmail(emailId: number, executor: DbOrTx = db()): Promise<SystemEmail | null> {
@@ -187,14 +189,16 @@ export async function sendMail(m: OutgoingMail, executor: DbOrTx = db()): Promis
   let body = m.body;
   let midToken = "";
   let replyTag = "";
-  if (m.thread) {
+  // Il PHP aggiunge token e separatore solo se l'opzione 'thread' è una ThreadEntry (id > 0), non un Thread
+  if (m.thread && m.thread.entryId && !m.text) {
     midToken = messageId;
     replyTag = cfg.bool("strip_quoted_reply") ? `${cfg.str("reply_separator")}<br/><br/>` : "";
   }
   if (replyTag || midToken) {
     body = `<div style="display:none"\n                        class="mid-${midToken}">${replyTag}</div>${body}`;
   }
-  const text = `${htmlToPlain(body).replace(/\s+$/, "")}\nRef-Mid: ${messageId}\n`;
+  // opzione 'text' del PHP: corpo solo testo, senza parte HTML né Ref-Mid
+  const text = m.text ? body : `${htmlToPlain(body).replace(/\s+$/, "")}\nRef-Mid: ${messageId}\n`;
 
   // cid:<chiave file> → immagine inline con content-id "<chiave>@<dominio mittente>" (come il PHP)
   const inline: Mail.Attachment[] = [];
@@ -218,7 +222,7 @@ export async function sendMail(m: OutgoingMail, executor: DbOrTx = db()): Promis
     bcc: m.bcc?.length ? m.bcc : undefined,
     subject,
     text,
-    html: cfg.bool("enable_richtext") ? body : undefined,
+    html: !m.text && cfg.bool("enable_richtext") ? body : undefined,
     headers,
     inReplyTo: m.thread?.inReplyTo || undefined,
     references: m.thread?.references || undefined,

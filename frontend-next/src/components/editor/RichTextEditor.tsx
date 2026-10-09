@@ -20,6 +20,8 @@ interface Props {
   /** chiamata alla prima digitazione (acquisizione del lock "all'attività") */
   onActivity?: () => void;
   minHeight?: number;
+  /** HTML iniziale (es. ripristino del testo dopo un errore di validazione) */
+  defaultValue?: string;
   labels: { bold: string; italic: string; underline: string; bullets: string; numbers: string; link: string; quote: string; linkPrompt: string };
 }
 
@@ -34,11 +36,11 @@ const BUTTONS: { cmd: string; arg?: string; label: keyof Props["labels"]; icon: 
 ];
 
 const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(function RichTextEditor(
-  { name, placeholder, onActivity, minHeight = 160, labels },
+  { name, placeholder, onActivity, minHeight = 160, labels, defaultValue },
   ref,
 ) {
   const editor = useRef<HTMLDivElement>(null);
-  const [html, setHtml] = useState("");
+  const [html, setHtml] = useState(defaultValue ?? "");
   const touched = useRef(false);
 
   const sync = useCallback(() => {
@@ -68,6 +70,11 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(function RichText
   useEffect(() => {
     document.execCommand("defaultParagraphSeparator", false, "p");
   }, []);
+
+  // Contenuto iniziale impostato una sola volta al montaggio (l'editor non è controllato)
+  useEffect(() => {
+    if (defaultValue && editor.current && !editor.current.innerHTML) editor.current.innerHTML = defaultValue;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exec = (cmd: string, arg?: string) => {
     editor.current?.focus();

@@ -8,6 +8,8 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
 
+import ForgotPasswordLink from "@/components/people/auth/ForgotPasswordLink";
+
 import { agentLoginAction, type LoginState } from "../actions";
 
 export default function LoginForm({ next, expired }: { next?: string; expired?: boolean }) {
@@ -81,6 +83,7 @@ export default function LoginForm({ next, expired }: { next?: string; expired?: 
             <Button type="submit" className="w-full" size="sm" disabled={pending}>
               {pending ? t("signingIn") : t("signIn")}
             </Button>
+            <ForgotPasswordLink />
           </div>
         </form>
       </div>

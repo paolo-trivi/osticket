@@ -265,6 +265,8 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
             deptSignature={!!(dept?.signature && dept.ispublic)}
             defaultSignature={me?.default_signature_type ?? "none"}
             labels={composerLabels}
+            uploadUrl={cfg.bool("allow_attachments") ? "/api/agent/upload" : undefined}
+            maxFileSize={cfg.int("max_file_size")}
           />
         </div>
 

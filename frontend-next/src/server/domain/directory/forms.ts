@@ -398,3 +398,39 @@ export function validateInput(fields: FieldDef[], input: Record<string, unknown>
 export function isEmail(v: string): boolean {
   return /^[^\s@<>(),;:"[\]]+@[^\s@<>(),;:"[\]]+\.[^\s@<>(),;:"[\]]+$/.test(v.trim()) && !/@localhost$/i.test(v.trim());
 }
+
+/**
+ * Validator::is_valid_email: con config verify_email_addrs il dominio deve avere un record MX
+ * (o, in mancanza, A/AAAA), come dns_get_record del PHP.
+ */
+export async function isValidEmail(v: string, verify: boolean): Promise<boolean> {
+  if (!isEmail(v)) return false;
+  if (!verify) return true;
+  const host = v.trim().split("@").pop() ?? "";
+  const { resolveMx, resolve4, resolve6 } = await import("node:dns/promises");
+  try {
+    if ((await resolveMx(`${host}.`)).length) return true;
+  } catch {
+    /* nessun MX: si prova A/AAAA */
+  }
+  for (const fn of [resolve4, resolve6]) {
+    try {
+      if ((await fn(`${host}.`)).length) return true;
+    } catch {
+      /* nessun record */
+    }
+  }
+  return false;
+}
+
+/** Errori "email" aggiuntivi della verifica DNS per i campi con validatore email. */
+export async function verifyEmailFields(fields: FieldDef[], input: Record<string, unknown>, verify: boolean, filter: (f: FieldDef) => boolean): Promise<Record<string, string>> {
+  const errors: Record<string, string> = {};
+  if (!verify) return errors;
+  for (const f of fields) {
+    if (f.config.validator !== "email" || !filter(f)) continue;
+    const v = parseInput(f, inputFor(input, f));
+    if (typeof v === "string" && v && !(await isValidEmail(v, true))) errors[f.name || String(f.id)] = "email";
+  }
+  return errors;
+}

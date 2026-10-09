@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 
 import ComponentCard from "@/components/common/ComponentCard";
 import { Forbidden, PageHeader } from "@/components/common/DataTable";
+import UserActions from "@/components/people/directory/UserActions";
 import { Link } from "@/i18n/navigation";
+import { db } from "@/server/db";
 import { loadUser } from "@/server/domain/directory/directory";
+import { editFormFields } from "@/server/domain/directory/ui";
 import { GlobalPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
@@ -20,6 +23,11 @@ export default async function UserPage({ params }: { params: Promise<{ locale: s
   if (!user) notFound();
   const tz = await agentTimeZone(agent);
   // UserAccount: status & 1 = confermato, & 2 = bloccato
+  const [fields, acct, orgs] = await Promise.all([
+    editFormFields("U", user.id, { name: user.name, email: user.email ?? "" }),
+    db().selectFrom("user_account").select(["status", "username", "timezone"]).where("user_id", "=", user.id).executeTakeFirst(),
+    db().selectFrom("organization").select(["id", "name"]).orderBy("name").execute(),
+  ]);
   const account = user.account_status === null ? t("noAccount") : user.account_status & 2 ? t("accountLocked") : user.account_status & 1 ? t("accountActive") : t("accountPending");
 
   return (
@@ -32,6 +40,25 @@ export default async function UserPage({ params }: { params: Promise<{ locale: s
             {t("viewTickets", { n: user.tickets })}
           </Link>
         }
+      />
+      <UserActions
+        data={{
+          userId: user.id,
+          name: user.name,
+          orgId: user.org_id,
+          orgName: user.org_name,
+          tickets: user.tickets,
+          fields,
+          account: acct ? { status: acct.status, username: acct.username ?? "", timezone: acct.timezone ?? "" } : null,
+          orgs,
+          timezones: Intl.supportedValuesOf("timeZone"),
+          can: {
+            edit: agent.hasGlobalPerm(GlobalPerm.USER_EDIT),
+            delete: agent.hasGlobalPerm(GlobalPerm.USER_DELETE),
+            manage: agent.hasGlobalPerm(GlobalPerm.USER_MANAGE),
+            createOrg: agent.hasGlobalPerm(GlobalPerm.ORG_CREATE),
+          },
+        }}
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ComponentCard title={t("profile")}>

@@ -86,3 +86,21 @@ $OPS['ticket.create.web'] = function (array $op) {
         'errors' => $errors,
     ];
 };
+
+// Nota/risposta dal composer con allegati (campo attachments del form di risposta/nota)
+$OPS['create.post.files'] = function (array $op) {
+    global $thisstaff;
+    $a = $op['args'];
+    $thisstaff = Staff::lookup($a['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $ticket = Ticket::lookup($a['ticket']);
+    $errors = array();
+    if ($a['kind'] == 'note') {
+        $vars = array('note' => $a['body'], 'title' => $a['title'] ?? '', 'files' => $a['files']);
+        $e = $ticket->postNote($vars, $errors, $thisstaff);
+    } else {
+        $vars = array('response' => $a['body'], 'reply-to' => 'all', 'signature' => 'none', 'files' => $a['files']);
+        $e = $ticket->postReply($vars, $errors);
+    }
+    return ['ok' => (bool) $e, 'id' => $e ? $e->getId() : null];
+};

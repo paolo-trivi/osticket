@@ -24,6 +24,10 @@ export interface SessionPayload {
   last: number;
   /** login iniziato ma secondo fattore non ancora verificato */
   mfa?: "pending";
+  /** chiave del codice 2FA pendente (lo stato è lato server, src/server/auth/mfa.ts) */
+  mfk?: string;
+  /** token di reset password usato per il login ($_SESSION['_staff']['reset-token']) */
+  rst?: string;
 }
 
 const COOKIE: Record<Realm, string> = {

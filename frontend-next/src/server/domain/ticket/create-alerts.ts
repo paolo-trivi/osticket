@@ -7,7 +7,7 @@ import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from ".
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, staffVar } from "../../mail/objects";
 import { loadMsgTemplate, templateGroupFor, type TemplateCode } from "../../mail/templates";
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
-import { logSystem } from "../../system/syslog";
+import { adminAlertMail, logWithAdminAlert } from "../../system/admin-alert";
 import { entryAttachmentsForMail } from "../file/upload";
 import { loadAgent, type Agent } from "../staff/staff";
 import { agentDisplayName, type WriteContext } from "./context";
@@ -296,24 +296,101 @@ export async function sendNewTicketNotice(
   });
 }
 
-/** Ticket::onOpenLimit: log per l'amministratore e notifica `ticket.overlimit` al cliente */
-export async function onOpenLimit(ctx: WriteContext, t: { ticketId: number; deptId: number; email: string; openTickets: number }, sendNotice: boolean): Promise<void> {
+/** Ticket::onOpenLimit: log (con avviso all'amministratore), notifica `ticket.overlimit` al cliente e "Overlimit Notice" */
+export async function onOpenLimit(
+  ctx: WriteContext,
+  t: { ticketId: number; deptId: number; email: string; ip: string; numOpenTickets: () => Promise<number> },
+  sendNotice: boolean,
+): Promise<void> {
   const { tx, cfg } = ctx;
   const max = cfg.int("max_open_tickets");
-  await logSystem("Warning", `Maximum Open Tickets Limit (${t.email})`, `Maximum open tickets (${max}) reached for ${t.email}`, ctx.actor?.ip ?? "", { executor: tx });
+  const warn = await logWithAdminAlert(cfg, "Warning", `Maximum Open Tickets Limit (${t.email})`, `Maximum open tickets (${max}) reached for ${t.email}`, t.ip, tx);
+  if (warn) ctx.after.push(async () => void (await sendMail(warn)));
   if (!sendNotice || !cfg.bool("overlimit_notice_active")) return;
   const dept = await loadDept(tx, t.deptId);
-  if (!dept) return;
-  const tpl = await template(ctx, dept.id, "ticket.overlimit");
-  const email = await deptAutoRespEmail(ctx, dept);
+  const tpl = dept ? await template(ctx, dept.id, "ticket.overlimit") : null;
+  const email = dept ? await deptAutoRespEmail(ctx, dept) : null;
   const tv = await buildTicketVars(tx, t.ticketId, cfg, ctx.dbZone);
-  if (!tpl || !email || !tv || !tv.owner || !tv.ownerVar) return;
-  const r = new VariableReplacer().assign({ signature: dept.ispublic ? dept.signature : "", ticket: tv.ticket, url: baseUrl(ctx), company: await companyVar(tx) });
-  const subject = r.replaceVars(tpl.subj);
-  const body = r.replaceVars(tpl.body);
-  const to = [{ name: tv.ownerVar.asVar(r), address: tv.owner.email }];
-  const ownerId = tv.owner.id;
-  ctx.after.push(async () => {
-    await sendMail({ email, to, subject, body, recipient: { userId: ownerId, utype: "U" }, autoreply: true });
-  });
+  if (dept && tpl && email && tv && tv.owner && tv.ownerVar) {
+    const r = new VariableReplacer().assign({ signature: dept.ispublic ? dept.signature : "", ticket: tv.ticket, url: baseUrl(ctx), company: await companyVar(tx) });
+    const subject = r.replaceVars(tpl.subj);
+    const body = r.replaceVars(tpl.body);
+    const to = [{ name: tv.ownerVar.asVar(r), address: tv.owner.email }];
+    const ownerId = tv.owner.id;
+    ctx.after.push(async () => {
+      await sendMail({ email, to, subject, body, recipient: { userId: ownerId, utype: "U" }, autoreply: true });
+    });
+  }
+  // Avviso all'amministratore (sempre, anche senza modello: "might be spammy... but it is helpful")
+  const alert =
+    `Maximum open tickets reached for ${t.email}.\n` + `Open tickets: ${await t.numOpenTickets()}\n` + `Max allowed: ${max}` + "\n\nNotice sent to the user.";
+  const mail = await adminAlertMail(cfg, "Overlimit Notice", alert, tx);
+  ctx.after.push(async () => void (await sendMail(mail)));
+}
+
+/** Mail_Parse::parseAddressList semplificato: indirizzi separati da virgole, "Nome" <box@host> o box@host */
+export function parseAddressList(list: string): { personal: string; mailbox: string; host: string }[] | null {
+  const out: { personal: string; mailbox: string; host: string }[] = [];
+  const parts: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (const ch of list) {
+    if (ch === '"') quoted = !quoted;
+    if (ch === "," && !quoted) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    const m = /^(.*?)\s*<([^<>@\s]+)@([^<>\s]+)>$/.exec(p) ?? /^()([^<>@\s]+)@([^<>\s]+)$/.exec(p);
+    if (!m) return null;
+    out.push({ personal: m[1].trim(), mailbox: m[2], host: m[3] });
+  }
+  return out;
+}
+
+/**
+ * FA_SendEmail::apply (azione di filtro "Send an Email", eseguita dopo la creazione): oggetto e
+ * messaggio con le variabili del ticket, destinatari con `%{user}` = "nome" <email> del richiedente,
+ * un invio per destinatario con `%{recipient}` disponibile; mittente = email `from` della
+ * configurazione (altrimenti il mailer di sistema).
+ */
+export async function sendFilterEmail(
+  ctx: WriteContext,
+  ticketId: number,
+  config: Record<string, unknown>,
+  submitter: { name: string; email: string },
+): Promise<void> {
+  const { tx, cfg } = ctx;
+  const tv = await buildTicketVars(tx, ticketId, cfg, ctx.dbZone);
+  if (!tv) return;
+  // TicketOwner: gli attributi sconosciuti passano da __call e valgono false → la variabile resta nel
+  // testo per la seconda sostituzione (es. %{recipient.personal} risolta con il destinatario)
+  const owner = tv.ownerVar;
+  const ownerFirst = owner
+    ? { getVar: (tag: string, r: VariableReplacer) => owner.getVar(tag, r) || false, asVar: (r: VariableReplacer) => owner.asVar(r) }
+    : null;
+  const first = new VariableReplacer().assign({ url: baseUrl(ctx), ticket: tv.ticket, recipient: ownerFirst, company: await companyVar(tx) });
+  const info = { subject: first.replaceVars(String(config.subject ?? "")), message: first.replaceVars(String(config.message ?? "")) };
+  const from = await loadSystemEmail(Number(config.from) || 0, tx);
+  const replacer = new VariableReplacer().assign({ user: `"${submitter.name}" <${submitter.email}>` });
+  const to = replacer.replaceVars(String(config.recipients ?? ""));
+  const mails = parseAddressList(to);
+  if (!mails) return;
+  const { VarBag } = await import("../../mail/variables");
+  for (const R of mails) {
+    const personal = R.personal.replace(/^"|"$/g, "");
+    const address = `${R.mailbox}@${R.host}`;
+    // Differenza: il PHP passa "personal <box@host>" come stringa a Message::addTo e il nome tra
+    // virgolette finisce codificato con le virgolette (=?utf-8?Q?"Nome"?=); qui il nome è senza virgolette
+    replacer.assign({ recipient: new VarBag({ host: R.host, domain: R.host, personal, mailbox: R.mailbox }, address) });
+    const subject = replacer.replaceVars(info.subject);
+    const body = replacer.replaceVars(info.message);
+    ctx.after.push(async () => {
+      await sendMail({ email: from, to: [{ name: personal, address }], subject, body, recipient: { userId: 0, utype: "?" } });
+    });
+  }
 }

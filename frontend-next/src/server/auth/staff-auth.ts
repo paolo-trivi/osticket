@@ -11,14 +11,18 @@ import { logSystem } from "../system/syslog";
 import { checkPassword } from "./passwd";
 import { clearSession, clientIp, readSession, writeSession } from "./session";
 import { addStrike, isLockedOut, resetStrikes } from "./strikes";
+import { EMAIL_2FA, newMfaKey, prepare2faEmail } from "./mfa";
+import { adminAlertMail } from "../system/admin-alert";
+import { sendMail } from "../mail/mailer";
+import { sanitizeText } from "../format/text";
 
 export type StaffLoginError = "invalid" | "locked_out" | "too_many" | "inactive" | "backend" | "mfa_unsupported";
 
-export type StaffLoginResult = { ok: true; mustChangePassword: boolean } | { ok: false; error: StaffLoginError };
+export type StaffLoginResult = { ok: true; mustChangePassword: boolean; mfa?: boolean } | { ok: false; error: StaffLoginError };
 
 /** Esito della parte di dominio del login (senza cookie/sessione HTTP): usata anche dall'harness. */
 export type StaffAuthOutcome =
-  | { ok: true; staffId: number; passwdVersion: string; mustChangePassword: boolean }
+  | { ok: true; staffId: number; passwdVersion: string; mustChangePassword: boolean; mfaKey?: string }
   | { ok: false; error: StaffLoginError };
 
 /** Backend di autenticazione che la app sa gestire (staff.backend NULL = qualunque, cioè locale). */
@@ -69,8 +73,9 @@ export async function performStaffLogin(input: {
 
   const agent = await loadAgent(row.staff_id);
   if (!agent) return failed(username, ip, cfg.int("staff_max_logins"), cfg.int("staff_login_timeout"));
-  if (agent.config.str("default_2fa")) {
-    // TODO(M2): 2FA via email (Email2FABackend) richiede il mailer; per ora l'agente usa il PHP
+  const twofa = agent.config.str("default_2fa");
+  if (twofa && twofa !== EMAIL_2FA) {
+    // Backend 2FA di plugin (TOTP…) non gestiti dalla app: l'agente usa il PHP
     return { ok: false, error: "mfa_unsupported" };
   }
 
@@ -101,6 +106,18 @@ export async function performStaffLogin(input: {
     ip,
   );
 
+  // StaffAuthenticationBackend::login: secondo fattore via email (Email2FABackend::send). Senza
+  // configurazione del backend il PHP completa il login senza 2FA: comportamento replicato.
+  let mfaKey: string | undefined;
+  if (twofa === EMAIL_2FA) {
+    const key = newMfaKey();
+    const send = await prepare2faEmail(db(), cfg, agent, key);
+    if (send) {
+      mfaKey = key;
+      await send();
+    }
+  }
+
   resetStrikes("staff", ip, username);
   const fresh = await db()
     .selectFrom("staff")
@@ -112,6 +129,7 @@ export async function performStaffLogin(input: {
     staffId: agent.id,
     passwdVersion: fresh.passwdreset ?? "",
     mustChangePassword: !!fresh.change_passwd,
+    ...(mfaKey ? { mfaKey } : {}),
   };
 }
 
@@ -126,8 +144,9 @@ export async function staffLogin(login: string, password: string): Promise<Staff
     pwv: outcome.passwdVersion,
     ip,
     last: Math.floor(Date.now() / 1000),
+    ...(outcome.mfaKey ? { mfa: "pending" as const, mfk: outcome.mfaKey } : {}),
   });
-  return { ok: true, mustChangePassword: outcome.mustChangePassword };
+  return { ok: true, mustChangePassword: outcome.mustChangePassword, ...(outcome.mfaKey ? { mfa: true } : {}) };
 }
 
 async function failed(
@@ -137,22 +156,30 @@ async function failed(
   timeoutMin: number,
 ): Promise<StaffAuthOutcome> {
   const { strikes, lockedOut } = addStrike("staff", ip, username, maxLogins);
-  const time = new Date().toUTCString();
+  const time = phpAlertDate(new Date());
   if (lockedOut) {
-    await logSystem(
-      "Warning",
-      `Excessive login attempts (${username})`,
+    const title = `Excessive login attempts (${username})`;
+    const message =
       `Excessive login attempts by an agent?\nUsername: ${username}\nIP: ${ip}\nTime: ${time}\n\n` +
-        `Attempts: ${strikes}\nTimeout: ${timeoutMin} ${timeoutMin === 1 ? "minute" : "minutes"}\n\n`,
-      ip,
-    );
+      `Attempts: ${strikes}\nTimeout: ${timeoutMin} ${timeoutMin === 1 ? "minute" : "minutes"}\n\n`;
+    // $ost->logWarning($title, $alert, $cfg->alertONLoginError()): syslog e avviso all'amministratore
+    // osTicket::log salva Format::sanitize($message): a capo e spazi compressi dall'HTML sanificato
+    const logged = await logSystem("Warning", title, sanitizeText(message), ip);
+    const cfg = await coreConfig();
+    if (logged && cfg.int("send_login_errors") === 1 && cfg.int("log_level") >= 2) {
+      try {
+        await sendMail(await adminAlertMail(cfg, title, message));
+      } catch (err) {
+        console.error("[staff-auth] avviso all'amministratore non inviato", err);
+      }
+    }
     return { ok: false, error: "too_many" };
   }
   if (strikes % 3 === 0) {
     await logSystem(
       "Warning",
       `Failed agent login attempt (${username})`,
-      `Username: ${username}\nIP: ${ip}\nTime: ${time}\n\nAttempts: ${strikes}`,
+      sanitizeText(`Username: ${username}\nIP: ${ip}\nTime: ${time}\n\nAttempts: ${strikes}`),
       ip,
     );
   }
@@ -193,4 +220,13 @@ export async function staffLogout(): Promise<void> {
     await logSystem("Debug", "Agent logout", `${agent.username} logged out [${ip}]`, ip);
   }
   await clearSession("staff");
+}
+
+/** date('M j, Y, g:i a T') del PHP (fuso UTC impostato da bootstrap.php) */
+export function phpAlertDate(d: Date): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const h = d.getUTCHours();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}, ${h12}:${mm} ${h < 12 ? "am" : "pm"} UTC`;
 }

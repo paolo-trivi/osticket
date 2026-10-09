@@ -54,7 +54,7 @@ export function safeHtml(input: string, options: { iframeWhitelist?: string[]; d
       )
     : null;
 
-  return sanitizeHtml(html, {
+  return htmLawedCompact(sanitizeHtml(html, {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags.filter((t) => !["form", "input", "button"].includes(t)),
       "img", "span", "font", "center", "u", "s", "strike", "del", "ins", "sub", "sup", "big", "small", "hr", "br",
@@ -95,7 +95,27 @@ export function safeHtml(input: string, options: { iframeWhitelist?: string[]; d
         return { tagName, attribs: out };
       },
     },
+  }));
+}
+
+/**
+ * htmLawed hl_tidy($t, -1) ('tidy' => -1 in Format::safe_html): compattazione degli spazi. Gli spazi
+ * dopo un tag di apertura vanno prima del tag, ogni sequenza di spazi diventa uno spazio, lo spazio
+ * dopo un tag di apertura si elimina; il contenuto di pre/script/textarea e CDATA resta intatto.
+ * `\s` di PCRE senza /u: solo spazio, \t, \n, \v, \f, \r.
+ */
+export function htmLawedCompact(html: string): string {
+  const keep: string[] = [];
+  const hidden = html.replace(/(<(!\[CDATA\[))([\s\S]+?)(\]\]>)|(<(!--))([\s\S]+?)(-->)|(<(pre|script|textarea)[^>]*?>)([\s\S]+?)(<\/\10>)/g, (m) => {
+    keep.push(m);
+    return `\x01${keep.length - 1}\x02`;
   });
+  const ws = "[ \\t\\n\\v\\f\\r]";
+  const compact = hidden
+    .replace(new RegExp(`(<\\w[^>]*(?<!/)>)${ws}+`, "g"), " $1")
+    .replace(new RegExp(`${ws}+`, "g"), " ")
+    .replace(/(<\w[^>]*(?<!\/)>) /g, "$1");
+  return compact.replace(/\x01(\d+)\x02/g, (_m, i: string) => keep[Number(i)]);
 }
 
 /** Testo semplice → HTML come ThreadEntryBody "text" (escape + a capo). */

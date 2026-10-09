@@ -1,1 +1,119 @@
-{}
+{
+  "createTicket": {
+    "title": "New ticket",
+    "subtitle": "Open a ticket on behalf of a user",
+    "forbidden": "You do not have permission to create tickets.",
+    "back": "Back to tickets",
+    "sections": {
+      "user": "User and collaborators",
+      "info": "Ticket information",
+      "details": "Ticket details",
+      "response": "Initial response",
+      "note": "Internal note"
+    },
+    "user": {
+      "search": "Search user",
+      "searchPlaceholder": "Name or email address (at least 2 characters)",
+      "noResults": "No users found",
+      "selected": "Selected user",
+      "change": "Change",
+      "newUser": "New user",
+      "existingUser": "Existing user",
+      "newUserHint": "The user will be created when the ticket is opened, with the details entered.",
+      "ccs": "Collaborators (Cc)",
+      "ccsPlaceholder": "Add a collaborator",
+      "remove": "Remove",
+      "notice": "Ticket notice",
+      "noticeAll": "User and collaborators",
+      "noticeUser": "User only",
+      "noticeNone": "Do not send notices"
+    },
+    "info": {
+      "source": "Source",
+      "sources": { "Phone": "Phone", "Email": "Email", "Other": "Other" },
+      "topic": "Help topic",
+      "topicPick": "— Select a help topic —",
+      "dept": "Department",
+      "deptFromTopic": "— Help topic's department —",
+      "sla": "SLA plan",
+      "slaDefault": "— Default —",
+      "duedate": "Due date",
+      "duedateHint": "Optional, must be in the future",
+      "assign": "Assign to",
+      "assignNone": "— Unassigned —",
+      "agents": "Agents",
+      "teams": "Teams"
+    },
+    "details": {
+      "message": "Issue details",
+      "messagePlaceholder": "Details of the request",
+      "attachments": "Attachments",
+      "loadingTopic": "Loading help topic fields…"
+    },
+    "response": {
+      "placeholder": "Initial response (optional)",
+      "attachments": "Response attachments",
+      "status": "Ticket status",
+      "statusDefault": "— Default —",
+      "signature": "Signature",
+      "sigNone": "None",
+      "sigMine": "My signature",
+      "sigDept": "Department signature"
+    },
+    "note": {
+      "placeholder": "Optional internal note (with an assignment it becomes the assignment comment)"
+    },
+    "submit": "Open ticket",
+    "submitting": "Opening…",
+    "reset": "Cancel",
+    "errors": {
+      "session_expired": "Session expired: please sign in again.",
+      "denied": "You do not have permission to create tickets.",
+      "deptDenied": "You do not have permission to create tickets in this department.",
+      "invalid": "Missing or invalid data: correct the errors below and try again.",
+      "rejected": "Ticket rejected: this help desk is for authorized users only.",
+      "limit": "The user has reached the maximum number of open tickets.",
+      "generic": "Unable to create the ticket. Correct any errors and try again.",
+      "user": "Incomplete user information or missing permission to create users.",
+      "email": "A valid email address is required.",
+      "name": "Name is required.",
+      "topicId": "Select a help topic.",
+      "source": "Invalid source.",
+      "duedate": "Invalid or past due date.",
+      "assignId": "You are not allowed to assign tickets.",
+      "deptId": "Invalid department."
+    }
+  },
+  "dynamicForms": {
+    "select": "— Select —",
+    "ext": "Ext.",
+    "unsupported": "This field type cannot be edited here",
+    "errors": {
+      "required": "This field is required",
+      "email": "Invalid email address",
+      "phone": "Invalid phone number",
+      "ip": "Invalid IP address",
+      "number": "Enter a number",
+      "regex": "Invalid value",
+      "formula": "Content cannot start with = - + @",
+      "phone_ext": "Invalid extension",
+      "phone_ext_missing": "Extension without a phone number",
+      "files_max": "Too many files",
+      "date_past": "The date must be in the future"
+    }
+  },
+  "attachments": {
+    "choose": "Choose files",
+    "dropHint": "or drop files here",
+    "uploading": "Uploading…",
+    "remove": "Remove",
+    "errors": {
+      "size": "{name}: file is too large",
+      "type": "{name}: file type not allowed",
+      "invalid": "{name}: invalid file",
+      "disabled": "Attachments are disabled",
+      "session_expired": "Session expired",
+      "network": "{name}: upload failed"
+    }
+  }
+}

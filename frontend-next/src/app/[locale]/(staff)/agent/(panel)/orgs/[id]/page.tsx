@@ -4,8 +4,14 @@ import { notFound } from "next/navigation";
 import ComponentCard from "@/components/common/ComponentCard";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import InfoRow from "@/components/common/InfoRow";
+import { RowSelect } from "@/components/people/directory/DirectoryButtons";
+import OrgActions, { OrgMembersBar } from "@/components/people/directory/OrgActions";
 import { Link } from "@/i18n/navigation";
+import { coreConfig } from "@/server/config/config";
+import { db } from "@/server/db";
 import { listUsers, loadOrg } from "@/server/domain/directory/directory";
+import { editFormFields, newFormFields } from "@/server/domain/directory/ui";
+import { activeTeams, assignableAgents } from "@/server/domain/task/model";
 import { GlobalPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
@@ -21,6 +27,22 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
   const tz = await agentTimeZone(agent);
   const users = await listUsers({ orgId: org.id, page: 1, pageSize: 200 });
   const canSeeUsers = agent.hasGlobalPerm(GlobalPerm.USER_DIR);
+  const can = {
+    edit: agent.hasGlobalPerm(GlobalPerm.ORG_EDIT),
+    delete: agent.hasGlobalPerm(GlobalPerm.ORG_DELETE),
+    addUser: agent.hasGlobalPerm(GlobalPerm.USER_EDIT),
+    createUser: agent.hasGlobalPerm(GlobalPerm.USER_CREATE),
+    import: agent.hasGlobalPerm(GlobalPerm.ORG_CREATE) && agent.hasGlobalPerm(GlobalPerm.USER_CREATE),
+  };
+  const cfg = await coreConfig();
+  const [fields, userFields, agents, teams, members, allUsers] = await Promise.all([
+    can.edit ? editFormFields("O", org.id, { name: org.name }) : Promise.resolve([]),
+    can.createUser ? newFormFields("U") : Promise.resolve([]),
+    can.edit ? assignableAgents(db(), null, agent, cfg) : Promise.resolve([]),
+    can.edit ? activeTeams(db()) : Promise.resolve([]),
+    db().selectFrom("user").select(["id", "name", "status"]).where("org_id", "=", org.id).orderBy("name").execute(),
+    can.addUser ? db().selectFrom("user").select(["id", "name"]).where("org_id", "!=", org.id).orderBy("name").execute() : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -33,6 +55,19 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
           </Link>
         }
       />
+      <OrgActions
+        data={{
+          orgId: org.id,
+          name: org.name,
+          fields,
+          userFields,
+          profile: { domain: org.domain ?? "", manager: org.manager ?? "", status: org.status },
+          managers: { agents, teams },
+          members: members.map((m) => ({ id: m.id, name: m.name, primary: (m.status & 1) !== 0 })),
+          users: allUsers,
+          can,
+        }}
+      />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <ComponentCard title={t("profile")}>
           <dl>
@@ -44,10 +79,12 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
             ))}
           </dl>
         </ComponentCard>
-        <div className="lg:col-span-2">
+        <div className="space-y-3 lg:col-span-2">
+          <OrgMembersBar orgId={org.id} canRemove={agent.hasGlobalPerm(GlobalPerm.USER_EDIT)} />
           <DataTable
             empty={t("empty")}
             columns={[
+              { key: "sel", label: "" },
               { key: "name", label: t("name") },
               { key: "email", label: t("email") },
               { key: "tickets", label: t("tickets") },
@@ -55,6 +92,7 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
             rows={users.rows.map((u) => ({
               key: u.id,
               cells: {
+                sel: <RowSelect id={u.id} group="member" />,
                 name: canSeeUsers ? <Link href={`/agent/users/${u.id}`} className="text-brand-600 dark:text-brand-400">{u.name}</Link> : u.name,
                 email: u.email,
                 tickets: u.tickets,

@@ -6,6 +6,7 @@ import { currentAgent } from "@/server/auth/staff-auth";
 import { clientIp } from "@/server/auth/session";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
+import { verifyUploadTokens } from "@/server/domain/file/upload";
 import { TicketPerm } from "@/server/domain/staff/staff";
 import { deleteDraftsFor, isEmailBanned, syncActiveCollaborators } from "@/server/domain/ticket/collab";
 import { acquireTicketLock, checkLockForPost, releaseTicketLock, renewTicketLock } from "@/server/domain/ticket/lock";
@@ -52,7 +53,9 @@ export async function postReplyAction(_prev: PostState, form: FormData): Promise
   const result = await runWrite({ agent, ip: await clientIp() }, async (ctx) => {
     const threadId = await ticketThreadId(ctx.tx, ticketId);
     await syncActiveCollaborators(ctx.tx, threadId, ccs);
-    const r = await postReply(ctx, { ticketId, response, replyTo, ccs, statusId, signature, alert: replyTo !== "none" });
+    // allegati: solo i file caricati da questo agente (token firmati dall'endpoint di upload)
+    const files = verifyUploadTokens(form.getAll("files").map(String), `S${agent.id}`);
+    const r = await postReply(ctx, { ticketId, response, replyTo, ccs, statusId, signature, alert: replyTo !== "none", files });
     if ("error" in r) return r;
     await releaseTicketLock(ctx.tx, ticketId, agent.id);
     await deleteDraftsFor(ctx.tx, `ticket.response.${ticketId}`, agent.id);
@@ -80,7 +83,8 @@ export async function postNoteAction(_prev: PostState, form: FormData): Promise<
   const result = await runWrite({ agent, ip: await clientIp() }, async (ctx) => {
     const before = await ctx.tx.selectFrom("ticket").select("status_id").where("ticket_id", "=", ticketId).executeTakeFirstOrThrow();
     const wasOpen = (await statusState(ctx.tx, before.status_id)) === "open";
-    const r = await postNote(ctx, { ticketId, note, title, statusId });
+    const files = verifyUploadTokens(form.getAll("files").map(String), `S${agent.id}`);
+    const r = await postNote(ctx, { ticketId, note, title, statusId, files });
     if ("error" in r) return r;
     await releaseTicketLock(ctx.tx, ticketId, agent.id);
     const row = await ctx.tx.selectFrom("ticket").select("status_id").where("ticket_id", "=", ticketId).executeTakeFirstOrThrow();

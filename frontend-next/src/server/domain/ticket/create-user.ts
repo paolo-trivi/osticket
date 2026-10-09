@@ -6,7 +6,7 @@ import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
 import { replaceSearchRow } from "../search/index-writer";
 import { FormInstance, saveFormEntry } from "../forms/entry";
-import { isEmail } from "../forms/fields";
+import { isEmail, type DateFormatOptions } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 
 /**
@@ -108,6 +108,7 @@ export async function userFromVars(
   cfg: ConfigNamespace,
   vars: Record<string, unknown>,
   create = true,
+  dates?: DateFormatOptions,
 ): Promise<UserRow | null> {
   const email = String(vars.email ?? "");
   const existing = await lookupUserByEmail(executor, email);
@@ -143,7 +144,7 @@ export async function userFromVars(
   const form = await loadFormDef(executor, cfg, { type: "U" });
   let content = "";
   if (form) {
-    const inst = new FormInstance(form, vars, 1, null);
+    const inst = new FormInstance(form, vars, 1, null, { dates });
     await saveFormEntry(executor, inst, "U", userId);
     content = inst.searchables(["subject"]).join("\n").trim();
   }

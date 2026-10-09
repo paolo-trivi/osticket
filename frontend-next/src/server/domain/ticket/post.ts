@@ -173,6 +173,8 @@ export interface PostNoteInput {
   statusId?: number;
   alert?: boolean;
   activity?: string;
+  /** allegati già caricati della nota */
+  files?: AttachInput[];
 }
 
 /** Ticket::postNote (include/class.ticket.php:3509) per un agente. */
@@ -194,6 +196,7 @@ export async function postNote(ctx: WriteContext, input: PostNoteInput): Promise
     userId: 0,
     poster,
     ip: ctx.actor?.ip ?? "",
+    files: input.files,
   });
 
   const assigneeId = rec.get("staff_id");
@@ -223,6 +226,8 @@ export interface PostReplyInput {
   fromEmailId?: number;
   /** allegati già caricati della risposta */
   files?: AttachInput[];
+  /** $vars['source'] (es. apertura da agente: la risposta iniziale eredita la sorgente del ticket) */
+  source?: string;
 }
 
 /** Ticket::postReply (include/class.ticket.php:3345) per un agente. */
@@ -248,6 +253,7 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
     ip: ctx.actor?.ip ?? "",
     recipients: recipients ? recipientsJson(recipients) : undefined,
     files: input.files,
+    source: input.source,
   });
   await touchThread(tx, threadId, "lastresponse");
 
