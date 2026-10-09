@@ -3,11 +3,16 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import ComponentCard from "@/components/common/ComponentCard";
+import TicketActionsMenu from "@/components/tickets/TicketActionsMenu";
+import TicketComposer, { type ComposerLabels } from "@/components/tickets/TicketComposer";
+import TicketExtraActions from "@/components/tickets/TicketExtraActions";
 import ThreadEntryCard from "@/components/tickets/ThreadEntryCard";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
+import { listCanned } from "@/server/domain/kb/kb";
+import { TicketPerm } from "@/server/domain/staff/staff";
 import { formatAgentName } from "@/server/domain/ticket/rows";
 import {
   checkStaffPerm,
@@ -143,6 +148,61 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
   const legacy = process.env.OST_PHP_URL;
   const entryLabels = { note: t("internalNote"), reply: t("reply"), message: t("message"), edited: t("editedBy"), via: t("via") };
 
+  // Composer: stati ammessi (aperti; chiusi solo con permesso di chiusura), firma, risposte predefinite
+  const tc = await getTranslations("composer");
+  const canClose = role.perms.has(TicketPerm.CLOSE);
+  const [statusList, cannedList, me, dept] = await Promise.all([
+    db().selectFrom("ticket_status").select(["id", "name", "state"]).where("state", "in", canClose ? ["open", "closed"] : ["open"]).orderBy("sort").orderBy("name").execute(),
+    listCanned(agent),
+    db().selectFrom("staff").select(["signature", "default_signature_type"]).where("staff_id", "=", agent.id).executeTakeFirst(),
+    db().selectFrom("department").select(["signature", "ispublic"]).where("id", "=", ticket.dept_id).executeTakeFirst(),
+  ]);
+  const composerLabels: ComposerLabels = {
+    reply: tc("reply"),
+    note: tc("note"),
+    send: tc("send"),
+    sending: tc("sending"),
+    replyTo: tc("replyTo"),
+    replyAll: tc("replyAll"),
+    replyUser: tc("replyUser"),
+    replyNone: tc("replyNone"),
+    collaborators: tc("collaborators"),
+    signature: tc("signature"),
+    sigNone: tc("sigNone"),
+    sigMine: tc("sigMine"),
+    sigDept: tc("sigDept"),
+    statusAfter: tc("statusAfter"),
+    statusUnchanged: tc("statusUnchanged"),
+    canned: tc("canned"),
+    cannedPick: tc("cannedPick"),
+    noteTitle: tc("noteTitle"),
+    replyPlaceholder: tc("replyPlaceholder"),
+    notePlaceholder: tc("notePlaceholder"),
+    posted: tc("posted"),
+    lockedBy: tc("lockedBy"),
+    errors: {
+      session_expired: tc("errors.session_expired"),
+      not_found: tc("errors.not_found"),
+      denied: tc("errors.denied"),
+      response_required: tc("errors.response_required"),
+      note_required: tc("errors.note_required"),
+      lock_required: tc("errors.lock_required"),
+      locked_by_other: tc("errors.locked_by_other"),
+      lock_expired: tc("errors.lock_expired"),
+      banned: tc("errors.banned"),
+    },
+    editor: {
+      bold: tc("editor.bold"),
+      italic: tc("editor.italic"),
+      underline: tc("editor.underline"),
+      bullets: tc("editor.bullets"),
+      numbers: tc("editor.numbers"),
+      link: tc("editor.link"),
+      quote: tc("editor.quote"),
+      linkPrompt: tc("editor.linkPrompt"),
+    },
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -165,6 +225,10 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
             {ticket.isanswered && <Badge color="info">{t("answered")}</Badge>}
             {ticket.locked_by_other && <Badge color="warning">🔒 {t("locked")}</Badge>}
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <TicketActionsMenu ticket={ticket} agent={agent} locale={locale} />
+          <TicketExtraActions ticket={ticket} agent={agent} locale={locale} />
         </div>
         {legacy && (
           <a
@@ -189,6 +253,19 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
               </div>
             ),
           )}
+          <TicketComposer
+            ticketId={ticket.ticket_id}
+            canReply={role.perms.has(TicketPerm.REPLY)}
+            lockMode={cfg.int("autolock_minutes") > 0 ? cfg.int("ticket_lock", 2) : 0}
+            statuses={statusList.map((s) => ({ id: s.id, name: s.name, state: s.state ?? "" }))}
+            currentStatusId={ticket.status_id}
+            collaborators={collaborators.map((c) => ({ userId: c.user_id, name: c.name, email: c.email ?? "", active: c.active }))}
+            canned={cannedList.map((c) => ({ id: c.canned_id, title: c.title }))}
+            hasMySignature={!!me?.signature}
+            deptSignature={!!(dept?.signature && dept.ispublic)}
+            defaultSignature={me?.default_signature_type ?? "none"}
+            labels={composerLabels}
+          />
         </div>
 
         <aside className="space-y-6">

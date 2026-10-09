@@ -15,9 +15,14 @@ const run = promisify(execFile);
 
 export const OST_ROOT = process.env.OST_DIR ?? "/home/user/ost-dev/www";
 export const BASE_DB = process.env.OST_DIFF_SOURCE_DB ?? "osticket";
-export const SNAPSHOT_DB = `${BASE_DB}_diff_base`;
-export const PHP_DB = `${BASE_DB}_diff_php`;
-export const TS_DB = `${BASE_DB}_diff_ts`;
+/** OST_DIFF_TAG separa i DB di lavoro di suite eseguite in parallelo (es. "assign" → osticket_diff_assign_php) */
+const TAG = process.env.OST_DIFF_TAG ? `_${process.env.OST_DIFF_TAG}` : "";
+export const SNAPSHOT_DB = `${BASE_DB}_diff${TAG}_base`;
+export const PHP_DB = `${BASE_DB}_diff${TAG}_php`;
+export const TS_DB = `${BASE_DB}_diff${TAG}_ts`;
+/** mail() del PHP consegna a Mailpit (SMTP finto dell'ambiente di sviluppo); porta per suite con MAILPIT_SMTP_PORT */
+export const SENDMAIL =
+  process.env.OST_SENDMAIL ?? `/home/user/ost-dev/bin/mailpit sendmail -S 127.0.0.1:${process.env.MAILPIT_SMTP_PORT ?? "1025"}`;
 
 async function connect(): Promise<Connection> {
   const cfg = installConfig();
@@ -72,7 +77,7 @@ export interface PhpOp {
 
 /** Esegue un'operazione con il PHP originale (test/diff/php/runner.php) sul DB indicato. */
 export async function runPhp<T = Record<string, unknown>>(op: PhpOp, dbName = PHP_DB): Promise<T> {
-  const { stdout } = await run("php", [`${__dirname}/../php/runner.php`, OST_ROOT, dbName, JSON.stringify(op)], {
+  const { stdout } = await run("php", ["-d", `sendmail_path=${SENDMAIL}`, `${__dirname}/../php/runner.php`, OST_ROOT, dbName, JSON.stringify(op)], {
     maxBuffer: 32 * 1024 * 1024,
   });
   const line = stdout.trim().split("\n").pop() ?? "{}";
@@ -163,4 +168,18 @@ export function diffDumps(php: Dump, ts: Dump): TableDiff[] {
 export async function compareWorkingDatabases(opts: NormalizeOptions = {}): Promise<TableDiff[]> {
   const [php, ts] = await Promise.all([dumpDatabase(PHP_DB, opts), dumpDatabase(TS_DB, opts)]);
   return diffDumps(php, ts);
+}
+
+/** Esegue le stesse istruzioni SQL (con `{p}` = prefisso tabelle) su entrambi i DB di lavoro. */
+export async function execBoth(...statements: string[]): Promise<void> {
+  const conn = await connect();
+  const prefix = installConfig().tablePrefix;
+  try {
+    for (const dbName of [PHP_DB, TS_DB]) {
+      await conn.query(`USE \`${dbName}\``);
+      for (const s of statements) await conn.query(s.replaceAll("{p}", prefix));
+    }
+  } finally {
+    await conn.end();
+  }
 }

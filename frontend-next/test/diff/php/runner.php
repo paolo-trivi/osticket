@@ -34,6 +34,11 @@ Bootstrap::connect();
 $ost = osTicket::start();
 $cfg = $ost->getConfig();
 
+// Operazioni aggiuntive: ogni file in ops/ registra closure in $OPS['nome.op'] = function (array $op) { ... return $result; }
+$OPS = [];
+foreach (glob(__DIR__.'/ops/*.php') ?: [] as $opsFile)
+    require $opsFile;
+
 $result = ['ok' => true];
 switch ($op['op']) {
 case 'staff.login':
@@ -109,6 +114,33 @@ case 'ticket.access':
     $result = ['ok' => true, 'access' => $out];
     break;
 
+case 'ticket.note':
+    $thisstaff = Staff::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $ticket = Ticket::lookup($op['args']['ticket']);
+    $errors = array();
+    $vars = array('note' => $op['args']['note'], 'title' => $op['args']['title'] ?? '');
+    if (isset($op['args']['state'])) $vars['note_status_id'] = $op['args']['state'];
+    $note = $ticket->postNote($vars, $errors, $thisstaff, $op['args']['alert'] ?? true);
+    $result = ['ok' => (bool) $note, 'id' => $note ? $note->getId() : null, 'errors' => $errors];
+    break;
+
+case 'ticket.reply':
+    $thisstaff = Staff::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $ticket = Ticket::lookup($op['args']['ticket']);
+    $errors = array();
+    $vars = array(
+        'response' => $op['args']['response'],
+        'reply-to' => $op['args']['replyTo'] ?? 'all',
+        'emailreply' => $op['args']['emailreply'] ?? 1,
+        'signature' => $op['args']['signature'] ?? 'none',
+    );
+    if (isset($op['args']['statusId'])) $vars['reply_status_id'] = $op['args']['statusId'];
+    $response = $ticket->postReply($vars, $errors, $op['args']['alert'] ?? true, $op['args']['claim'] ?? true);
+    $result = ['ok' => (bool) $response, 'id' => $response ? $response->getId() : null, 'errors' => $errors];
+    break;
+
 case 'queue.counts':
     $thisstaff = Staff::lookup($op['args']['agent']);
     $GLOBALS['thisstaff'] = $thisstaff;
@@ -117,8 +149,11 @@ case 'queue.counts':
     break;
 
 default:
-    fwrite(STDERR, "Operazione sconosciuta: {$op['op']}\n");
-    exit(3);
+    if (!isset($OPS[$op['op']])) {
+        fwrite(STDERR, "Operazione sconosciuta: {$op['op']}\n");
+        exit(3);
+    }
+    $result = $OPS[$op['op']]($op);
 }
 
 echo json_encode($result), "\n";
