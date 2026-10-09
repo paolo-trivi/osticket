@@ -22,8 +22,23 @@ export const EntryFlag = {
   CHILD: 0x0400,
 } as const;
 
-/** Destinatari come MailingList::getEmailAddresses(): {to|cc|bcc: {id: "Nome <email>"}} */
-export type EntryRecipients = Partial<Record<"to" | "cc" | "bcc", Record<string, string>>>;
+/**
+ * Destinatari come MailingList::getEmailAddresses(): {to|cc|bcc: {id: "Nome <email>"}}. Una lista può
+ * essere data come coppie [id, valore] per preservare l'ordine di inserimento del PHP (gli oggetti JS
+ * ordinano le chiavi numeriche in modo crescente).
+ */
+export type RecipientList = Record<string, string> | Array<[string, string]>;
+export type EntryRecipients = Partial<Record<"to" | "cc" | "bcc", RecipientList>>;
+
+const recipientPairs = (l: RecipientList | undefined): Array<[string, string]> => (Array.isArray(l) ? l : Object.entries(l ?? {}));
+
+/** json_encode dei destinatari con l'ordine delle chiavi preservato */
+export function encodeRecipients(r: EntryRecipients): string {
+  const obj = (pairs: Array<[string, string]>) =>
+    pairs.length ? `{${pairs.map(([k, v]) => `${phpJsonEncode(String(k))}:${phpJsonEncode(v)}`).join(",")}}` : "[]";
+  const groups = Object.entries(r).filter(([, l]) => l !== undefined) as Array<[string, RecipientList]>;
+  return `{${groups.map(([k, l]) => `${phpJsonEncode(k)}:${obj(recipientPairs(l))}`).join(",")}}`;
+}
 
 export interface NewThreadEntry {
   threadId: number;
@@ -69,9 +84,9 @@ export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: New
   let flags = e.flags ?? 0;
   let recipients: string | null = null;
   if (e.recipients && Object.keys(e.recipients).length) {
-    const count = Object.values(e.recipients).reduce((n, list) => n + Object.keys(list ?? {}).length, 0);
+    const count = Object.values(e.recipients).reduce((n, list) => n + recipientPairs(list).length, 0);
     flags |= count > 1 ? EntryFlag.REPLY_ALL : EntryFlag.REPLY_USER;
-    recipients = phpJsonEncode(e.recipients);
+    recipients = encodeRecipients(e.recipients);
   }
   if (e.userId) {
     const collab = await tx

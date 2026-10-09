@@ -117,7 +117,7 @@ describe("messaggio dal portale (Ticket::postMessage 'Web')", () => {
 
   it("testo semplice (enable_richtext disattivato): doppia pulizia del corpo come il PHP", async () => {
     await execBoth(cfgSql("enable_richtext", 0));
-    const msg = "Riga 1 & <b>due</b>\n\n\nRiga 3";
+    const msg = "Riga 1 & <b>due</b> l'acqua \"calda\" &amp; &nbsp;fredda\n\n\nRiga 3";
     await phpMessage(3, 12, msg);
     await tsMessage(3, 12, msg);
     expect(await compareWorkingDatabases()).toEqual([]);

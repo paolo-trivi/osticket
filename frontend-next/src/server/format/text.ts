@@ -1,4 +1,4 @@
-import { htmlChars, htmlDecode, phpStripTags } from "./html";
+import { decodeHtml401Entities, htmlChars, htmlDecode, phpStripTags } from "./html";
 import { safeHtml } from "./sanitize";
 
 /**
@@ -102,7 +102,9 @@ export function cleanEntryBody(body: string, format: BodyFormat, opts: { allowEx
     clean = sanitizeText(b);
   } else {
     const b = body.trim() ? body : "";
-    clean = htmlChars(stripEmptyLines(b));
+    // TextThreadEntryBody::getClean: htmlchars(html_balance(stripEmptyLines(…))). Di html_balance si
+    // replica la decodifica delle entità; la chiusura dei tag sbilanciati (DOM di libxml) no.
+    clean = htmlChars(decodeHtml401Entities(stripEmptyLines(b)));
   }
   clean = stripEmoticons(clean) || "-";
   return stripExternalImages(clean, opts.allowExternalImages);

@@ -282,7 +282,15 @@ async function ticketRecipients(ctx: WriteContext, ownerId: number, threadId: nu
     if (o) to.push({ listId: o.id, userId: o.id, name: nameOf(o.name, o.address ?? ""), email: o.address ?? "" });
   }
   if (w === "all" || w === "collabs") {
-    const collabs = await ctx.tx.selectFrom("thread_collaborator").select(["id", "user_id", "flags"]).where("thread_id", "=", threadId).orderBy("id").execute();
+    // Thread::getCollaborators: order_by('user__name')
+    const collabs = await ctx.tx
+      .selectFrom("thread_collaborator as c")
+      .innerJoin("user as u", "u.id", "c.user_id")
+      .select(["c.id", "c.user_id", "c.flags"])
+      .where("c.thread_id", "=", threadId)
+      .orderBy("u.name")
+      .orderBy("c.id")
+      .execute();
     for (const c of collabs) {
       if (!(c.flags & 1)) continue;
       if (whitelist?.length && !whitelist.includes(c.user_id)) continue;
@@ -297,8 +305,7 @@ function recipientsJson(r: { to: { listId: number; name: string; email: string }
   const out: EntryRecipients = {};
   for (const [k, list] of [["to", r.to], ["cc", r.cc]] as const) {
     if (!list.length) continue;
-    out[k] = {};
-    for (const c of list) out[k]![String(c.listId)] = `${c.name} <${c.email}>`;
+    out[k] = list.map((c): [string, string] => [String(c.listId), `${c.name} <${c.email}>`]);
   }
   return out;
 }

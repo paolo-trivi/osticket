@@ -3,7 +3,6 @@ import "server-only";
 import { sql } from "kysely";
 
 import { type DbOrTx } from "../../db";
-import { phpJsonEncode } from "../../format/php-json";
 import { phpTrim, sanitizeText, editorSpacing, stripEmptyLines } from "../../format/text";
 import { loadSystemEmail, type MailContact, type SystemEmail, sendMail } from "../../mail/mailer";
 import { buildTicketVars, companyVar, contactVar, entryVar, formAnswerMap, loadStaffInfo, loadUserContact, staffVar, userPersonsName } from "../../mail/objects";
@@ -14,7 +13,6 @@ import { loadAgent } from "../staff/staff";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { addTicketCollaborator } from "./collaborators";
 import { agentDisplayName, type WriteContext } from "./context";
-import { RawJson, phpAssocJson } from "./edit";
 import { mergeTypeOf } from "./merge-flags";
 import { ticketThreadId } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
@@ -76,26 +74,14 @@ async function recipientsAll(ctx: WriteContext, ownerId: number, threadId: numbe
   return out;
 }
 
+/** MailingList::getEmailAddresses: liste ordinate come il PHP (proprietario in to, collaboratori in cc) */
 function recipientsJson(list: Contact[]): EntryRecipients {
   const out: EntryRecipients = {};
-  for (const c of list) {
-    const k = c.kind === "owner" ? "to" : "cc";
-    (out[k] ??= {})[String(c.listId)] = `${c.name} <${c.email}>`;
-  }
-  return out;
-}
-
-/**
- * json_encode di MailingList::getEmailAddresses con l'ordine di inserimento delle chiavi numeriche
- * (gli oggetti JS ordinano le chiavi intere in modo crescente).
- */
-function recipientsOrderedJson(list: Contact[]): string {
-  const groups: [string, unknown][] = [];
   for (const k of ["to", "cc"] as const) {
     const items = list.filter((c) => (c.kind === "owner" ? "to" : "cc") === k);
-    if (items.length) groups.push([k, new RawJson(phpAssocJson(items.map((c) => [String(c.listId), `${c.name} <${c.email}>`])))]);
+    if (items.length) out[k] = items.map((c): [string, string] => [String(c.listId), `${c.name} <${c.email}>`]);
   }
-  return phpAssocJson(groups);
+  return out;
 }
 
 /**
@@ -154,14 +140,9 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
 
   // Destinatari attivi tranne il poster (messaggi dal portale)
   let recipients: EntryRecipients | undefined;
-  let orderedRecipients: string | null = null;
   if (origin.toLowerCase() !== "email") {
-    const list = (await recipientsAll(ctx, rec.get("user_id"), threadId)).filter((c) => c.userId !== input.userId);
-    const json = recipientsJson(list);
-    if (Object.keys(json).length) {
-      recipients = json;
-      orderedRecipients = recipientsOrderedJson(list);
-    }
+    const json = recipientsJson((await recipientsAll(ctx, rec.get("user_id"), threadId)).filter((c) => c.userId !== input.userId));
+    if (Object.keys(json).length) recipients = json;
   }
 
   const entry = await createThreadEntry(tx, cfg, {
@@ -177,9 +158,6 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
     files: input.files?.length ? input.files : undefined,
     editorSpacing: true,
   });
-  if (orderedRecipients && orderedRecipients !== phpJsonEncode(recipients)) {
-    await tx.updateTable("thread_entry").set({ recipients: orderedRecipients }).where("id", "=", entry.id).execute();
-  }
   // Thread::addMessage
   await touchThread(tx, threadId, "lastmessage");
 

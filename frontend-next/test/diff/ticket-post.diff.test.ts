@@ -73,6 +73,20 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
     expect(tsMails).toEqual(phpMails);
   });
 
+  it("risposta a tutti con più collaboratori: destinatari ordinati per nome come il PHP", async () => {
+    // collaboratori inseriti in ordine di id opposto al nome (Marco Gallo, Luca Ferrari, Elena Marino)
+    for (const uid of [9, 3, 6]) {
+      await execBoth(
+        `INSERT INTO {p}thread_collaborator (flags, thread_id, user_id, role, created, updated) SELECT 1, id, ${uid}, 'M', NOW(), NOW() FROM {p}thread WHERE object_type='T' AND object_id=40`,
+      );
+    }
+    const args = { agent: 2, ticket: 40, response: "<p>Aggiorniamo tutti i colleghi in copia.</p>" };
+    const phpMails = await mailsOf(() => runPhp({ op: "ticket.reply", args }), 1);
+    const tsMails = await mailsOf(() => asAgent(2, (ctx) => postReply(ctx, { ticketId: 40, response: args.response })), 1);
+    expect(await compareWorkingDatabases()).toEqual([]);
+    expect(tsMails).toEqual(phpMails);
+  });
+
   it("avvisi di nuova attività agli agenti (note.alert)", async () => {
     await execBoth(
       "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key` IN ('note_alert_active','note_alert_assigned','note_alert_laststaff','note_alert_dept_manager')",
