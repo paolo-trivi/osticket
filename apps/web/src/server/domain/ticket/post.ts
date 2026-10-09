@@ -12,7 +12,7 @@ import { loadAgent } from "../staff/staff";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { TicketRecord } from "./record";
-import { DeptFlag, lastRespondentId, loadStatus, setTicketStatus, stateOf } from "./status";
+import { DeptFlag, isSelectableStatus, lastRespondentId, loadStatus, setTicketStatus, stateOf } from "./status";
 
 /** Thread del ticket */
 export async function ticketThreadId(executor: DbOrTx, ticketId: number): Promise<number> {
@@ -202,7 +202,8 @@ export async function postNote(ctx: WriteContext, input: PostNoteInput): Promise
   });
 
   const assigneeId = rec.get("staff_id");
-  if (input.statusId && (await loadStatus(tx, input.statusId))) {
+  // note_status_id: solo stati della select (abilitati, open/closed), vedi isSelectableStatus
+  if (input.statusId && isSelectableStatus(await loadStatus(tx, input.statusId))) {
     await setTicketStatus(ctx, rec, threadId, input.statusId, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
   }
   await onActivity(ctx, rec, threadId, { activity: input.activity ?? "New Internal Note", entry: { id: entry.id, staff_id: agent?.id ?? 0 }, assigneeId }, input.alert ?? true);
@@ -260,7 +261,8 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
   await touchThread(tx, threadId, "lastresponse");
 
   const assigneeId = rec.get("staff_id");
-  if (input.statusId && input.statusId !== rec.get("status_id") && (await loadStatus(tx, input.statusId))) {
+  // reply_status_id: solo stati della select (abilitati, open/closed), vedi isSelectableStatus
+  if (input.statusId && input.statusId !== rec.get("status_id") && isSelectableStatus(await loadStatus(tx, input.statusId))) {
     await setTicketStatus(ctx, rec, threadId, input.statusId, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
   }
 

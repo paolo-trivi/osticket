@@ -40,12 +40,18 @@ export interface PlotData {
   series: { name: string; data: number[] }[];
 }
 
-/** getPlotData(): eventi per giorno e per tipo. */
-export async function plotData(range: ReportRange, executor: DbOrTx = db()): Promise<PlotData> {
+/**
+ * getPlotData(): eventi per giorno e per tipo.
+ * Differenza voluta (permessi): il PHP conta gli eventi di tutti i reparti, anche quelli che l'agente
+ * non vede; qui solo i reparti dell'agente, lo stesso perimetro delle tabelle (getTabularData).
+ */
+export async function plotData(range: ReportRange, agent: Agent, executor: DbOrTx = db()): Promise<PlotData> {
+  const depts = agent.deptIds.length ? [...agent.deptIds] : [0];
   const { rows } = await sql<{ name: string; day: string; n: number }>`
     SELECT H.name, DATE_FORMAT(E.timestamp, '%Y-%m-%d') AS day, COUNT(DISTINCT E.id) AS n
     FROM ${table("thread_event")} E LEFT JOIN ${table("event")} H ON (E.event_id = H.id)
     WHERE E.timestamp BETWEEN ${range.start} AND ${range.stop} AND NOT E.annulled AND E.thread_type = 'T'
+      AND E.dept_id IN (${sql.join(depts)})
     GROUP BY E.event_id, day ORDER BY day, H.name`.execute(executor);
   const days = [...new Set(rows.map((r) => r.day))];
   const names = [...new Set(rows.map((r) => r.name))].sort();

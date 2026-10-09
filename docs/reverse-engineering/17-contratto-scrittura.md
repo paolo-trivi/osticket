@@ -448,6 +448,19 @@ Dopo l'azione:
 - **Messaggi dopo il redirect alla lista**: il PHP li mostra tramite `$_SESSION['::sysmsgs']`. Next non ha messaggi
   flash: l'esito compare solo per le azioni che restano sulla vista.
 
+- **Solo stati sceglibili** (`isSelectableStatus` in `ticket/status.ts`): il PHP lato server accetta qualsiasi
+  `status_id` (`TicketStatus::lookup`) nel menu "Cambia stato", nella risposta (`reply_status_id`), nella nota
+  (`note_status_id`), nell'azione di massa e nel nuovo ticket dell'agente. Con una richiesta costruita a mano un agente
+  poteva impostare uno stato che l'amministratore ha disabilitato. Qui valgono solo gli stati delle select del PHP
+  (abilitati, *open* o *closed*; lo stato *deleted* resta per l'eliminazione): il menu e la massa rispondono
+  `invalid_status`, risposta e nota vengono salvate senza cambiare stato, il nuovo ticket usa lo stato dell'argomento
+  o quello predefinito. Test: `ticket-actions` e `ticket-post` ("stato disabilitato").
+- **Chiusura con un campo obbligatorio disabilitato**: in `Ticket::getMissingRequiredFields` l'array di criteri
+  `flags__hasbit` sovrascrive `FLAG_ENABLED`, quindi un campo "obbligatorio in chiusura" ma disabilitato (che l'agente
+  non vede e non può compilare) impediva per sempre la chiusura. Qui contano solo i campi abilitati. È un difetto
+  funzionale, non di permessi; il ticket chiuso ha le stesse righe di una chiusura normale. Test: `ticket-actions`
+  ("campo obbligatorio disabilitato").
+
 #### Stranezze PHP replicate (annotate nel codice)
 - `est_duedate` non ricalcolata quando il trasferimento cambia lo SLA.
 - Due salvataggi separati (e due `updated`) nel rilascio di agente e team.
@@ -605,6 +618,7 @@ ticket della coda con visibilità e ordinamento della lista **senza** filtro sui
 Il PHP prepara il file in background e lo invia per email se non scaricato: qui il download è immediato.
 
 #### Differenze volute (permessi) rispetto al PHP
+- **Cambio stato di massa**: solo stati abilitati *open*/*closed* (o *deleted*), come nel menu: vedi area "actions", "Solo stati sceglibili".
 - Collaboratori: gli endpoint ajax controllano solo l'accesso al ticket; qui serve `ticket.reply` o `ticket.edit`
   (come la vista). La riattivazione `cid` è limitata ai collaboratori del thread.
 - Merge/link: niente scorciatoia "thread con un referral qualsiasi" (`isReferred()`), permessi verificati su tutti i

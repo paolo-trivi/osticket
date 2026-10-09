@@ -12,7 +12,7 @@ import { deleteTicket } from "./delete";
 import { mergeTypeOf, isParentFlags, ticketThread } from "./merge-flags";
 import { logNote, ticketThreadId } from "./post";
 import { TicketRecord } from "./record";
-import { loadStatus, setTicketStatus } from "./status";
+import { isSelectableStatus, loadStatus, setTicketStatus } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { transferTicket } from "./transfer";
 
@@ -155,6 +155,8 @@ export async function massChangeStatus(ctx: WriteContext, input: { ticketIds: nu
   if (!input.ticketIds.length) return { error: "select_tickets" };
   const status = await loadStatus(tx, input.statusId);
   if (!status) return { error: "invalid_status" };
+  // Solo stati del menu (abilitati, open/closed) o l'eliminazione: differenza voluta, vedi isSelectableStatus
+  if (status.state.toLowerCase() !== "deleted" && !isSelectableStatus(status)) return { error: "invalid_status" };
   switch (status.state.toLowerCase()) {
     case "open":
       if (!agent.hasPermInAnyRole(TicketPerm.CLOSE) && !agent.hasPermInAnyRole(TicketPerm.CREATE)) return { error: "denied" };

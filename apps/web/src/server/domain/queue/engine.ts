@@ -7,7 +7,7 @@ import { db, table, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
 import type { Agent } from "../staff/staff";
 import { baseFields, cdataField, criterionSql, resolveTables, type Criterion, type FieldDef, type JoinKey } from "./fields";
-import { keywordTicketIds } from "./search";
+import { keywordRelevanceSql, keywordTicketIds } from "./search";
 
 /**
  * Code dei ticket (CustomQueue/SavedQueue di include/class.queue.php e class.search.php):
@@ -478,40 +478,35 @@ export async function listQueueTickets(
     conds.push(sql`(T.ticket_pid IS NULL OR (T.flags & 8) != 0)`);
   }
 
-  let keywordIds: number[] | null = null;
-  if (crit.keywords !== null) {
-    keywordIds = await keywordTicketIds(crit.keywords, executor);
-    if (keywordIds !== null) conds.push(keywordIds.length ? sql`T.ticket_id IN (${sql.join(keywordIds)})` : sql`(0)`);
-  }
+  // Full-text come tabella derivata (keywordRelevanceSql): visibilità e paginazione su tutti i risultati
+  const keywords = crit.keywords !== null ? keywordRelevanceSql(crit.keywords) : null;
+  const kwJoin = keywords ? sql`JOIN ${keywords} KW ON (KW.ticket_id = T.ticket_id)` : sql``;
 
-  const order = keywordIds?.length
-    ? [sql`FIELD(T.ticket_id, ${sql.join(keywordIds)})`]
-    : orderSql(await queueOrder(queue, opts, fields, joins, executor));
+  const keys = keywords ? [] : await queueOrder(queue, opts, fields, joins, executor);
+  // Ordinamento stabile: T.ticket_id come ultima chiave (nella direzione della prima). Il PHP ordina solo per
+  // le chiavi della coda, quindi a pari merito un ticket poteva ripetersi o mancare tra una pagina e l'altra.
+  const order = keywords
+    ? [sql`MAX(KW.relevance) DESC`, sql`T.ticket_id DESC`]
+    : [...orderSql(keys), sql`T.ticket_id ${sql.raw(keys[0]?.desc ? "DESC" : "ASC")}`];
   const page = Math.max(1, opts.page ?? 1);
   const offset = (page - 1) * opts.pageSize;
+  const where = sql.join(conds, sql` AND `);
 
   const { rows } = await sql<{ ticket_id: number }>`
-    SELECT T.ticket_id FROM ${table("ticket")} T ${joinsFor(joins)}
-    WHERE ${sql.join(conds, sql` AND `)}
+    SELECT T.ticket_id FROM ${table("ticket")} T ${joinsFor(joins)} ${kwJoin}
+    WHERE ${where}
     GROUP BY T.ticket_id
     ORDER BY ${sql.join(order)}
     LIMIT ${opts.pageSize} OFFSET ${offset}`.execute(executor);
 
-  const total = crit.keywords !== null || !queue.effectiveCriteria().length ? null : await queueCount(agent, queue, fields, ctx, executor);
+  // Totale della paginazione contato con le stesse condizioni della lista. Il PHP usa il contatore della coda
+  // (SavedQueue::counts: senza archiviati e con un altro filtro sui figli dei merge), quindi pagine mancanti o
+  // vuote. I contatori della navigazione restano quelli del PHP (queueCounts).
+  const { rows: countRows } = await sql<{ n: number }>`
+    SELECT COUNT(DISTINCT T.ticket_id) AS n FROM ${table("ticket")} T ${joinsFor(joins)} ${kwJoin}
+    WHERE ${where}`.execute(executor);
+  const total = Number(countRows[0]?.n ?? 0);
   return { ids: rows.map((r) => Number(r.ticket_id)), total, page, pageSize: opts.pageSize };
-}
-
-/** Contatore di una coda: SavedQueue::counts (visibilità senza archiviati, solo thread di tipo T). */
-async function queueCount(
-  agent: Agent,
-  queue: TicketQueue,
-  fields: FieldRegistry,
-  ctx: { userTz: string },
-  executor: DbOrTx,
-): Promise<number | null> {
-  const counts = await queueCounts(agent, [queue], ctx, executor, fields);
-  const v = counts.get(queue.id);
-  return typeof v === "number" ? v : null;
 }
 
 export async function queueCounts(

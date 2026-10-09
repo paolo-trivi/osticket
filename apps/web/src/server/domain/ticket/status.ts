@@ -27,12 +27,28 @@ export interface StatusRow {
   id: number;
   name: string;
   state: string;
+  mode: number;
   properties: string | null;
 }
 
+/** TicketStatus::ENABLED (include/class.list.php: bit 0x1 di ticket_status.mode) */
+export const STATUS_ENABLED = 0x0001;
+
 export async function loadStatus(executor: DbOrTx, id: number): Promise<StatusRow | null> {
-  const r = await executor.selectFrom("ticket_status").select(["id", "name", "state", "properties"]).where("id", "=", id).executeTakeFirst();
-  return r ? { ...r, state: r.state ?? "" } : null;
+  const r = await executor.selectFrom("ticket_status").select(["id", "name", "state", "mode", "properties"]).where("id", "=", id).executeTakeFirst();
+  return r ? { ...r, state: r.state ?? "", mode: Number(r.mode ?? 0) } : null;
+}
+
+/**
+ * Stato sceglibile da un agente nei form (risposta, nota, menu "Cambia stato", azione di massa, nuovo
+ * ticket): solo stati **abilitati** con stato open o closed, come le select del PHP
+ * (`TicketStatusList::getStatuses(['states' => …])` + `isEnabled()`, ticket-view.inc.php e
+ * status-options.tmpl.php). Il PHP lato server invece accetta qualsiasi `status_id` (TicketStatus::lookup):
+ * con una richiesta costruita a mano un agente poteva impostare uno stato che l'amministratore ha
+ * disabilitato. Gli stati "archived" li rifiuta già Ticket::setStatus. Differenza voluta (permessi): doc 17 §3.
+ */
+export function isSelectableStatus(status: StatusRow | null): status is StatusRow {
+  return !!status && (status.mode & STATUS_ENABLED) !== 0 && (status.state === "open" || status.state === "closed");
 }
 
 export async function stateOf(executor: DbOrTx, row: TicketColumns): Promise<string> {
@@ -109,11 +125,14 @@ async function missingRequiredFields(executor: DbOrTx, row: TicketColumns): Prom
     const extra = phpJsonDecode<{ disable?: number[] }>(f.extra, {});
     if (Array.isArray(extra.disable)) disabled.push(...extra.disable.map(Number));
   }
-  // DynamicFormField::FLAG_CLOSE_REQUIRED = 0x0004 (l'array di criteri PHP sovrascrive FLAG_ENABLED)
+  // DynamicFormField::FLAG_CLOSE_REQUIRED = 0x0004, solo campi abilitati (FLAG_ENABLED = 0x0001).
+  // Differenza voluta: nel PHP l'array di criteri `flags__hasbit` sovrascrive FLAG_ENABLED, quindi un campo
+  // disabilitato ma "obbligatorio in chiusura" (che l'agente non può più compilare) bloccava per sempre la chiusura.
   const { rows } = await sql<{ n: number }>`SELECT COUNT(DISTINCT V.field_id) AS n FROM ${table("form_entry")} E
     JOIN ${table("form_entry_values")} V ON (V.entry_id = E.id)
     JOIN ${table("form_field")} F ON (F.id = V.field_id)
-    WHERE E.object_type = 'T' AND E.object_id = ${row.ticket_id} AND (F.flags & ${0x0004}) != 0 AND V.value IS NULL
+    WHERE E.object_type = 'T' AND E.object_id = ${row.ticket_id} AND (F.flags & ${0x0004}) != 0 AND (F.flags & ${0x0001}) != 0
+      AND V.value IS NULL
     ${disabled.length ? sql`AND V.field_id NOT IN (${sql.join(disabled)})` : sql``}`.execute(executor);
   return Number(rows[0]?.n ?? 0);
 }

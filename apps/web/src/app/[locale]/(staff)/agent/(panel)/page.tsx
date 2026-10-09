@@ -32,7 +32,7 @@ export default async function AgentDashboardPage({
   const group = sp.group === "topic" || sp.group === "staff" ? sp.group : "dept";
   const range = reportRange(sp.start, period, tz);
 
-  const [{ top, counts, all }, plot, table] = await Promise.all([agentQueueNav(agent), plotData(range), tabularData(group, agent, range)]);
+  const [{ top, counts, all }, plot, table] = await Promise.all([agentQueueNav(agent), plotData(range, agent), tabularData(group, agent, range)]);
   const kpi = (id: number) => (typeof counts.get(id) === "number" ? (counts.get(id) as number) : 0);
   const cards = [
     { label: t("kpi.open"), value: kpi(1), href: "/agent/tickets?queue=1" },

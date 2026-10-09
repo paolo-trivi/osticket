@@ -144,6 +144,7 @@ ticket della coda con visibilità e ordinamento della lista **senza** filtro sui
 Il PHP prepara il file in background e lo invia per email se non scaricato: qui il download è immediato.
 
 ## Differenze volute (permessi) rispetto al PHP
+- **Cambio stato di massa**: solo stati abilitati *open*/*closed* (o *deleted*), come nel menu: vedi area "actions", "Solo stati sceglibili".
 - Collaboratori: gli endpoint ajax controllano solo l'accesso al ticket; qui serve `ticket.reply` o `ticket.edit`
   (come la vista). La riattivazione `cid` è limitata ai collaboratori del thread.
 - Merge/link: niente scorciatoia "thread con un referral qualsiasi" (`isReferred()`), permessi verificati su tutti i

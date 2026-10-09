@@ -9,7 +9,7 @@ import { createThreadEntry } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { logNote, postNote, ticketThreadId } from "./post";
 import { TicketRecord } from "./record";
-import { isCloseable, loadStatus, roleOnRow, setTicketStatus, statusIsReopenable, stateOf, type StatusRow } from "./status";
+import { isCloseable, isSelectableStatus, loadStatus, roleOnRow, setTicketStatus, statusIsReopenable, stateOf, type StatusRow } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { TicketPerm } from "../staff/staff";
 
@@ -129,6 +129,8 @@ export async function changeTicketStatus(
   if (!rec) return { error: "not_found" };
   const status = input.statusId ? await loadStatus(tx, input.statusId) : null;
   if (!status) return { error: "invalid_status" };
+  // Solo stati del menu (abilitati, open/closed) o l'eliminazione: differenza voluta, vedi isSelectableStatus
+  if (status.state.toLowerCase() !== "deleted" && !isSelectableStatus(status)) return { error: "invalid_status" };
   if (status.id === rec.get("status_id")) return { error: "already_status" };
   const role = roleOnRow(rec.row, await stateOf(tx, rec.row), agent);
   switch (status.state.toLowerCase()) {

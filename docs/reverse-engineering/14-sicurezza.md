@@ -46,6 +46,9 @@
     - Chiavi config inutilizzate (`allow_client_updates`, `show_related_tickets`, `default_task_sla_id`).
     - `getUserStats()` usa colonna `status` inesistente su `ticket` (legacy).
     - `SavedQueue::counts()` (class.search.php): la query aggregata eredita il `GROUP BY ticket_id` di `applyVisibility()` → più righe → `->one()` lancia `ObjectNotUnique` → fallback su `getTotal()` **senza agente**: i contatori delle code ignorano la visibilità (un agente di un altro reparto vede i totali di tutto l'helpdesk). La nuova app conta solo i ticket visibili.
+    - `OverviewReport::getPlotData()` (dashboard): il grafico conta gli eventi di **tutti** i reparti, mentre le tabelle filtrano per i reparti dell'agente. La nuova app filtra anche il grafico.
+    - Ricerca full-text (`MysqlSearchBackend::find`): prende i 500 risultati più rilevanti di tutto l'helpdesk **prima** di applicare la visibilità, quindi un agente con accesso limitato può non trovare ticket che vede. La nuova app applica visibilità e paginazione su tutti i risultati.
+    - Liste delle code: l'ordinamento usa solo le chiavi della coda (a pari merito un ticket può ripetersi o mancare tra le pagine) e il totale della paginazione è il contatore della coda, calcolato con condizioni diverse dalla lista. La nuova app usa `ticket_id` come ultima chiave e conta il totale con le stesse condizioni della lista; i contatori del menu restano come il PHP (ma con la visibilità).
 11. **Upload**: validazione MIME basata su estensione/`fileinfo`; nessun antivirus → integrare scansione (ClamAV) se richiesto (ambito sanitario).
 12. **Log**: `syslog` può contenere dati personali (email, IP) → policy di retention/GDPR.
 13. **Dati sanitari** (contesto ospedaliero): i ticket possono contenere dati sanitari; prevedere cifratura a riposo, audit di accesso (in osTicket l'audit è solo via plugin), minimizzazione nelle email (le notifiche includono il corpo del messaggio).

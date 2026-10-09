@@ -74,7 +74,8 @@ export default async function TicketsPage({
     if (r.staff_id && !names.has(r.staff_id)) names.set(r.staff_id, await formatAgentName(r.staff_first, r.staff_last));
   }
 
-  const total = query ? null : queue.id ? (counts.get(queue.id) ?? result.total) : result.total;
+  // Totale della lista stessa (stesse condizioni), non il contatore della coda: vedi listQueueTickets
+  const total = result.total;
   const totalNum = typeof total === "number" ? total : null;
   const totalPages = totalNum !== null ? Math.max(1, Math.ceil(totalNum / pageSize)) : rows.length < pageSize ? page : null;
 
