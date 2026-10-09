@@ -35,6 +35,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+        with:
+          # anche l'immagine di BuildKit dal mirror: il pull da Docker Hub va in 429 o in timeout
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
       - name: Login a GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
