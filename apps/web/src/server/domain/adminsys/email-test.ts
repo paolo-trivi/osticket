@@ -5,7 +5,7 @@ import { loadSystemEmail, sendMail } from "../../mail/mailer";
 import type { SaveResult } from "../admin/common";
 import { str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
-import { isValidEmail } from "../directory/forms";
+import { isValidEmail } from "../forms/validator";
 import { deleteDraftsForNamespace } from "./page";
 import { sanitizeHtml } from "./sanitize";
 

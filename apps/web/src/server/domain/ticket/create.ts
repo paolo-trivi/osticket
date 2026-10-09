@@ -26,7 +26,6 @@ import {
   FieldFlag,
   fieldToString,
   hasFlag,
-  isEmail,
   isRequiredFor,
   isVisibleTo,
   type DateFormatOptions,
@@ -34,6 +33,7 @@ import {
   type FieldErrorCode,
 } from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
+import { isEmail } from "../forms/validator";
 import { loadAgent, TicketPerm } from "../staff/staff";
 import { createThreadEntry, EntryFlag, type EntryRecipients } from "../thread/write";
 import { deleteDraftsFor, isEmailBanned } from "./collab";

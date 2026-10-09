@@ -4,7 +4,7 @@ import type { DbOrTx } from "../../db";
 import { ConfigWriter } from "../admin/config-write";
 import { isset, str, truthy, type PhpVars } from "../admin/php";
 import { validate, type Errors, type FieldRule } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { isEmail } from "../forms/validator";
 
 /**
  * Impostazioni email: scp/emailsettings.php → OsticketConfig::updateSettings con t=emails →

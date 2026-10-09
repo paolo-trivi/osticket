@@ -1,17 +1,8 @@
 import "server-only";
 
 import { NOW, type DbOrTx } from "../../db";
-import {
-  hasAnswerRow,
-  inputFor,
-  loadFormFields,
-  parseInput,
-  saveEntryAnswers,
-  toDatabase,
-  validateInput,
-  type FieldDef,
-  type FormEntry,
-} from "../directory/forms";
+import { inputFor, loadFormFields, parseInput, saveEntryAnswers, toDatabase, validateInput, type FormEntry } from "../forms/answers";
+import { hasAnswerRow, type FieldDef } from "../forms/fields";
 import { phpLooseEquals } from "../ticket/record";
 import type { PhpVars } from "./php";
 

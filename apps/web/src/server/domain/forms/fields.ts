@@ -1,18 +1,18 @@
 import "server-only";
 
-import { promises as dns } from "node:dns";
-
 import { DateTime } from "luxon";
 
 import type { ConfigNamespace } from "../../config/config";
 import { htmlChars, phpStripTags, stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { htmlSearchable, sanitizeText, searchable, stripEmoticons } from "../../format/text";
+import { isFormula, isIp, isPhone, isValidEmail, phpIsNumeric } from "./validator";
 
 /**
  * Campi dei form dinamici (include/class.forms.php + class.dynamic_forms.php): flag di visibilità,
  * configurazione con i default del tipo, parse dell'input, validazione, conversione verso il DB
- * (`form_entry_values.value` / `value_id`), testo per filtri, indice e cdata.
+ * (`form_entry_values.value` / `value_id`), testo per filtri, indice e cdata. Unica definizione dei
+ * campi per ticket, task, utenti, organizzazioni e azienda; i validatori sono in ./validator.
  */
 
 /** DynamicFormField::FLAG_* */
@@ -70,6 +70,10 @@ export function isEditableTo(f: FieldDef, who: FormAudience): boolean {
 export function isRequiredFor(f: FieldDef, who: FormAudience): boolean {
   return hasFlag(f, who === "staff" ? FieldFlag.AGENT_REQUIRED : FieldFlag.CLIENT_REQUIRED);
 }
+/** Scorciatoie per il contesto agente (directory, task, azienda). */
+export const isVisibleToStaff = (f: FieldDef) => isVisibleTo(f, "staff");
+export const isEditableToStaff = (f: FieldDef) => isEditableTo(f, "staff");
+export const isRequiredForStaff = (f: FieldDef) => isRequiredFor(f, "staff");
 /** FormField::hasData: niente dati per separatori e testo informativo */
 export function hasData(f: FieldDef): boolean {
   return f.type !== "break" && f.type !== "info";
@@ -81,6 +85,10 @@ export function isStorable(f: FieldDef): boolean {
 /** ThreadEntryField è "presentation only": il corpo diventa il primo messaggio */
 export function isPresentationOnly(f: FieldDef): boolean {
   return f.type === "thread";
+}
+/** Campo con una riga form_entry_values (DynamicFormEntry::create / saveAnswers). */
+export function hasAnswerRow(f: FieldDef): boolean {
+  return hasData(f) && isStorable(f) && !isPresentationOnly(f);
 }
 
 /** Default di getConfigurationOptions() per tipo. */
@@ -144,16 +152,27 @@ export function isIdValue(v: CleanValue): v is { id: number; label: string } {
   return !!v && typeof v === "object" && "id" in v && "label" in v && typeof (v as { id: unknown }).id === "number";
 }
 
-/** ChoiceField::getChoices per il tipo choices (righe key:value) */
-export function parseChoiceLines(text: string): Record<string, string> {
+/**
+ * ChoiceField::getChoices per il tipo choices (righe "chiave:etichetta"): `list($key, $val) =
+ * explode(':', $choice, 2)`, etichetta = chiave se `$val == null` (assente o ""), poi trim di entrambe.
+ */
+function parseChoiceLines(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of String(text ?? "").split("\n")) {
     const idx = line.indexOf(":");
-    const key = (idx >= 0 ? line.slice(0, idx) : line).trim();
-    const val = idx >= 0 ? line.slice(idx + 1).trim() : key;
-    out[key] = val === "" && idx < 0 ? key : val || key;
+    const key = idx >= 0 ? line.slice(0, idx) : line;
+    const val = idx >= 0 ? line.slice(idx + 1) : "";
+    out[key.trim()] = (val === "" ? key : val).trim();
   }
   return out;
+}
+
+/** Scelte di un campo: già risolte (liste, priorità, reparti) o dalla configurazione "choices". */
+export function fieldChoices(f: FieldDef): Record<string, string> {
+  if (f.choices) return f.choices;
+  const raw = f.config.choices;
+  if (raw && typeof raw === "object") return raw as Record<string, string>;
+  return parseChoiceLines(String(raw ?? ""));
 }
 
 /** Abbreviazioni di fuso riconosciute da strtotime/new DateTime (offset in minuti) */
@@ -270,7 +289,7 @@ export function parseField(f: FieldDef, source: FormSource, timezone = "UTC"): C
     case "bool":
       return truthy(raw);
     case "choices": {
-      const choices = f.choices ?? parseChoiceLines(String(f.config.choices ?? ""));
+      const choices = fieldChoices(f);
       const values = Array.isArray(raw) ? raw.map(String) : truthy(raw) ? [String(raw)] : [];
       const out: Record<string, string> = {};
       for (const v of values) if (v in choices) out[v] = choices[v];
@@ -319,50 +338,6 @@ export function parseField(f: FieldDef, source: FormSource, timezone = "UTC"): C
   }
 }
 
-/** Validator::is_formula */
-function isFormula(text: string): boolean {
-  return /(^[^=+@-][\s\S]*$)|(^\+\d+$)/.test(text);
-}
-
-/** Validator::is_email (Mail_RFC822): un solo indirizzo, mailbox presente, host diverso da localhost. */
-export function isEmail(email: string): boolean {
-  const m = /^\s*(?:"[^"]*"|[^\s@<>(),;:"[\]]+)@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*|\[[0-9.]+\])\s*$/.exec(email ?? "");
-  if (!m) return false;
-  return m[1].toLowerCase() !== "localhost";
-}
-
-/** Validator::is_valid_email con verify_email_addrs: record MX, altrimenti A/AAAA del dominio. */
-async function isValidEmail(email: string, cfg: ConfigNamespace): Promise<boolean> {
-  if (!isEmail(email)) return false;
-  if (!cfg.bool("verify_email_addrs")) return true;
-  const host = email.trim().split("@").pop()!.replace(/^\[|\]$/g, "");
-  try {
-    const mx = await dns.resolveMx(`${host}.`);
-    if (mx.length) return true;
-  } catch {
-    /* nessun MX */
-  }
-  let n = 0;
-  for (const fn of [dns.resolve4, dns.resolve6]) {
-    try {
-      n += (await fn(`${host}.`)).length;
-    } catch {
-      /* nessun record */
-    }
-  }
-  return n > 0;
-}
-
-function phpIsNumeric(v: string): boolean {
-  return /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(v);
-}
-
-/** Validator::is_phone */
-function isPhone(v: string): boolean {
-  const stripped = v.replace(/\(|\)|-|\.|\+|[  ]+/g, "");
-  return phpIsNumeric(stripped) && stripped.length >= 7 && stripped.length <= 16;
-}
-
 /** Messaggi di errore dei validatori (testo inglese del PHP, tradotto dalla UI tramite il codice). */
 export type FieldErrorCode = "required" | "email" | "phone" | "ip" | "number" | "regex" | "formula" | "phone_ext" | "phone_ext_missing" | "files_max" | "date_past";
 
@@ -381,9 +356,9 @@ export async function validateField(f: FieldDef, value: CleanValue, required: bo
       const v = value === "0" ? "&#48" : htmlChars(String(value));
       let validator = String(f.config.validator ?? "");
       if (!validator) validator = "formula";
-      if (validator === "email" && !(await isValidEmail(v, cfg))) errors.push("email");
+      if (validator === "email" && !(await isValidEmail(v, cfg.bool("verify_email_addrs")))) errors.push("email");
       else if (validator === "phone" && !isPhone(v)) errors.push("phone");
-      else if (validator === "ip" && !/^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-f:]+$/i.test(v.trim())) errors.push("ip");
+      else if (validator === "ip" && !isIp(v)) errors.push("ip");
       else if (validator === "number" && !phpIsNumeric(v === "&#48" ? "0" : v)) errors.push("number");
       else if (validator === "regex") {
         const m = /^(.)(.*)\1([a-z]*)$/s.exec(String(f.config.regex ?? ""));
@@ -417,7 +392,7 @@ export async function validateField(f: FieldDef, value: CleanValue, required: bo
 }
 
 /** Format::phone */
-function formatPhone(phone: string): string {
+export function formatPhone(phone: string): string {
   const stripped = phone.replace(/[^0-9]/g, "");
   if (stripped.length === 7) return stripped.replace(/([0-9]{3})([0-9]{4})/, "$1-$2");
   if (stripped.length === 10) return stripped.replace(/([0-9]{3})([0-9]{3})([0-9]{4})/, "($1) $2-$3");

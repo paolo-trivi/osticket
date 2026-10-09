@@ -10,7 +10,7 @@ import { nonce, peopleState } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { db } from "@/server/db";
-import { defaultFormOf } from "@/server/domain/directory/forms";
+import { defaultFormOf } from "@/server/domain/forms/answers";
 import { addOrgUser, createOrg, deleteOrg, massDeleteOrgs, removeOrgUsers, updateOrg, updateOrgProfile } from "@/server/domain/directory/orgs";
 import { formSource } from "@/server/domain/directory/ui";
 import { importUsers } from "@/server/domain/directory/users";

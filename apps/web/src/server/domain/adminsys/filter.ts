@@ -12,7 +12,7 @@ import { ov, pv } from "./orm-util";
 import { formatHtmlchars, intval, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import { TopicFlag } from "../admin/topic";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { isEmail } from "../forms/validator";
 import { prepareSupportedMatches } from "../filter/ticket-filter";
 
 /**

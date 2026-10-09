@@ -6,8 +6,9 @@ import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
 import { replaceSearchRow } from "../search/index-writer";
 import { FormInstance, saveFormEntry } from "../forms/entry";
-import { isEmail, type DateFormatOptions } from "../forms/fields";
+import type { DateFormatOptions } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
+import { isEmail } from "../forms/validator";
 
 /**
  * Utenti finali per la creazione dei ticket (include/class.user.php): ricerca per email,

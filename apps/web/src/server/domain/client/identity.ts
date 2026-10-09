@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { ConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
-import { isEmail } from "../forms/fields";
+import { isEmail } from "../forms/validator";
 
 /**
  * Utente del portale clienti: equivalente di EndUser / ClientSession / ClientAccount

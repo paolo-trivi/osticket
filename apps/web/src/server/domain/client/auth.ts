@@ -14,7 +14,7 @@ import { sendMail } from "../../mail/mailer";
 import { base32Decode, ticketAuthToken } from "../../mail/message-id";
 import { adminAlertMail } from "../../system/admin-alert";
 import { logSystem } from "../../system/syslog";
-import { isEmail } from "../forms/fields";
+import { isEmail } from "../forms/validator";
 import { phpAlertDate } from "../../auth/staff-auth";
 import {
   accountIsConfirmed,

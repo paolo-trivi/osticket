@@ -53,7 +53,8 @@ Convenzioni comuni:
 ## Ban list — `/admin/banlist` (scp/banlist.php)
 Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al PHP).
 - Aggiunta: `filter_rule` (filter_id, what=email, how=equal, val trim, isactive, notes sanitize,
-  created=NOW(), updated=NOW()); duplicati rifiutati.
+  created=NOW(), updated=NOW()); duplicati rifiutati. Indirizzo validato con `Validator::is_email`
+  (`forms/validator.ts`, port di `Mail_RFC822`: accetta ad es. `user@intranet` e `Nome <a@b.com>`).
 - Modifica: `FilterRule::update` (val, isactive int (default 1), notes) con `updated=NOW()` se cambia.
 - Massa: enable/disable con `UPDATE … SET isactive` (senza `updated`); delete per id del filtro.
 

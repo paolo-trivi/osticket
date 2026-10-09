@@ -14,7 +14,7 @@ import { pv } from "./orm-util";
 import { formatHtmlchars, inArray, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import { stripEmoticons } from "../../format/text";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { isEmail } from "../forms/validator";
 import { connectionErrors, connectionOf, probeMailbox, probeSmtp, type Credentials } from "./mail-probe";
 
 /**

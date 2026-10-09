@@ -1,15 +1,15 @@
 import "server-only";
 
-import { sql } from "kysely";
-
 import type { ConfigNamespace } from "../../config/config";
-import { NOW, table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
+import { cdataColumns, upsertCdata } from "./cdata";
 import {
   fieldSearchKeys,
   fieldSearchable,
   fieldToDatabase,
   fieldToString,
+  hasAnswerRow,
   hasData,
   isIdValue,
   isPresentationOnly,
@@ -156,19 +156,6 @@ export async function ensureListPropertiesForm(executor: DbOrTx, listId: number)
   return Number(res.insertId);
 }
 
-const CDATA: Record<string, { table: string; key: string }> = {
-  T: { table: "ticket__cdata", key: "ticket_id" },
-  A: { table: "task__cdata", key: "task_id" },
-  U: { table: "user__cdata", key: "user_id" },
-  O: { table: "organization__cdata", key: "org_id" },
-};
-
-async function cdataColumns(executor: DbOrTx, tableName: string): Promise<Set<string> | null> {
-  const res = await sql<Record<string, unknown>>`SHOW COLUMNS FROM ${table(tableName as `${string}__cdata`)}`.execute(executor).catch(() => null);
-  if (!res) return null;
-  return new Set(res.rows.map((r) => String(r.Field)));
-}
-
 /**
  * DynamicFormEntry::save per un'entry nuova: riga form_entry (created = updated = NOW()), una
  * risposta per ogni campo con dati memorizzabile e non "presentation only", poi l'upsert della
@@ -194,20 +181,13 @@ export async function saveFormEntry(
     .executeTakeFirstOrThrow();
   const entryId = Number(res.insertId);
 
-  const cdata = CDATA[inst.def.type];
-  const columns = cdata ? await cdataColumns(executor, cdata.table) : null;
+  const columns = await cdataColumns(executor, inst.def.type);
   for (const f of inst.fields) {
-    if (!hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+    if (!hasAnswerRow(f)) continue;
     const value = inst.effective(f);
     const db = fieldToDatabase(f, value);
     await executor.insertInto("form_entry_values").values({ entry_id: entryId, field_id: f.id, value: db.value, value_id: db.valueId }).execute();
-    if (cdata && columns) {
-      const col = f.name || `field_${f.id}`;
-      if (!columns.has(col)) continue;
-      const keys = fieldSearchKeys(f, value);
-      await sql`INSERT INTO ${table(cdata.table as `${string}__cdata`)} SET ${sql.ref(col)} = ${keys}, ${sql.ref(cdata.key)} = ${objectId}
-        ON DUPLICATE KEY UPDATE ${sql.ref(col)} = ${keys}`.execute(executor);
-    }
+    await upsertCdata(executor, inst.def.type, objectId, f, fieldSearchKeys(f, value), columns);
   }
   return entryId;
 }

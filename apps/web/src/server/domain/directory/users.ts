@@ -16,20 +16,16 @@ import {
   deleteEntries,
   entriesFor,
   entriesSearchable,
-  hasAnswerRow,
   inputFor,
-  isEditableToStaff,
-  isEmail,
-  isRequiredForStaff,
-  isVisibleToStaff,
   parseInput,
   saveEntryAnswers,
   toDatabase,
   validateInput,
   verifyEmailFields,
-  type FieldDef,
   type FormEntry,
-} from "./forms";
+} from "../forms/answers";
+import { hasAnswerRow, isEditableToStaff, isRequiredForStaff, isVisibleToStaff, type FieldDef } from "../forms/fields";
+import { isEmail } from "../forms/validator";
 
 /**
  * Utenti finali (include/class.user.php, scp/users.php, include/ajax.users.php) con le stesse righe

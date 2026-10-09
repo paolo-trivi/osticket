@@ -10,7 +10,7 @@ import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { formatHtmlchars, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { isEmail } from "../forms/validator";
 import { sanitizeHtml } from "./sanitize";
 
 /**

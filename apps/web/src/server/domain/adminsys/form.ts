@@ -6,6 +6,8 @@ import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { isset, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
+import { CDATA_FORM_TYPES } from "../forms/cdata";
+import { FieldFlag } from "../forms/fields";
 import { deleteField, fieldTemplateErrors, htmlcharsVars } from "./list";
 import { pv } from "./orm-util";
 
@@ -26,20 +28,7 @@ import { pv } from "./orm-util";
  * poi i campi hanno errori; le eliminazioni dei campi avvengono subito; i valori del POST passano
  * per Format::htmlchars con sanitize (le istruzioni vengono poi decodificate).
  */
-export const CDATA_FORM_TYPES = ["T", "A", "U", "O"];
 export const FormFlag = { DELETABLE: 0x0001, DELETED: 0x0002 } as const;
-export const FieldFlag = {
-  ENABLED: 0x00001,
-  MASK_CHANGE: 0x00010,
-  MASK_DELETE: 0x00020,
-  MASK_NAME: 0x40000,
-  CLIENT_VIEW: 0x00100,
-  CLIENT_EDIT: 0x00200,
-  CLIENT_REQUIRED: 0x00400,
-  AGENT_VIEW: 0x01000,
-  AGENT_EDIT: 0x02000,
-  AGENT_REQUIRED: 0x04000,
-} as const;
 
 const F = FieldFlag;
 /** DynamicFormField::allRequirementModes */

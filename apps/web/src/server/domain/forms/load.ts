@@ -3,7 +3,7 @@ import "server-only";
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
-import { fieldConfig, parseChoiceLines, type FieldDef, type FormAudience } from "./fields";
+import { fieldChoices, fieldConfig, type FieldDef, type FormAudience } from "./fields";
 
 /**
  * Lettura dei form dinamici dal DB (DynamicForm / DynamicFormField) con i campi ordinati per `sort`
@@ -21,7 +21,7 @@ export interface FormDef {
 const DEPT_ACTIVE = 0x0004;
 
 async function resolveChoices(executor: DbOrTx, f: FieldDef, audience: FormAudience): Promise<void> {
-  if (f.type === "choices") f.choices = parseChoiceLines(String(f.config.choices ?? ""));
+  if (f.type === "choices") f.choices = fieldChoices(f);
   else if (f.type === "priority") {
     const rows = await executor.selectFrom("ticket_priority").select(["priority_id", "priority_desc"]).orderBy("priority_urgency", "desc").execute();
     f.choices = Object.fromEntries(rows.map((r) => [String(r.priority_id), r.priority_desc]));

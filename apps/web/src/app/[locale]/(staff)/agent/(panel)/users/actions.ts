@@ -11,7 +11,7 @@ import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { db } from "@/server/db";
 import { massUserAction, registerAccount, sendUserConfirmEmail, sendUserResetEmail, updateAccount, type AccountVars, type UserMassAction } from "@/server/domain/directory/accounts";
-import { defaultFormOf } from "@/server/domain/directory/forms";
+import { defaultFormOf } from "@/server/domain/forms/answers";
 import { createOrg } from "@/server/domain/directory/orgs";
 import { formSource } from "@/server/domain/directory/ui";
 import { createUser, deleteUser, importUsers, setUserOrganization, updateUser } from "@/server/domain/directory/users";

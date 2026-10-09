@@ -12,7 +12,8 @@ import { loadStaffInfo, staffVar } from "../../mail/objects";
 import { logSystem } from "../../system/syslog";
 import { MISC_RAND_CHARS, checkPasswordPolicy, type PasswordError } from "../directory/accounts";
 import { alertOrDefaultEmail, baseUrl, loadContentPage, sendContentMail } from "../directory/content-mail";
-import { formatPhone, isValidEmail } from "../directory/forms";
+import { formatPhone } from "../forms/fields";
+import { isPhone, isValidEmail } from "../forms/validator";
 import type { WriteContext } from "../ticket/context";
 import { phpLooseEquals } from "../ticket/record";
 import { loadAgent, type Agent } from "./staff";
@@ -49,13 +50,6 @@ interface ProfileVars {
 }
 
 type ProfileResult = { ok: true } | { ok: false; error: "forbidden" | "invalid" | "not_found"; fields?: Record<string, string> };
-
-/** Validator::is_phone */
-export function isPhone(phone: string): boolean {
-  const stripped = phone.replace(/\(|\)|-|\.|\+|[  ]+/g, "");
-  const numeric = /^\s*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\s*$/.test(stripped);
-  return numeric && stripped.length >= 7 && stripped.length <= 16;
-}
 
 /** Config::updateAll sul namespace "staff.<id>": INSERT delle chiavi nuove, UPDATE di quelle cambiate. */
 async function updateStaffConfig(executor: DbOrTx, staffId: number, values: Record<string, string>): Promise<void> {

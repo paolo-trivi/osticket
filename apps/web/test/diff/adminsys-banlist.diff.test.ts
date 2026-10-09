@@ -97,6 +97,22 @@ describe("ban list: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("indirizzi validi solo per Validator::is_email (RFC 822) o solo per le vecchie regex", async () => {
+    // accettati dal PHP: dominio senza punto, "Nome <indirizzo>", host LOCALHOST maiuscolo, virgola finale
+    for (const val of ["user@intranet", "Spam Bot <bot@bad.example>", "x@LOCALHOST", "list@bad.example,"]) {
+      const vars = { do: "add", val, isactive: "1", notes: "" };
+      const r = await both(vars, (t) => addBanRule(t, vars));
+      expect(r.ts.ok).toBe(true);
+    }
+    // rifiutati dal PHP: punti consecutivi, carattere non ASCII, due indirizzi
+    for (const val of ["a..b@bad.example", "àb@bad.example", "a@bad.example, b@bad.example"]) {
+      const vars = { do: "add", val, isactive: "1", notes: "" };
+      const r = await both(vars, (t) => addBanRule(t, vars));
+      expect(r.ts.ok).toBe(false);
+    }
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("azioni di massa: disabilita, abilita, elimina (solo regole della ban list)", async () => {
     await execBoth(
       "INSERT INTO {p}filter_rule (filter_id, what, how, val, isactive, notes, created, updated) VALUES (1, 'email', 'equal', 'a@x.example', 1, '', NOW(), NOW()), (1, 'email', 'equal', 'b@x.example', 0, '', NOW(), NOW())",

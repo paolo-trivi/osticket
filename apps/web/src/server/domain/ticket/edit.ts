@@ -1,21 +1,23 @@
 import "server-only";
 
-import { sql } from "kysely";
 import { DateTime } from "luxon";
 
 import type { ConfigNamespace } from "../../config/config";
-import { NOW, table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { phpStripTags } from "../../format/html";
 import { editorSpacing, phpTrim, sanitizeText } from "../../format/text";
+import { upsertCdata } from "../forms/cdata";
 import {
+  FieldFlag,
   fieldSearchKeys,
   fieldToDatabase,
+  hasAnswerRow,
   hasData,
+  hasFlag,
   isEditableTo,
   isPresentationOnly,
   isRequiredFor,
-  isStorable,
   isVisibleTo,
   parseField,
   phpParseDateTime,
@@ -136,19 +138,6 @@ async function ticketForms(tx: DbOrTx, cfg: ConfigNamespace, ticketId: number) {
   return out;
 }
 
-/** Upsert della colonna *__cdata del campo (DynamicForm::updateDynamicDataView, Signal model.updated). */
-async function updateCdata(tx: DbOrTx, ticketId: number, f: FieldDef, clean: CleanValue): Promise<void> {
-  const col = f.name || `field_${f.id}`;
-  const res = await sql<Record<string, unknown>>`SHOW COLUMNS FROM ${table("ticket__cdata")}`.execute(tx).catch(() => null);
-  if (!res || !res.rows.some((r) => String(r.Field) === col)) {
-    // il PHP esegue comunque la INSERT: se la colonna non esiste la query fallisce senza effetti
-    return;
-  }
-  const keys = fieldSearchKeys(f, clean);
-  await sql`INSERT INTO ${table("ticket__cdata")} SET ${sql.ref(col)} = ${keys}, ticket_id = ${ticketId}
-    ON DUPLICATE KEY UPDATE ${sql.ref(col)} = ${keys}`.execute(tx);
-}
-
 /** DynamicFormEntryAnswer::save: aggiorna value/value_id se cambiano, poi la cdata. */
 async function saveAnswer(tx: DbOrTx, ticketId: number, a: Answer, clean: CleanValue): Promise<boolean> {
   const n = fieldToDatabase(a.field, clean);
@@ -164,7 +153,7 @@ async function saveAnswer(tx: DbOrTx, ticketId: number, a: Answer, clean: CleanV
     .execute();
   a.value = n.value;
   if ("value_id" in set) a.valueId = n.valueId;
-  await updateCdata(tx, ticketId, a.field, clean);
+  await upsertCdata(tx, "T", ticketId, a.field, fieldSearchKeys(a.field, clean));
   return true;
 }
 
@@ -177,7 +166,7 @@ async function addMissingAnswers(tx: DbOrTx, forms: Awaited<ReturnType<typeof ti
   for (const form of forms) {
     for (const a of form.answers) {
       const f = a.field;
-      if (a.exists || !(f.flags & 0x1) || isPresentationOnly(f) || !hasData(f) || !isStorable(f)) continue;
+      if (a.exists || !hasFlag(f, FieldFlag.ENABLED) || !hasAnswerRow(f)) continue;
       await tx.insertInto("form_entry_values").values({ entry_id: a.entryId, field_id: f.id, value: null, value_id: null }).execute();
       a.exists = true;
     }
@@ -257,7 +246,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   for (const form of forms) {
     if (!keep.includes(form.entryId)) continue;
     for (const f of form.fields) {
-      if (!hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+      if (!hasAnswerRow(f)) continue;
       const clean = parseField(f, input.vars, cfg.str("default_timezone") || "UTC");
       parsed.set(f.id, clean);
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
@@ -321,7 +310,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
     }
     for (const a of form.answers) {
       const f = a.field;
-      if (!a.exists || !hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+      if (!a.exists || !hasAnswerRow(f)) continue;
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
       await saveAnswer(tx, rec.id, a, parsed.get(f.id) ?? null);
     }

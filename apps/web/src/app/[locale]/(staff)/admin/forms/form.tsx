@@ -6,7 +6,9 @@ import { Hidden, Section, TextAreaField, TextField } from "@/components/adminsys
 import Repeater from "@/components/adminsys/Repeater";
 import Callout from "@/components/common/Callout";
 import { db } from "@/server/db";
-import { CDATA_FORM_TYPES, FIELD_TYPES, FieldFlag, REQUIREMENT_MODES, type formDetail } from "@/server/domain/adminsys/form";
+import { FIELD_TYPES, REQUIREMENT_MODES, type formDetail } from "@/server/domain/adminsys/form";
+import { CDATA_FORM_TYPES } from "@/server/domain/forms/cdata";
+import { FieldFlag } from "@/server/domain/forms/fields";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof formDetail>>>;
 

@@ -21,7 +21,7 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 | Livello | File | Contenuto |
 |---|---|---|
 | Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
-| Dominio | `src/server/domain/directory/forms.ts` | form dinamici U/O/A: entry, risposte, `*__cdata`, validazione, verifica DNS email |
+| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
 | Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
@@ -111,6 +111,12 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   azzera i contatti principali e reindicizza prima di salvare le risposte; `removeUser` non verifica l'appartenenza;
   `changePassword` con token non verifica davvero la finestra di validità (`&&` al posto di `||`); il 2FA invia il codice
   all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato → login senza 2FA.
+- **Validatori comuni** (`forms/validator.ts`, un'unica implementazione per tutte le aree): `isEmail` è il port di
+  `Mail_RFC822::parseAddressList` usato da `Validator::is_email` (prima due regex diverse fra loro e dal PHP, ad es.
+  su `a@b`, `Nome <a@b.com>`, `a..b@c.com`, `a@LOCALHOST`); `isPhone` non toglie lo spazio non separabile e
+  `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
+  `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
+  `adminsys-banlist.diff.test.ts`.
 - **Differenze**: stato 2FA e contatore dei tentativi in memoria del processo (non in `$_SESSION`); finestra del token di
   reset calcolata nel DB (il PHP interpreta l'ora del DB come UTC); traduzioni delle pagine di contenuto non gestite;
   eliminazione dei ticket di un utente (`deleteAllTickets`) non disponibile finché l'area ticketedit non espone
