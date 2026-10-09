@@ -1,9 +1,11 @@
-# osTicket Next — nuovo frontend Next.js sul database di osTicket
+# TailTicket — app web (apps/web)
 
-Interfaccia Next.js 16 (App Router, React 19, TypeScript strict, Tailwind v4, template TailAdmin brandizzato osTicket) che lavora **sullo stesso database MySQL di osTicket 1.18.4**, in contemporanea con il pannello PHP classico. Ogni scrittura produce **le stesse righe** (e le stesse email) del PHP, verificate con test differenziali PHP vs TypeScript.
+Interfaccia Next.js 16 (App Router, React 19, TypeScript strict, Tailwind v4, template TailAdmin, brand TailTicket) che lavora **sullo stesso database MySQL di osTicket 1.18.4**, in contemporanea con il pannello PHP classico. Ogni scrittura produce **le stesse righe** (e le stesse email) del PHP, verificate con test differenziali PHP vs TypeScript.
+
+Questa è l'app Next.js di **TailTicket**. Il progetto nel suo insieme è presentato nel [README principale](../../README.md).
 
 Documentazione:
-- knowledge base di osTicket: `../docs/reverse-engineering/` (doc 00–17);
+- knowledge base di osTicket: `../../docs/reverse-engineering/` (doc 00–17);
 - contratto di scrittura (righe scritte per ogni operazione): doc 17, generato anche da `docs/contract/*.md`;
 - stato del lavoro e ripartenza: `RESTART.md`; regole per chi sviluppa: `AGENTS.md`, `docs/parallel-brief.md`.
 
@@ -87,33 +89,14 @@ I test differenziali clonano il DB di sviluppo, eseguono la stessa operazione co
 
 ## Deploy
 
-### Docker
+Lo stack completo (TailTicket + osTicket classico con cron + MariaDB + Caddy con HTTPS) si avvia con un comando dalla cartella [`deploy/`](../../deploy/README.md) del repository: `./tailticket up`. La stessa guida spiega la modalità "attach" verso un osTicket esistente, backup e aggiornamenti.
+
+Solo l'immagine di questa app:
 ```bash
-docker build -t tailticket apps/web                       # app alla radice di un host dedicato
+docker build -t tailticket apps/web                                   # app alla radice dell'host
 docker build -t tailticket --build-arg NEXT_BASE_PATH=/app apps/web   # app sotto /app
 ```
-Variabili d'ambiente principali:
-| Variabile | Uso |
-|---|---|
-| `OST_CONFIG_PATH` | `include/ost-config.php` di osTicket, montato in sola lettura (DB, prefisso, `SECRET_SALT`) |
-| `OST_DB_HOST`, `OST_DB_*` | sovrascrivono i valori di `ost-config.php` (es. host del DB visto dal container) |
-| `OST_DB_TIMEZONE` | fuso del server MySQL (consigliato, es. `Europe/Rome`) |
-| `APP_SESSION_SECRET` | segreto (≥ 32 caratteri) dei cookie di sessione di Next |
-| `OST_SMTP_URL` | relay SMTP se gli account email di osTicket non hanno SMTP (altrimenti sendmail/msmtp) |
-| `OST_PHP_URL` | URL del pannello PHP (pulsante "Apri nel pannello classico") |
-| `NEXT_BASE_PATH` | (build) sotto-percorso di pubblicazione, es. `/app` |
-
-`deploy/docker-compose.yml` avvia la app su `127.0.0.1:3000` e, con il profilo `proxy`, un nginx di esempio:
-```bash
-OST_CONFIG_FILE=/var/www/osticket/include/ost-config.php APP_SESSION_SECRET=… \
-  docker compose -f deploy/docker-compose.yml --profile proxy up -d --build
-```
-
-### Reverse proxy (nginx)
-`deploy/nginx.conf` mostra la coesistenza su un unico host: `/app/…` → Next (build con `NEXT_BASE_PATH=/app`), tutto il resto → osTicket PHP invariato (scp/, portale, api/, cron). In alternativa Next può stare su un sottodominio dedicato senza base path.
-- Next va esposto **solo dietro il proxy**: l'IP del client si legge da `X-Forwarded-For`.
-- I cookie di sessione sono `Secure` in produzione: serve HTTPS.
-- Le email continuano a puntare agli URL del PHP (`scp/tickets.php`, `view.php`, `pwreset.php`…). Per far servire il portale clienti a Next, `deploy/nginx.conf` contiene i redirect (commentati) da attivare.
+Variabili principali: `OST_CONFIG_PATH` oppure `OST_DB_*` + `OST_SECRET_SALT`, `APP_SESSION_SECRET`, `OST_DB_TIMEZONE`, `OST_SMTP_URL`, `OST_PHP_URL`; per una scrittura su uno schema osTicket non verificato: `TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1` (sconsigliato, vedi [docs/compatibility.md](../../docs/compatibility.md)).
 
 ## CI
 Workflow GitHub Actions `.github/workflows/ci.yml`:

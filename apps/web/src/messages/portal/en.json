@@ -15,7 +15,7 @@
     },
     "footer": {
       "copyright": "© {year} {name}. All rights reserved.",
-      "powered": "Help desk powered by osTicket"
+      "powered": "TailTicket · based on osTicket (GPL-2.0)"
     },
     "home": {
       "title": "Support Center",

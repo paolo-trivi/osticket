@@ -18,7 +18,7 @@ export const ThemeSchema = z.object({
 export type ThemeSettings = z.infer<typeof ThemeSchema>;
 
 export const DEFAULT_THEME: ThemeSettings = {
-  primary_color: "#f68d29",
+  primary_color: "#465fff",
   mode_default: "light",
   allow_user_mode: true,
   sidebar_style: "light",
@@ -32,9 +32,9 @@ export const DEFAULT_THEME: ThemeSettings = {
 
 /** Colori predefiniti proposti nell'editor. */
 export const COLOR_PRESETS: { id: string; color: string }[] = [
+  { id: "tailticket", color: "#465fff" },
   { id: "osticket", color: "#f68d29" },
   { id: "hospital", color: "#0e7490" },
-  { id: "blue", color: "#465fff" },
   { id: "green", color: "#12b76a" },
   { id: "purple", color: "#7a5af8" },
   { id: "red", color: "#d92d20" },

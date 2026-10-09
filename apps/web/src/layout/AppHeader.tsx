@@ -1,9 +1,10 @@
 "use client";
 
+import BrandLogo from "@/components/brand/BrandLogo";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import UserMenu from "@/components/shell/UserMenu";
 import { useSidebar } from "@/context/SidebarContext";
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -64,11 +65,16 @@ export default function AppHeader({ user, searchHref, logoutAction, menuLinks = 
             </svg>
           </button>
 
+          {/* marchio visibile quando la sidebar è nascosta (mobile e tablet) */}
+          <Link href="/agent" className="xl:hidden" aria-label={t("home")}>
+            <BrandLogo height={32} />
+          </Link>
+
           <button
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
             className="z-99999 flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 xl:hidden dark:text-gray-400 dark:hover:bg-gray-800"
-            aria-label="menu"
+            aria-label={t("menu")}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="6" cy="12" r="1.5" fill="currentColor" />

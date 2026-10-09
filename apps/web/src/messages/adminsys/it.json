@@ -577,7 +577,7 @@
     },
     "system": {
       "title": "Informazioni di sistema",
-      "subtitle": "Installazione di osTicket e del frontend Next",
+      "subtitle": "Installazione di osTicket e di TailTicket",
       "server": "Server",
       "database": "Database",
       "osticketVersion": "Versione di osTicket",

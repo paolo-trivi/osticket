@@ -18,7 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const theme = await safeTheme();
   return {
     title: { default: theme.displayName, template: `%s · ${theme.displayName}` },
-    description: "osTicket — Support Ticket System",
+    description: "TailTicket — l'helpdesk moderno, compatibile con osTicket",
+    applicationName: "TailTicket",
   };
 }
 
@@ -31,7 +32,7 @@ async function safeTheme(): Promise<ResolvedTheme> {
   try {
     return await loadTheme();
   } catch {
-    return { ...DEFAULT_THEME, displayName: "osTicket", staffLogoId: 0, clientLogoId: 0, backdropId: 0 };
+    return { ...DEFAULT_THEME, displayName: "TailTicket", staffLogoId: 0, clientLogoId: 0, backdropId: 0 };
   }
 }
 

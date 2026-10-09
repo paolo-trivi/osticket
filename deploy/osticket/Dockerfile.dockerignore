@@ -1,0 +1,6 @@
+# Contesto di build = root del repo: servono solo legacy/ e deploy/osticket/
+*
+!legacy/
+!deploy/osticket/
+legacy/include/ost-config.php
+legacy/**/.git*

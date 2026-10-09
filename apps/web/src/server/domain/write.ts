@@ -3,16 +3,19 @@ import "server-only";
 import { loadConfigNamespace } from "../config/config";
 import { db } from "../db";
 import { detectDbTimezone } from "../db/time";
+import { assertWritableSchema } from "../system/schema-compat";
 import type { Agent } from "./staff/staff";
 import { staffActor, type WriteContext } from "./ticket/context";
 import type { Actor } from "./ticket/events";
 
 /**
  * Esegue un'operazione di scrittura in una transazione con il contesto dell'attore; le email e gli altri
- * effetti esterni registrati in `ctx.after` partono solo dopo il commit.
+ * effetti esterni registrati in `ctx.after` partono solo dopo il commit. Rifiuta le scritture se lo
+ * schema del DB osTicket non è tra quelli verificati (src/server/system/schema-compat.ts).
  */
 export async function runWrite<T>(who: { agent: Agent; ip: string } | { actor: Actor }, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const cfg = await loadConfigNamespace("core");
+  assertWritableSchema(cfg);
   const dbZone = await detectDbTimezone(db());
   const after: (() => Promise<void>)[] = [];
   const result = await db()

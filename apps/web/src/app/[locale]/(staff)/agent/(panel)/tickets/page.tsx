@@ -147,7 +147,7 @@ export default async function TicketsPage({
           {totalNum !== null && <span className="ms-2 text-base font-normal text-gray-500">({totalNum})</span>}
         </h2>
         {sorts.length > 0 && (
-          <form action="/agent/tickets" className="flex items-center gap-2 text-sm">
+          <form action="/agent/tickets" className="flex w-full flex-wrap items-center gap-2 text-sm sm:w-auto">
             {query ? <input type="hidden" name="q" value={query} /> : <input type="hidden" name="queue" value={queue.id} />}
             <label htmlFor="sort" className="text-gray-500">
               {t("sortBy")}
@@ -156,7 +156,7 @@ export default async function TicketsPage({
               id="sort"
               name="sort"
               defaultValue={sp.sort?.startsWith("qs-") ? sp.sort : `qs-${queue.defaultSortId() ?? ""}`}
-              className="h-9 rounded-lg border border-gray-200 bg-transparent px-2 text-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-gray-200 bg-transparent px-2 text-sm sm:flex-none dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
             >
               {sorts.map((s) => (
                 <option key={s.id} value={`qs-${s.id}`}>
@@ -176,7 +176,35 @@ export default async function TicketsPage({
       {/* Area "ticketedit": azioni di massa sui ticket selezionati ed export CSV della coda */}
       <TicketMassBar agent={agent} queue={queue.id ? queue : null} sort={sp.sort} dir={sp.dir} />
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
+      {/* Mobile: una scheda per ticket con tutte le colonne della coda */}
+      <ul className="space-y-3 md:hidden">
+        {rows.length === 0 && (
+          <li className="rounded-2xl border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-800 dark:bg-white/3 dark:text-gray-400">
+            {t("empty")}
+          </li>
+        )}
+        {rows.map((r) => {
+          const staff = names.get(r.staff_id) ?? "";
+          const assignee = staff || r.team_name || "";
+          return (
+            <li key={r.ticket_id} className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
+              <input type="checkbox" data-mass-tid value={r.ticket_id} aria-label={`#${r.number}`} className="mt-1 size-4 shrink-0 accent-brand-500" />
+              <dl className="grid min-w-0 flex-1 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+                {columns.map((c) => (
+                  <div key={c.id} className="contents">
+                    <dt className="text-theme-xs text-gray-500 uppercase dark:text-gray-400">{tq.has(c.heading) ? tq(c.heading) : c.heading}</dt>
+                    <dd className="min-w-0 break-words text-gray-700 dark:text-gray-300">
+                      <TicketCell column={c} row={r} tz={tz} locale={locale} assigneeName={assignee} staffName={staff} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-2xl border border-gray-200 bg-white md:block dark:border-gray-800 dark:bg-white/3">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-800">

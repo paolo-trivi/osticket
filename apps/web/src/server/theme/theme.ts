@@ -45,7 +45,7 @@ export const loadTheme = cache(async (): Promise<ResolvedTheme> => {
   }
   return {
     ...settings,
-    displayName: settings.app_name || core.str("helpdesk_title") || "osTicket",
+    displayName: settings.app_name || core.str("helpdesk_title") || "TailTicket",
     staffLogoId: settings.use_osticket_logos ? core.int("staff_logo_id") : 0,
     clientLogoId: settings.use_osticket_logos ? core.int("client_logo_id") : 0,
     backdropId: settings.use_osticket_logos ? core.int("staff_backdrop_id") : 0,

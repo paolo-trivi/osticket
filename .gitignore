@@ -6,3 +6,4 @@
 .idea/
 # configurazione locale dello stack di deploy
 deploy/.env
+deploy/backups/

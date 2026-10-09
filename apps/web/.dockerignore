@@ -3,4 +3,10 @@ node_modules
 test
 dev
 docs
+deploy
+coverage
 *.tsbuildinfo
+*.log
+.git
+.env*
+!.env.example

@@ -45,7 +45,7 @@ export function installConfig(): OstInstallConfig {
   const [host, port] = pick("OST_DB_HOST", "DBHOST", "localhost").split(":");
   const config: OstInstallConfig = {
     dbHost: host === "localhost" ? "127.0.0.1" : host,
-    dbPort: Number(process.env.OST_DB_PORT ?? port ?? 3306) || 3306,
+    dbPort: Number(process.env.OST_DB_PORT || port || 3306) || 3306,
     dbName: pick("OST_DB_NAME", "DBNAME"),
     dbUser: pick("OST_DB_USER", "DBUSER"),
     dbPass: pick("OST_DB_PASS", "DBPASS"),

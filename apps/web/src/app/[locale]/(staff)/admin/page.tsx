@@ -5,7 +5,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import InfoRow from "@/components/common/InfoRow";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import pkg from "../../../../../package.json";
 import { adminSummary } from "@/server/domain/admin/dashboard";
+import { VERIFIED_SCHEMAS } from "@/server/system/schema-compat";
 
 import { requireAdmin } from "./guard";
 
@@ -49,6 +51,7 @@ export default async function AdminHomePage({ params }: { params: Promise<{ loca
   await requireAdmin(locale);
   const t = await getTranslations("admHome");
   const s = await adminSummary();
+  const schemaVerified = VERIFIED_SCHEMAS.some((v) => v.signature === s.schema);
   const stats: { key: keyof typeof s.counts; href: string }[] = [
     { key: "openTickets", href: "/agent" },
     { key: "departments", href: "/admin/departments" },
@@ -85,8 +88,18 @@ export default async function AdminHomePage({ params }: { params: Promise<{ loca
                 </Badge>
               }
             />
-            <InfoRow label={t("version")} value="osTicket 1.18" />
-            <InfoRow label={t("schema")} value={<code className="text-theme-xs">{s.schema}</code>} />
+            <InfoRow label={t("version")} value={`TailTicket ${pkg.version} · osTicket 1.18`} />
+            <InfoRow
+              label={t("schema")}
+              value={
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <code className="text-theme-xs">{s.schema}</code>
+                  <Badge size="sm" color={schemaVerified ? "success" : "warning"}>
+                    {schemaVerified ? t("schemaVerified") : t("schemaUnverified")}
+                  </Badge>
+                </span>
+              }
+            />
             <InfoRow label={t("database")} value={s.mysql} />
             <InfoRow label={t("runtime")} value={`Node.js ${s.node}`} />
             <InfoRow label={t("agentsSummary")} value={t("agentsLine", { active: s.counts.activeAgents, total: s.counts.agents, admins: s.counts.admins })} />

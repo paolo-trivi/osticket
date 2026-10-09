@@ -48,9 +48,10 @@ function MenuButton({ label, children }: { label: string; children: (close: () =
   );
 }
 
-/** Ticket selezionati nella tabella (caselle `data-mass-tid`). */
+/** Ticket selezionati nella lista (caselle `data-mass-tid`). */
 function selectedIds(): number[] {
-  return [...document.querySelectorAll<HTMLInputElement>("input[data-mass-tid]:checked")].map((i) => Number(i.value)).filter(Boolean);
+  // la lista ha due viste (schede su mobile, tabella da md in su): stessi id, senza duplicati
+  return [...new Set([...document.querySelectorAll<HTMLInputElement>("input[data-mass-tid]:checked")].map((i) => Number(i.value)))].filter(Boolean);
 }
 
 /**

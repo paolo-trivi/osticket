@@ -15,7 +15,7 @@
     },
     "footer": {
       "copyright": "© {year} {name}. Tutti i diritti riservati.",
-      "powered": "Centro di assistenza basato su osTicket"
+      "powered": "TailTicket · basato su osTicket (GPL-2.0)"
     },
     "home": {
       "title": "Centro di assistenza",

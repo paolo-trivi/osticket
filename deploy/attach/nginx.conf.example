@@ -1,3 +1,4 @@
+# Esempio per la modalità "attach" con un nginx già esistente (alternativa a Caddy, vedi deploy/README.md).
 # Coesistenza su un unico host:
 #   /app/…  → app Next.js (build con NEXT_BASE_PATH=/app)
 #   resto   → osTicket PHP (scp/, portale clienti, api/, cron) invariato

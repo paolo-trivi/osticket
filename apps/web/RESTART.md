@@ -1,18 +1,29 @@
-# RESTART — come riprendere il lavoro su osTicket Next
+# RESTART — come riprendere il lavoro su TailTicket (apps/web)
 
 Aggiornato al 09/10/2026. Branch `claude/nextjs-frontend` → PR https://github.com/paolo-trivi/osticket/pull/1.
 I commit hanno autore **paolo-trivi** (`paolo.trivisonno@gmail.com`), **senza righe Co-Authored-By / Claude-Session** (regola fissa).
 
-Obiettivo: nuova app **Next.js** (cartella `apps/web/`, stile TailAdmin brandizzato osTicket) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di Next deve produrre **le stesse righe** (e le stesse email) del PHP.
+Obiettivo: **TailTicket**, nuova app **Next.js** (cartella `apps/web/`, base grafica TailAdmin) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di TailTicket deve produrre **le stesse righe** (e le stesse email) del PHP.
 
-**Stato: milestone M0–M6 completate.** Restano solo i limiti noti (§5) e le rifiniture elencate in §4.
+**Stato: milestone M0–M7 completate.** Restano solo i limiti noti (§5) e le rifiniture elencate in §4.
+
+Struttura del fork (dalla radice del repo):
+
+| Cartella | Contenuto |
+|---|---|
+| `apps/web/` | TailTicket (questa cartella) |
+| `legacy/` | osTicket 1.18.4 originale, intatto. Aggiornamenti con `git merge -X subtree=legacy upstream/develop` ([docs/upstream-sync.md](../../docs/upstream-sync.md)) |
+| `deploy/` | stack Docker in un comando: `./tailticket up` ([deploy/README.md](../../deploy/README.md)) |
+| `docs/` | filosofia, scope, compatibilità, architettura, brand, pagina di presentazione `docs/index.html`, knowledge base `reverse-engineering/` |
+| `.github/` | workflow `ci` (qualità + test differenziali) e `images` (immagini GHCR) |
 
 Documenti da leggere prima di toccare codice:
-1. `apps/web/README.md`: funzioni, deploy, CI, limiti noti.
-2. `apps/web/AGENTS.md`: regole del progetto.
-3. `apps/web/docs/parallel-brief.md`: convenzioni, API già pronte, come testare (brief per gli agenti).
-4. `docs/reverse-engineering/00-INDICE.md`: knowledge base di osTicket (doc 00–17).
-5. `docs/reverse-engineering/17-contratto-scrittura.md`: contratto di scrittura. La §3 è generata da `apps/web/docs/contract/*.md` (un file per area: core, actions, ticketedit, create, people, portal, admin, adminsys).
+1. `docs/philosophy.md`, `docs/scope.md`, `docs/compatibility.md`: principi, perimetro, promessa sul database.
+2. `apps/web/README.md`: funzioni, CI, limiti noti.
+3. `apps/web/AGENTS.md`: regole del progetto.
+4. `apps/web/docs/parallel-brief.md`: convenzioni, API già pronte, come testare (brief per gli agenti).
+5. `docs/reverse-engineering/00-INDICE.md`: knowledge base di osTicket (doc 00–17). I percorsi PHP citati sono relativi a `legacy/`.
+6. `docs/reverse-engineering/17-contratto-scrittura.md`: contratto di scrittura. La §3 è generata da `apps/web/docs/contract/*.md` (un file per area: core, actions, ticketedit, create, people, portal, admin, adminsys) con `npm run docs:contracts`.
 
 ---
 
@@ -26,7 +37,7 @@ service mariadb start
 
 cd apps/web
 npm ci
-OST_DEV=/home/user/ost-dev bash dev/ci-setup.sh   # DB "osticket" dalla fixture, ost-config.php, Mailpit
+OST_DEV=/home/user/ost-dev bash dev/ci-setup.sh   # copia legacy/ in ost-dev, DB "osticket" dalla fixture, ost-config.php, Mailpit
 npm run dev:services                               # MariaDB, Mailpit (SMTP 1025 / UI 8025), osTicket PHP su :8080
 cp .env.example .env.local                         # OST_CONFIG_PATH=/home/user/ost-dev/www/include/ost-config.php …
 npm run dev                                        # http://127.0.0.1:3000 (portale), /agent, /admin
@@ -51,7 +62,7 @@ Avvertenze pratiche:
 ## 2. Verifiche (da fare prima di ogni commit)
 
 ```bash
-npm run lint && npm run typecheck && npm test        # lint, tipi, unit (35 test)
+npm run lint && npm run typecheck && npm test        # lint, tipi, unit
 npm run test:diff                                    # 33 file, 308 scenari differenziali PHP vs TypeScript
 npx next build
 ```
@@ -92,7 +103,8 @@ CI GitHub Actions (`.github/workflows/ci.yml`):
 | M4 Portale clienti ("portal") | ✅ | 37 | login/registrazione/reset/ospite/token, ticket, `postMessage`, apertura, KB, profilo |
 | M5 A Admin ("admin") | ✅ | 34 | impostazioni, reparti, topic, SLA, orari, agenti, team, ruoli, dashboard |
 | M5 B Admin di sistema ("adminsys") | ✅ | 30 | email/account/template/ban list/diagnostica, filtri, form, liste, pagine, code, API key, log, sistema, plugin |
-| M6 Deploy/CI/hardening | ✅ | — | CI verde, Dockerfile, compose, nginx `/app` (+ redirect opzionali del portale), basePath, CSP con nonce |
+| M6 Deploy/CI/hardening | ✅ | — | CI verde, Dockerfile, basePath, CSP con nonce |
+| M7 Fork TailTicket | ✅ | — | `legacy/` + `apps/web/`, brand TailTicket, documentazione e presentazione, stack `deploy/` (Caddy, osTicket + cron, MariaDB, backup/update, modalità attach), guardia sulla firma dello schema (`src/server/system/schema-compat.ts`), workflow `images` |
 
 Integrazioni fatte dal coordinatore: eliminazione definitiva agganciata allo stato "deleted" e all'eliminazione utente con ticket (`deleteTicketViaDeletedStatus`), link "Task (n)" nella vista ticket, `createTicket` nel portale, allegati nel composer, date dei template come ICU (`FormattedDate`), destinatari ordinati per nome e serializzati in ordine, `htmlChars` = `Format::htmlchars`, attributi obbligatori di htmLawed nel sanitizer, cifratura SMTP ricavata da host/porta come `class.mail.php`.
 
@@ -144,10 +156,11 @@ Integrazioni fatte dal coordinatore: eliminazione definitiva agganciata allo sta
 - **Captcha del portale**: non replicato. Con `enable_captcha` attivo gli ospiti non possono aprire ticket da Next.
 - **2FA e strike**: codici e contatori sono nella memoria del processo, persi con più istanze o dopo un riavvio.
 - **Testo semplice** (rich text disattivato): la chiusura dei tag sbilanciati di `html_balance` non è replicata; la decodifica delle entità sì.
-- **IP del client**: si legge da `X-Forwarded-For`, quindi Next va esposto solo dietro il reverse proxy. Il compose lo pubblica su 127.0.0.1.
+- **IP del client**: si legge da `X-Forwarded-For`, quindi TailTicket va esposto solo dietro il reverse proxy. Nello stack `deploy/` solo Caddy pubblica porte.
 - **Cookie di sessione**: `Secure` in produzione, quindi serve HTTPS (localhost escluso). Cookie agenti e cookie clienti (`ostn_client`) sono separati.
 - **Sotto-percorso**: `NEXT_BASE_PATH=/app` in fase di build; gli URL scritti a mano passano da `withBase()` (`src/lib/base-path.ts`).
-- **Email verso il portale**: i link puntano agli URL del PHP. Per far servire il portale a Next si attivano i redirect commentati in `deploy/nginx.conf`.
+- **Email verso il portale**: i link puntano agli URL del PHP. Lo stack di `deploy/` (Caddy) reindirizza già i link del vecchio portale verso TailTicket (`TAILTICKET_CLASSIC_PORTAL`).
+- **Schema osTicket non verificato**: se `core.schema_signature` non è tra quelle in `VERIFIED_SCHEMAS` (`src/server/system/schema-compat.ts`), ogni scrittura è rifiutata (sola lettura). Per una nuova versione di osTicket: aggiornare `legacy/`, far girare i test differenziali, poi aggiungere la firma. Override solo per prove: `TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1`.
 - **Codici dei template negli URL admin**: usano il trattino (`ticket-alert`), perché i percorsi con un punto non passano dal middleware i18n.
 
 ## 6. Milestone (riassunto del piano)
@@ -158,6 +171,7 @@ Integrazioni fatte dal coordinatore: eliminazione definitiva agganciata allo sta
 - **M4** Portale clienti.
 - **M5** Area admin completa.
 - **M6** Hardening e deploy.
+- **M7** Fork TailTicket: struttura, brand, documentazione, deploy in un comando, guardia di compatibilità.
 
 Ogni milestone si chiude con:
 1. specifica in doc 17;

@@ -22,7 +22,7 @@ describe("palette del tema", () => {
     expect(css).toContain("--color-brand-500:#0e7490");
     expect(css).toContain("--radius-lg:0px");
     expect(css).toContain("font-size:15px");
-    expect(themeCss({ ...DEFAULT_THEME, primary_color: "javascript:alert(1)" })).toContain("--color-brand-500:#f68d29");
+    expect(themeCss({ ...DEFAULT_THEME, primary_color: "javascript:alert(1)" })).toContain(`--color-brand-500:${DEFAULT_THEME.primary_color}`);
   });
 
   it("lo schema rifiuta valori fuori elenco", () => {

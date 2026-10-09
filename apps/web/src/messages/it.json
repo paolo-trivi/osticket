@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "osTicket",
+    "appName": "TailTicket",
     "save": "Salva",
     "cancel": "Annulla",
     "close": "Chiudi",
@@ -44,17 +44,19 @@
     "signOut": "Esci",
     "profile": "Il mio profilo",
     "language": "Lingua",
-    "admin": "Amministratore"
+    "admin": "Amministratore",
+    "home": "Vai alla dashboard",
+    "menu": "Altre azioni"
   },
   "auth": {
     "agentLoginTitle": "Accesso agenti",
-    "agentLoginSubtitle": "Accedi con le credenziali osTicket",
+    "agentLoginSubtitle": "Accedi con il tuo account agente",
     "username": "Utente o email",
     "password": "Password",
     "signIn": "Accedi",
     "signingIn": "Accesso in corso…",
-    "sideTitle": "osTicket",
-    "sideText": "Support Ticket System — nuova interfaccia, stessi dati del pannello classico.",
+    "sideTitle": "TailTicket",
+    "sideText": "L'helpdesk moderno, compatibile con osTicket: nuova interfaccia, stessi dati del pannello classico.",
     "errors": {
       "invalid": "Credenziali non valide",
       "locked_out": "Numero massimo di tentativi raggiunto: riprova più tardi",
@@ -148,13 +150,13 @@
       "colorsDesc": "La scala completa viene generata automaticamente dal colore scelto.",
       "customColor": "Colore personalizzato",
       "presets": {
-        "osticket": "osTicket",
+        "osticket": "Arancio osTicket",
         "hospital": "Ospedaliero",
-        "blue": "Blu",
         "green": "Verde",
         "purple": "Viola",
         "red": "Rosso",
-        "slate": "Ardesia"
+        "slate": "Ardesia",
+        "tailticket": "Indaco TailTicket"
       },
       "lowContrast": "Colore molto chiaro: il testo bianco sui pulsanti potrebbe essere poco leggibile.",
       "appearance": "Aspetto",
@@ -198,7 +200,7 @@
         "client": "Logo clienti",
         "backdrop": "Sfondo accesso",
         "custom": "personalizzato",
-        "default": "predefinito osTicket"
+        "default": "predefinito TailTicket"
       },
       "logosHint": "I loghi si caricano dal pannello classico (Admin › Impostazioni › Sistema): la nuova interfaccia li usa automaticamente.",
       "openLegacy": "Apri nel pannello classico",
@@ -215,7 +217,7 @@
       "save": "Salva tema",
       "saving": "Salvataggio…",
       "discard": "Annulla modifiche",
-      "resetDefaults": "Ripristina il tema predefinito osTicket",
+      "resetDefaults": "Ripristina il tema predefinito TailTicket",
       "saved": "Tema salvato: è già attivo per tutti gli utenti.",
       "error": "Impossibile salvare il tema"
     }
@@ -504,5 +506,10 @@
     "teams": "Team",
     "roles": "Ruoli",
     "departments": "Reparti"
+  },
+  "brand": {
+    "name": "TailTicket",
+    "tagline": "L'helpdesk moderno, compatibile con osTicket",
+    "basedOn": "TailTicket · basato su osTicket (GPL-2.0)"
   }
 }

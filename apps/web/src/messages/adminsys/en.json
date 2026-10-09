@@ -577,7 +577,7 @@
     },
     "system": {
       "title": "System information",
-      "subtitle": "osTicket installation and Next frontend",
+      "subtitle": "osTicket and TailTicket installation",
       "server": "Server",
       "database": "Database",
       "osticketVersion": "osTicket version",

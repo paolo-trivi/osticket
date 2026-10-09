@@ -1,4 +1,4 @@
-# AGENTS.md — osTicket Next
+# AGENTS.md — TailTicket (apps/web)
 
 > Nuovo frontend Next.js di osTicket sullo **stesso database** del PHP · base grafica TailAdmin · Tailwind CSS v4 · next-intl
 
@@ -23,7 +23,7 @@ src/
 │   │   └── not-found.tsx
 │   └── api/branding/[kind]/      # loghi caricati in osTicket (staff/client/backdrop)
 ├── components/
-│   ├── brand/                    # BrandLogo (osTicket o logo caricato)
+│   ├── brand/                    # BrandLogo (TailTicket o logo caricato)
 │   ├── shell/                    # AppShell, UserMenu, AuthLayout
 │   ├── ui/, form/, common/       # primitive grafiche
 ├── context/                      # Sidebar, Theme (chiaro/scuro), Branding (tema configurato)

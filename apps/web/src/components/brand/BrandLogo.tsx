@@ -7,9 +7,9 @@ import { withBase } from "@/lib/base-path";
 
 /**
  * Marchio dell'helpdesk.
- * - Se in osTicket è stato caricato un logo (Admin > Impostazioni), si usa quello (/api/branding/...).
- * - Altrimenti gli asset originali osTicket (scp/images/ost-logo.png, images/favicon.png),
- *   con variante chiara/scura in base al tema.
+ * - Se in osTicket è stato caricato un logo (Admin > Impostazioni) e il tema lo consente, si usa quello
+ *   (/api/branding/...).
+ * - Altrimenti il logo TailTicket (SVG), con variante chiara/scura in base al tema.
  */
 export default function BrandLogo({
   variant = "full",
@@ -30,7 +30,7 @@ export default function BrandLogo({
 
   if (variant === "icon") {
     return (
-      <Image src={withBase("/images/logo/osticket-icon.png")} alt={name} width={height} height={height} priority className={cn("rounded-lg", className)} />
+      <Image src={withBase("/images/logo/tailticket-mark.svg")} alt={name} width={height} height={height} priority unoptimized className={className} />
     );
   }
 
@@ -42,14 +42,15 @@ export default function BrandLogo({
     );
   }
 
-  const width = Math.round((height * 395) / 132);
+  // proporzioni del logo TailTicket (docs/brand/logo.svg: 233×64)
+  const width = Math.round((height * 233) / 64);
   if (forceDark) {
-    return <Image src={withBase("/images/logo/osticket-logo-dark.png")} alt={name} width={width} height={height} priority className={className} />;
+    return <Image src={withBase("/images/logo/tailticket-logo-dark.svg")} alt={name} width={width} height={height} priority unoptimized className={className} />;
   }
   return (
     <>
-      <Image src={withBase("/images/logo/osticket-logo.png")} alt={name} width={width} height={height} priority className={cn("dark:hidden", className)} />
-      <Image src={withBase("/images/logo/osticket-logo-dark.png")} alt={name} width={width} height={height} priority className={cn("hidden dark:block", className)} />
+      <Image src={withBase("/images/logo/tailticket-logo.svg")} alt={name} width={width} height={height} priority unoptimized className={cn("dark:hidden", className)} />
+      <Image src={withBase("/images/logo/tailticket-logo-dark.svg")} alt={name} width={width} height={height} priority unoptimized className={cn("hidden dark:block", className)} />
     </>
   );
 }

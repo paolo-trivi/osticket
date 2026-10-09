@@ -449,7 +449,9 @@
       "teams": "Teams",
       "roles": "Roles",
       "departments": "Departments"
-    }
+    },
+    "schemaVerified": "verified by TailTicket",
+    "schemaUnverified": "not verified: TailTicket is read-only"
   },
   "admSettings": {
     "saved": "Settings saved.",
@@ -652,7 +654,7 @@
       "selected-logo": "Client portal logo",
       "selected-logo-scp": "Agent panel logo",
       "selected-backdrop": "Agent login backdrop",
-      "defaultLogo": "Default osTicket logo",
+      "defaultLogo": "Default logo (TailTicket; osTicket in the classic panel)",
       "defaultBackdrop": "Default backdrop"
     }
   }

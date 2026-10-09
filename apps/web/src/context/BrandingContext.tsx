@@ -19,7 +19,7 @@ interface BrandingState extends Branding {
 }
 
 const DEFAULT: Branding = {
-  displayName: "osTicket",
+  displayName: "TailTicket",
   sidebarStyle: "light",
   hasStaffLogo: false,
   hasClientLogo: false,

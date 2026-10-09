@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "osTicket",
+    "appName": "TailTicket",
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close",
@@ -44,17 +44,19 @@
     "signOut": "Sign out",
     "profile": "My profile",
     "language": "Language",
-    "admin": "Administrator"
+    "admin": "Administrator",
+    "home": "Go to dashboard",
+    "menu": "More actions"
   },
   "auth": {
     "agentLoginTitle": "Agent sign in",
-    "agentLoginSubtitle": "Use your osTicket credentials",
+    "agentLoginSubtitle": "Sign in with your agent account",
     "username": "Username or email",
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "sideTitle": "osTicket",
-    "sideText": "Support Ticket System — new interface, same data as the classic panel.",
+    "sideTitle": "TailTicket",
+    "sideText": "The modern helpdesk, fully compatible with osTicket: a new interface on the same data as the classic panel.",
     "errors": {
       "invalid": "Invalid login",
       "locked_out": "Maximum failed login attempts reached: try again later",
@@ -127,13 +129,13 @@
       "colorsDesc": "The full scale is generated automatically from the chosen color.",
       "customColor": "Custom color",
       "presets": {
-        "osticket": "osTicket",
+        "osticket": "osTicket orange",
         "hospital": "Hospital",
-        "blue": "Blue",
         "green": "Green",
         "purple": "Purple",
         "red": "Red",
-        "slate": "Slate"
+        "slate": "Slate",
+        "tailticket": "TailTicket indigo"
       },
       "lowContrast": "Very light color: white text on buttons may be hard to read.",
       "appearance": "Appearance",
@@ -177,7 +179,7 @@
         "client": "Client logo",
         "backdrop": "Sign-in backdrop",
         "custom": "custom",
-        "default": "osTicket default"
+        "default": "TailTicket default"
       },
       "logosHint": "Logos are uploaded from the classic panel (Admin › Settings › System): the new interface picks them up automatically.",
       "openLegacy": "Open in classic panel",
@@ -194,7 +196,7 @@
       "save": "Save theme",
       "saving": "Saving…",
       "discard": "Discard changes",
-      "resetDefaults": "Restore the default osTicket theme",
+      "resetDefaults": "Reset to the TailTicket default theme",
       "saved": "Theme saved: it is already active for every user.",
       "error": "Unable to save the theme"
     }
@@ -447,5 +449,10 @@
     "teams": "Teams",
     "roles": "Roles",
     "departments": "Departments"
+  },
+  "brand": {
+    "name": "TailTicket",
+    "tagline": "The modern helpdesk, fully compatible with osTicket",
+    "basedOn": "TailTicket · based on osTicket (GPL-2.0)"
   }
 }

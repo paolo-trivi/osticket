@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# TailTicket — gestione dello stack Docker in un comando.
+#   ./tailticket up            primo avvio: crea .env con segreti casuali, costruisce, installa, attende la salute
+#   ./tailticket help          tutti i comandi
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")"
+ENV_FILE=.env
+
+c_ok=$'\e[32m'; c_warn=$'\e[33m'; c_err=$'\e[31m'; c_dim=$'\e[2m'; c_off=$'\e[0m'
+[[ -t 1 ]] || { c_ok=""; c_warn=""; c_err=""; c_dim=""; c_off=""; }
+say()  { echo "${c_ok}▸${c_off} $*"; }
+warn() { echo "${c_warn}!${c_off} $*" >&2; }
+die()  { echo "${c_err}✗${c_off} $*" >&2; exit 1; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "manca '$1': installalo e riprova"; }
+need docker
+docker compose version >/dev/null 2>&1 || die "serve Docker Compose v2 (docker compose)"
+
+dc() { docker compose --env-file "$ENV_FILE" "$@"; }
+envget() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+envset() {
+  local k="$1" v="$2"
+  if grep -qE "^#? ?$k=" "$ENV_FILE"; then
+    # sostituzione letterale (i valori possono contenere / & | ecc.)
+    K="$k" V="$v" perl -i -pe 's/^#? ?\Q$ENV{K}\E=.*/$ENV{K}=$ENV{V}/' "$ENV_FILE"
+  else
+    echo "$k=$v" >>"$ENV_FILE"
+  fi
+}
+rand() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1" || true; }
+
+usage() {
+  cat <<EOF
+TailTicket — stack Docker (MariaDB + osTicket classico + TailTicket + Caddy)
+
+Uso: ./tailticket <comando> [opzioni]
+
+  init [--domain D] [--https auto|internal|off] [--attach] [--no-mail] [--force]
+                      crea .env con segreti casuali (dominio predefinito: localhost)
+  up                  avvia lo stack (esegue init se manca .env), attende la salute, stampa URL e credenziali
+  down                ferma lo stack (i dati restano nei volumi)
+  status              stato dei servizi
+  logs [servizio]     log (tailticket, osticket, cron, db, proxy)
+  backup [cartella]   archivio con dump del DB, file e .env (default: ./backups)
+  restore <archivio> [--with-env]
+                      ripristina DB e file da un backup (con --with-env anche .env)
+  update [--no-git]   backup, aggiornamento del codice (git pull) e delle immagini, riavvio
+  help                questo aiuto
+EOF
+}
+
+# --- init -----------------------------------------------------------------------------------------
+cmd_init() {
+  local domain="localhost" https="" attach=0 mail=1 force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --domain) domain="${2:?--domain richiede un valore}"; shift 2 ;;
+      --https) https="${2:?--https richiede auto|internal|off}"; shift 2 ;;
+      --attach) attach=1; shift ;;
+      --no-mail) mail=0; shift ;;
+      --mail) mail=1; shift ;;
+      --force) force=1; shift ;;
+      *) die "opzione sconosciuta: $1" ;;
+    esac
+  done
+  if [[ -f "$ENV_FILE" && $force -eq 0 ]]; then
+    warn "$ENV_FILE esiste già: lo lascio com'è (usa --force per rigenerarlo; i segreti cambierebbero!)"
+    return 0
+  fi
+  cp .env.example "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+
+  local local_host=0
+  [[ "$domain" == "localhost" || "$domain" == "127.0.0.1" ]] && local_host=1
+  [[ -z "$https" ]] && { [[ $local_host -eq 1 ]] && https=off || https=auto; }
+  case "$https" in auto|internal|off) ;; *) die "--https deve essere auto, internal oppure off" ;; esac
+
+  local http_port; http_port="$(envget TAILTICKET_HTTP_PORT)"; http_port="${http_port:-80}"
+  local url
+  if [[ "$https" == off ]]; then
+    url="http://$domain"; [[ "$http_port" != 80 ]] && url="$url:$http_port"
+    envset TAILTICKET_SITE ":80"
+  else
+    url="https://$domain"
+    envset TAILTICKET_SITE "$domain"
+  fi
+  envset TAILTICKET_DOMAIN "$domain"
+  envset TAILTICKET_HTTPS "$https"
+  envset TAILTICKET_URL "$url"
+
+  envset TAILTICKET_SECRET_SALT "$(rand 32)"
+  envset TAILTICKET_SESSION_SECRET "$(rand 48)"
+  envset TAILTICKET_DB_PASSWORD "$(rand 32)"
+  envset TAILTICKET_DB_ROOT_PASSWORD "$(rand 32)"
+  envset TAILTICKET_ADMIN_PASSWORD "Tt-$(rand 17)"
+
+  if [[ $mail -eq 0 ]]; then
+    envset COMPOSE_PROFILES ""
+    envset TAILTICKET_SMTP_URL ""
+  fi
+
+  if [[ $attach -eq 1 ]]; then
+    envset COMPOSE_FILE "compose.attach.yaml"
+    envset COMPOSE_PROFILES ""
+    envset TAILTICKET_SECRET_SALT "CHANGE_ME"
+    cat >>"$ENV_FILE" <<'EOF'
+
+# --- Modalità attach: osTicket esistente ----------------------------------------------------------
+# Indicare il DB dell'osTicket esistente (raggiungibile dal container: host.docker.internal = questa macchina)
+# e il SUO SECRET_SALT (da include/ost-config.php), oppure montare direttamente il suo ost-config.php:
+#   OST_CONFIG_FILE=/var/www/osticket/include/ost-config.php
+#   OST_CONFIG_PATH_IN_CONTAINER=/etc/osticket/ost-config.php
+TAILTICKET_DB_HOST=host.docker.internal
+TAILTICKET_DB_PORT=3306
+TAILTICKET_DB_TIMEZONE=Europe/Rome
+# URL del pannello osTicket esistente (pulsante "Apri nel pannello classico")
+TAILTICKET_CLASSIC_URL=https://helpdesk.example.com
+EOF
+    say "creato $ENV_FILE in modalità attach: completa DB e SECRET_SALT dell'osTicket esistente, poi ./tailticket up"
+    return 0
+  fi
+  say "creato $ENV_FILE (dominio $domain, HTTPS $https, URL $url)"
+}
+
+check_env() {
+  [[ -f "$ENV_FILE" ]] || die "manca $ENV_FILE: esegui ./tailticket init"
+  if grep -qE '^[A-Z_]+=CHANGE_ME$' "$ENV_FILE"; then
+    die "in $ENV_FILE restano valori CHANGE_ME: $(grep -E '^[A-Z_]+=CHANGE_ME$' "$ENV_FILE" | cut -d= -f1 | tr '\n' ' ')"
+  fi
+}
+
+attach_mode() { [[ "$(envget COMPOSE_FILE)" == "compose.attach.yaml" ]]; }
+
+wait_healthy() {
+  local svc="$1" timeout="${2:-900}" t=0 st
+  printf '%s' "${c_dim}  attendo $svc${c_off}"
+  while :; do
+    st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$(dc ps -q "$svc" 2>/dev/null | head -1)" 2>/dev/null || echo starting)"
+    [[ "$st" == healthy || "$st" == running && "$svc" == proxy ]] && { echo " ${c_ok}ok${c_off}"; return 0; }
+    [[ "$st" == unhealthy || "$st" == exited ]] && { echo; dc logs --tail=60 "$svc" >&2; die "$svc: $st"; }
+    (( t >= timeout )) && { echo; dc logs --tail=60 "$svc" >&2; die "$svc non è pronto dopo ${timeout}s"; }
+    printf '.'; sleep 5; t=$((t + 5))
+  done
+}
+
+summary() {
+  local url; url="$(envget TAILTICKET_URL)"
+  echo
+  say "TailTicket è pronto"
+  echo "  Portale clienti        $url/"
+  echo "  Pannello agenti        $url/agent"
+  echo "  Amministrazione        $url/admin"
+  if ! attach_mode; then
+    echo "  Pannello classico      $url/classic/scp/"
+    echo "  Admin iniziale         $(envget TAILTICKET_ADMIN_USER) / $(envget TAILTICKET_ADMIN_PASSWORD)  ${c_dim}(cambiala al primo accesso)${c_off}"
+    [[ "$(envget COMPOSE_PROFILES)" == *mail* ]] && echo "  Email di prova         http://127.0.0.1:$(envget TAILTICKET_MAILPIT_PORT)  ${c_dim}(Mailpit)${c_off}"
+  fi
+}
+
+# --- up / down / status / logs ----------------------------------------------------------------------
+cmd_up() {
+  [[ -f "$ENV_FILE" ]] || cmd_init
+  check_env
+  say "avvio dello stack (la prima volta la build richiede alcuni minuti)"
+  if [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]]; then dc up -d --build; else dc up -d; fi
+  if ! attach_mode; then wait_healthy db; wait_healthy osticket; fi
+  wait_healthy tailticket
+  wait_healthy proxy 60
+  summary
+}
+cmd_down() { check_env; dc down; }
+cmd_status() { check_env; dc ps; }
+cmd_logs() { check_env; dc logs -f --tail=200 "$@"; }
+
+# --- backup / restore -------------------------------------------------------------------------------
+cmd_backup() {
+  check_env
+  attach_mode && die "in modalità attach il database è quello dell'osTicket esistente: usa i suoi backup"
+  local dir="${1:-./backups}" stamp tmp
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$dir"; tmp="$(mktemp -d)"
+  say "dump del database"
+  dc exec -T db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction --routines --default-character-set=utf8mb3 "$MARIADB_DATABASE"' | gzip -9 >"$tmp/db.sql.gz"
+  say "file (plugin e allegati su disco)"
+  dc exec -T osticket tar czf - -C / var/lib/osticket var/www/html/classic/include/plugins >"$tmp/files.tar.gz"
+  # .env contiene SECRET_SALT: senza, le password cifrate degli account email non sono recuperabili
+  cp "$ENV_FILE" "$tmp/env"
+  local out="$dir/tailticket-$stamp.tar.gz"
+  (umask 077; tar czf "$out" -C "$tmp" db.sql.gz files.tar.gz env)
+  rm -rf "$tmp"
+  say "backup: $out ${c_dim}(contiene segreti: conservalo al sicuro)${c_off}"
+}
+
+cmd_restore() {
+  local archive="${1:-}" with_env=0
+  [[ -n "$archive" && -f "$archive" ]] || die "uso: ./tailticket restore <archivio.tar.gz> [--with-env]"
+  [[ "${2:-}" == "--with-env" ]] && with_env=1
+  local tmp; tmp="$(mktemp -d)"; tar xzf "$archive" -C "$tmp"
+  if [[ $with_env -eq 1 ]]; then cp "$tmp/env" "$ENV_FILE"; chmod 600 "$ENV_FILE"; say "ripristinato $ENV_FILE"; fi
+  check_env
+  if [[ "$(grep -E '^TAILTICKET_SECRET_SALT=' "$tmp/env")" != "$(grep -E '^TAILTICKET_SECRET_SALT=' "$ENV_FILE")" ]]; then
+    warn "SECRET_SALT diverso da quello del backup: le password cifrate degli account email non saranno leggibili (usa --with-env)"
+  fi
+  say "arresto dei servizi applicativi"
+  dc stop proxy tailticket cron osticket >/dev/null 2>&1 || true
+  dc up -d db; wait_healthy db
+  say "ripristino del database"
+  dc exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MARIADB_DATABASE\`; CREATE DATABASE \`$MARIADB_DATABASE\` CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci; GRANT ALL ON \`$MARIADB_DATABASE\`.* TO \`$MARIADB_USER\`@\`%\`;"'
+  gunzip -c "$tmp/db.sql.gz" | dc exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"'
+  dc up -d osticket; wait_healthy osticket
+  say "ripristino dei file"
+  dc exec -T osticket tar xzf - -C / <"$tmp/files.tar.gz"
+  rm -rf "$tmp"
+  dc up -d
+  wait_healthy tailticket; wait_healthy proxy 60
+  say "ripristino completato"
+}
+
+# --- update -----------------------------------------------------------------------------------------
+cmd_update() {
+  check_env
+  local git=1; [[ "${1:-}" == "--no-git" ]] && git=0
+  attach_mode || cmd_backup
+  if [[ $git -eq 1 ]] && git -C .. rev-parse --git-dir >/dev/null 2>&1; then
+    say "aggiornamento del codice (git pull --ff-only)"
+    git -C .. pull --ff-only || warn "git pull non riuscito: proseguo con il codice attuale"
+  fi
+  if [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]]; then dc build --pull; else dc pull; fi
+  # l'entrypoint di osTicket esegue "php manage.php upgrade" se lo schema va aggiornato
+  dc up -d
+  attach_mode || wait_healthy osticket
+  wait_healthy tailticket
+  say "aggiornamento completato"
+  warn "se osTicket ha cambiato lo schema del DB, TailTicket resta in sola lettura finché la nuova versione non è verificata (docs/compatibility.md)"
+}
+
+case "${1:-help}" in
+  init) shift; cmd_init "$@" ;;
+  up) shift; cmd_up "$@" ;;
+  down) shift; cmd_down ;;
+  status|ps) shift; cmd_status ;;
+  logs) shift; cmd_logs "$@" ;;
+  backup) shift; cmd_backup "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  update) shift; cmd_update "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

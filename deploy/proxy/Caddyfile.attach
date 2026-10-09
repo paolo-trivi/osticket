@@ -1,0 +1,22 @@
+# TailTicket in modalità "attach": solo la nuova interfaccia, davanti a un osTicket esistente.
+# Il pannello classico resta dov'è (OST_PHP_URL); qui non c'è /classic.
+{
+	servers {
+		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:private_ranges}
+	}
+}
+
+(tls_auto) {
+}
+(tls_off) {
+}
+(tls_internal) {
+	tls internal
+}
+
+{$TAILTICKET_SITE::80} {
+	import tls_{$TAILTICKET_HTTPS:off}
+	encode zstd gzip
+	header -Server
+	reverse_proxy tailticket:3000
+}

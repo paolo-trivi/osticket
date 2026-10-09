@@ -8,6 +8,7 @@ import { withBase } from "@/lib/base-path";
 
 export default function NotFound() {
   const t = useTranslations("notFound");
+  const tb = useTranslations("brand");
 
   return (
     <div className="relative z-1 flex min-h-screen flex-col items-center justify-center overflow-hidden p-6">
@@ -45,7 +46,7 @@ export default function NotFound() {
       </div>
       {/* <!-- Footer --> */}
       <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-center text-sm text-gray-500 dark:text-gray-400">
-        &copy; {new Date().getFullYear()} osTicket
+        {tb("basedOn")}
       </p>
     </div>
   );
