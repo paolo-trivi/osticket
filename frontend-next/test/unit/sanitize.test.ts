@@ -14,7 +14,7 @@ describe("safeHtml (Format::safe_html)", () => {
 
   it("blocca schemi javascript: e mantiene cid: per le immagini inline", () => {
     expect(safeHtml('<a href="javascript:alert(1)">x</a>')).toBe("<a>x</a>");
-    expect(safeHtml('<img src="cid:abc123" />')).toBe('<img src="cid:abc123" />');
+    expect(safeHtml('<img src="cid:abc123" />')).toBe('<img src="cid:abc123" alt="image" />');
   });
 
   it("pulisce stili e classi come __html_cleanup", () => {
@@ -26,5 +26,18 @@ describe("safeHtml (Format::safe_html)", () => {
   it("elimina form e iframe non consentiti", () => {
     expect(safeHtml('<form action="/x"><input name="a"></form><iframe src="https://evil.com/x"></iframe>ok')).toBe("ok");
     expect(safeHtml('<iframe src="https://www.youtube.com/embed/x"></iframe>', { iframeWhitelist: ["youtube.com"] })).toContain("<iframe");
+  });
+});
+
+// Attributi obbligatori di htmLawed: valori attesi prodotti da Format::safe_html (PHP 8.3)
+describe("safeHtml: attributi obbligatori come htmLawed", () => {
+  it.each([
+    ['<p><img src="x"></p>', '<p><img src="x" alt="image" /></p>'],
+    ['<img src="cid:abc" alt="">', '<img src="cid:abc" alt="" />'],
+    ['<img alt="a">', '<img alt="a" src="src" />'],
+    ["<bdo>t</bdo>", '<bdo dir="ltr">t</bdo>'],
+    ['<p>a<img src="y.png" width="10"/>b</p>', '<p>a<img src="y.png" width="10" alt="image" />b</p>'],
+  ])("%s", (input, expected) => {
+    expect(safeHtml(input)).toBe(expected);
   });
 });

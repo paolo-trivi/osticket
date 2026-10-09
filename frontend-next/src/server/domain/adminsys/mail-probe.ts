@@ -12,28 +12,8 @@ import nodemailer from "nodemailer";
  * prima di salvare (MailBoxAccount::setInfo, SmtpAccount::setInfo, updateBasicAuthCredentials).
  * Il recupero delle email resta al cron PHP.
  */
-export interface Connection {
-  host: string;
-  port: number;
-  ssl: "ssl" | "tls" | null;
-  protocol: string;
-}
-
-/** AccountSetting::__construct: schema ssl://, tls://, plain:// nell'host oppure porte standard. */
-export function connectionOf(host: string | null, port: string | number | null, protocol: string | null): Connection {
-  let h = String(host ?? "");
-  const p = Math.trunc(Number(port ?? 0)) || 0;
-  let ssl: Connection["ssl"] = null;
-  const m = /^(ssl|tls|plain):\/\/(.*)$/su.exec(h.toLowerCase());
-  if (m) {
-    ssl = m[1] === "plain" ? null : (m[1] as "ssl" | "tls");
-    h = m[2];
-  } else if (p) {
-    if ([465, 993, 995].includes(p)) ssl = "ssl";
-    else if (p === 587) ssl = "tls";
-  }
-  return { host: h, port: p, ssl, protocol: String(protocol ?? "").toUpperCase() };
-}
+export { connectionOf, type Connection } from "../../mail/connection";
+import type { Connection } from "../../mail/connection";
 
 /** AccountSetting::isValid: host, porta e protocollo obbligatori ("HOST Required", …). */
 export function connectionErrors(c: Connection): string[] {

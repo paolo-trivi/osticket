@@ -92,6 +92,11 @@ export function safeHtml(input: string, options: { iframeWhitelist?: string[]; d
           }
           out[k] = v;
         }
+        // attributi obbligatori di htmLawed ($requiredAttrAr): img → src, alt; bdo → dir
+        if (tagName === "img") {
+          out.src ??= "src";
+          out.alt ??= "image";
+        } else if (tagName === "bdo") out.dir ??= "ltr";
         return { tagName, attribs: out };
       },
     },

@@ -30,6 +30,14 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("nota con immagine inline: attributi obbligatori di htmLawed (alt)", async () => {
+    const args = { agent: 2, ticket: 3, note: '<p>Schema <img src="cid:schema123"> e <bdo>testo</bdo></p>', title: "Schema" };
+    const php = await runPhp({ op: "ticket.note", args });
+    const ts = await asAgent(2, (ctx) => postNote(ctx, { ticketId: 3, note: args.note, title: args.title }));
+    expect(ts).toEqual({ entryId: php.id });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("risposta su ticket già risposto: solo entry, indice e lastresponse; email identica", async () => {
     const args = { agent: 2, ticket: 3, response: "<p>Buongiorno,</p><p>abbiamo sostituito il badge.</p><p></p>" };
     const phpMails = await mailsOf(() => runPhp({ op: "ticket.reply", args }), 1);

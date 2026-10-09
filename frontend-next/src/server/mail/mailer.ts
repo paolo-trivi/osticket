@@ -13,6 +13,7 @@ import { db, type DbOrTx } from "../db";
 import { installConfig } from "../env";
 import { logSystem } from "../system/syslog";
 import { readStoredFile } from "../domain/file/storage";
+import { connectionOf } from "./connection";
 import { buildMessageId, type RecipientClass } from "./message-id";
 
 /**
@@ -235,11 +236,16 @@ export async function sendMail(m: OutgoingMail, executor: DbOrTx = db()): Promis
     try {
       const creds = await smtpCredentials(acc, executor);
       if (creds === false) throw new Error(`Credentials: ${acc.auth_bk}: credenziali non disponibili`);
+      // Smtp::getConnectionConfig: cifratura da host/porta (connectionOf); senza credenziali
+      // il PHP si collega in chiaro (nessun ssl), con credenziali ssl = implicita, tls = STARTTLS
+      const conn = connectionOf(acc.host, acc.port, "SMTP");
+      const ssl = creds ? conn.ssl : null;
       const transport = nodemailer.createTransport({
-        host: acc.host,
-        port: acc.port,
-        secure: acc.encryption === "SSL",
-        ignoreTLS: acc.encryption === "NONE",
+        host: conn.host,
+        port: conn.port,
+        secure: ssl === "ssl",
+        requireTLS: ssl === "tls",
+        ignoreTLS: ssl === null,
         auth: creds ? { user: creds.user, pass: creds.pass } : undefined,
       });
       const msg: Mail.Options = { ...message };
