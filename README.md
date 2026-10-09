@@ -1,117 +1,117 @@
-osTicket
-========
-<a href="https://osticket.com"><img height="80px" width="80px" src="images/favicon.png"
-align="left" hspace="10" vspace="6"></a>
+<p align="center">
+  <img src="docs/brand/logo.svg" alt="TailTicket" height="72">
+</p>
 
-**osTicket** is a widely-used open source support ticket system. It seamlessly
-integrates inquiries created via email, phone and web-based forms into a
-simple easy-to-use multi-user web interface. Manage, organize and archive
-all your support requests and responses in one place while providing your
-customers with accountability and responsiveness they deserve.
+<p align="center">
+  <strong>L'helpdesk moderno, compatibile con osTicket.</strong><br>
+  Una nuova interfaccia per osTicket, sullo stesso database, senza migrazioni.
+</p>
 
-How osTicket works for you
---------------------------
-  1. Users create tickets via your website, email, or phone
-  1. Incoming tickets are saved and assigned to agents
-  1. Agents help your users resolve their issues
+<p align="center">
+  <a href="docs/philosophy.md">Filosofia</a> ·
+  <a href="docs/scope.md">Scope</a> ·
+  <a href="deploy/README.md">Deploy</a> ·
+  <a href="docs/compatibility.md">Compatibilità</a> ·
+  <a href="docs/README.md">Documentazione</a> ·
+  <a href="docs/index.html">Presentazione</a>
+</p>
 
-osTicket is an attractive alternative to higher-cost and complex customer
-support systems; simple, lightweight, reliable, open source, web-based and
-easy to setup and use. The best part is, it's completely free.
+---
 
-Requirements
-------------
-  * HTTP server running Microsoft® IIS or Apache
-  * PHP version 8.2 - 8.4 (8.4 recommended)
-  * mysqli extension for PHP
-  * MySQL database version 5.5 (or greater)
+> **In short (EN)** — TailTicket is a fork of [osTicket](https://osticket.com) 1.18 that gives it a modern, responsive web interface (Next.js + Tailwind) while keeping the **same MySQL database**. Every write reproduces exactly the rows (and emails) the PHP code would produce, verified by 300+ differential tests, so the classic osTicket panel keeps working side by side and future osTicket upgrades remain possible. One command deploys the whole stack with Docker.
 
-### Recommendations
-  * ctype, fileinfo, gd, gettext, iconv, imap, intl, json, mbstring,
-    Zend OPcache, phar, xml, xml-dom, and zip extensions for PHP
-  * APCu module enabled and configured for PHP
+## Perché
 
-Deployment
-----------
-osTicket now supports bleeding-edge installations. The easiest way to
-install the software and track updates is to clone the public repository.
-Create a folder on you web server (using whatever method makes sense for
-you) and cd into it. Then clone the repository (the folder must be empty!):
+osTicket è un helpdesk solido: open source, in produzione da quasi vent'anni in migliaia di organizzazioni. Ha email in ingresso, SLA, code, form dinamici e un modello dati maturo.
 
-    git clone https://github.com/osTicket/osTicket
+L'interfaccia però è rimasta indietro:
+- pagine PHP renderizzate lato server con jQuery;
+- poco usabile da smartphone;
+- difficile da brandizzare;
+- lontana da ciò che agenti e clienti si aspettano oggi.
 
-And deploy the code into somewhere in your server's www root folder, for
-instance
+Riscrivere un helpdesk da zero significa buttare via anni di comportamenti consolidati e affrontare migrazioni rischiose. Restare su osTicket così com'è significa accettare un'esperienza datata.
 
-    cd osTicket
-    php manage.php deploy --setup /var/www/htdocs/osticket/
+## La soluzione
 
-Then you can configure your server if necessary to serve that folder, and
-visit the page and install osTicket as usual. Go ahead and even delete
-setup/ folder out of the deployment location when you’re finished. Then,
-later, you can fetch updates and deploy them (from the folder where you
-cloned the git repo into)
+TailTicket tiene il **cuore** di osTicket e rifà la **faccia**:
 
-    git pull
-    php manage.php deploy -v /var/www/htdocs/osticket/
+| | osTicket classico | TailTicket |
+|---|---|---|
+| Database | MySQL/MariaDB osTicket | **lo stesso**, senza tabelle nuove né migrazioni |
+| Logica di dominio | PHP (`legacy/`) | porting TypeScript riga per riga, verificato contro il PHP |
+| Interfaccia | PHP + jQuery | Next.js 16, React 19, Tailwind v4: responsive, tema chiaro/scuro, brandizzabile |
+| Pannello agenti, admin, portale clienti | ✅ | ✅ riscritti |
+| Cron, fetch email, API REST, plugin | ✅ | restano a osTicket, che continua a girare accanto |
 
-Upgrading
----------
-osTicket supports upgrading from 1.6-rc1 and later versions. As with any
-upgrade, strongly consider a backup of your attachment files, database, and
-osTicket codebase before embarking on an upgrade. Please review our [Upgrade
-Guide](https://docs.osticket.com/en/latest/Getting%20Started/Upgrade%20and%20Migration.html)
-or the [UPGRADING.txt file](UPGRADING.txt) for upgrade instructions.
+Le due interfacce lavorano **in contemporanea sugli stessi dati**. Si può adottare TailTicket gradualmente, tornare indietro in qualsiasi momento e continuare ad applicare gli aggiornamenti di osTicket.
 
-Help
-----
-Visit the [Documentation](https://docs.osticket.com/) or the
-[forum](https://forum.osticket.com/). And if you'd like professional help
-managing your osTicket installation,
-[commercial support](https://osticket.com/support/) is available.
+Come facciamo a fidarci? Ogni operazione di scrittura (risposta, assegnazione, creazione ticket, impostazioni admin…) è coperta da **test differenziali**:
+1. la stessa operazione viene eseguita dal codice PHP originale e da TailTicket, su due copie del DB;
+2. si confrontano **tutte le tabelle e le email** generate.
 
-Contributing
-------------
-Create your own fork of the project and use
-[git-flow](https://github.com/nvie/gitflow) to create a new feature. Once
-the feature is published in your fork, send a pull request to begin the
-conversation of integrating your new feature into osTicket.
+Oggi i test sono **308 scenari**, tutti identici. Dettagli in [docs/compatibility.md](docs/compatibility.md).
 
-### Localization
-[![Crowdin](https://badges.crowdin.net/osticket-official/localized.svg)](https://crowdin.com/project/osticket-official)
+## Cosa c'è dentro
 
-The interface for osTicket is now completely translatable. Language packs
-are available on the [download page](https://osticket.com/download). If you
-do not see your language there, join the [Crowdin](https://crowdin.com/project/osticket-official)
-project and request to have your language added. Languages which reach 100%
-translated are are significantly reviewed will be made available on the
-osTicket download page.
+- **Pannello agenti**:
+  - code e ricerca;
+  - vista ticket con risposta, note e allegati;
+  - assegnazioni, trasferimenti, referral, merge/link, azioni di massa, export CSV;
+  - task, utenti e organizzazioni, KB, profilo con 2FA.
+- **Area amministrazione**:
+  - impostazioni, reparti, help topic, SLA, orari, agenti, team, ruoli;
+  - email, template, filtri, form, liste, pagine, code, chiavi API, log, plugin;
+  - tema e brand.
+- **Portale clienti**:
+  - login, registrazione e accesso ospite;
+  - i miei ticket, apertura ticket con form dinamici, KB pubblica;
+  - responsive per l'uso da telefono.
+- **Deploy in un comando**: Docker Compose con TailTicket, osTicket classico (con cron), MariaDB e reverse proxy con HTTPS automatico.
 
-The software can also be translated in place in our [JIPT site](http://jipt.i18n.osticket.com).
-Once you have a Crowdin account, login and translate the software in your browser!
+Elenco completo e limiti noti in [docs/scope.md](docs/scope.md).
 
-Localizing strings in new code requires usage of a [few rules](setup/doc/i18n.md).
+<!-- screenshot: generati in docs/assets/screenshots/ -->
+<p align="center">
+  <img src="docs/assets/screenshots/agent-ticket.png" alt="Vista ticket nel pannello agenti" width="72%">
+  <img src="docs/assets/screenshots/portal-ticket-mobile.png" alt="Portale clienti da smartphone" width="22%">
+</p>
 
-License
--------
-osTicket is released under the GPL2 license. See the included LICENSE.txt
-file for the gory details of the General Public License.
+## Avvio rapido
 
-osTicket is supported by several magical open source projects including:
+```bash
+git clone https://github.com/paolo-trivi/tailticket tailticket
+cd tailticket/deploy
+./tailticket up
+```
 
-  * [Font-Awesome](https://fontawesome.com/)
-  * [HTMLawed](https://www.bioinformatics.org/phplabware/internal_utilities/htmLawed)
-  * [jQuery dropdown](https://labs.abeautifulsite.net/jquery-dropdown/) (Project Deleted)
-  * [jsTimezoneDetect](https://pellepim.bitbucket.org/jstz/)
-  * [laminas-mail](https://github.com/laminas/laminas-mail)
-  * [mPDF](https://github.com/mpdf/mpdf)
-  * [PasswordHash](https://www.openwall.com/phpass/)
-  * [PEAR](https://pear.php.net/package/PEAR)
-  * [PEAR/Auth_SASL](https://pear.php.net/package/Auth_SASL)
-  * [PEAR/Mail](https://pear.php.net/package/mail)
-  * [PEAR/Net_SMTP](https://pear.php.net/package/Net_SMTP)
-  * [PEAR/Net_Socket](https://pear.php.net/package/Net_Socket)
-  * [PEAR/Serivces_JSON](https://pear.php.net/package/Services_JSON)
-  * [php-gettext](https://launchpad.net/php-gettext/)
-  * [phpseclib](https://phpseclib.sourceforge.net/)
-  * [Spyc](https://github.com/mustangostang/spyc)
+Il comando:
+1. genera i segreti;
+2. costruisce le immagini;
+3. installa osTicket nel database, se è vuoto;
+4. stampa gli indirizzi e le credenziali iniziali.
+
+Per collegarsi a un osTicket già in produzione, HTTPS, email e backup: [deploy/README.md](deploy/README.md).
+
+Per sviluppare: [docs/development.md](docs/development.md).
+
+## Struttura del repository
+
+```
+├── apps/web/      TailTicket: app Next.js (pannello agenti, admin, portale clienti)
+├── legacy/        osTicket 1.18.x originale (PHP): cron, email, API, pannello classico
+├── deploy/        stack Docker Compose e script ./tailticket
+├── docs/          documentazione del fork e knowledge base di osTicket
+│   └── reverse-engineering/   analisi completa di osTicket (doc 00–17, contratto di scrittura)
+└── .github/       CI (qualità + test differenziali PHP vs TypeScript), immagini Docker
+```
+
+Perché questa struttura e come si importano gli aggiornamenti di osTicket: [docs/architecture.md](docs/architecture.md) e [docs/upstream-sync.md](docs/upstream-sync.md).
+
+## Licenza e crediti
+
+TailTicket è un'opera derivata di **osTicket** (© Enhancesoft e collaboratori) ed è distribuito con la stessa licenza **GNU GPL v2**: [LICENSE.txt](LICENSE.txt).
+
+La base grafica deriva da **TailAdmin** (licenza MIT). Dettagli e marchi: [NOTICE.md](NOTICE.md).
+
+TailTicket non è affiliato né approvato da Enhancesoft/osTicket. "osTicket" è usato solo per indicare la compatibilità.

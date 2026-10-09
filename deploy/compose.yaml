@@ -1,0 +1,124 @@
+# TailTicket — stack completo: MariaDB + osTicket classico (web e cron) + TailTicket + reverse proxy Caddy.
+# Avvio consigliato: ./tailticket up   (crea .env con segreti casuali, costruisce le immagini, attende la salute)
+# Con immagini pubblicate su GHCR basta questo file; per costruirle dal repo si aggiunge compose.build.yaml
+# (COMPOSE_FILE in .env lo fa in automatico).
+name: tailticket
+
+x-ost-env: &ost-env
+  OST_DB_HOST: db
+  OST_DB_PORT: "3306"
+  OST_DB_NAME: ${TAILTICKET_DB_NAME:-osticket}
+  OST_DB_USER: ${TAILTICKET_DB_USER:-osticket}
+  OST_DB_PASS: ${TAILTICKET_DB_PASSWORD:?impostare TAILTICKET_DB_PASSWORD (./tailticket init)}
+  OST_TABLE_PREFIX: ${TAILTICKET_TABLE_PREFIX:-ost_}
+  OST_SECRET_SALT: ${TAILTICKET_SECRET_SALT:?impostare TAILTICKET_SECRET_SALT (./tailticket init)}
+  OST_ADMIN_EMAIL: ${TAILTICKET_ADMIN_EMAIL:-admin@example.com}
+
+x-legacy: &legacy
+  image: ${TAILTICKET_LEGACY_IMAGE:-tailticket-legacy:local}
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  volumes:
+    - osticket-plugins:/var/www/html/classic/include/plugins
+    - osticket-files:/var/lib/osticket
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb3", "--collation-server=utf8mb3_general_ci", "--max-allowed-packet=64M"]
+    environment:
+      MARIADB_DATABASE: ${TAILTICKET_DB_NAME:-osticket}
+      MARIADB_USER: ${TAILTICKET_DB_USER:-osticket}
+      MARIADB_PASSWORD: ${TAILTICKET_DB_PASSWORD:?impostare TAILTICKET_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${TAILTICKET_DB_ROOT_PASSWORD:?impostare TAILTICKET_DB_ROOT_PASSWORD}
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  osticket:
+    <<: *legacy
+    command: ["web"]
+    environment:
+      <<: *ost-env
+      TAILTICKET_URL: ${TAILTICKET_URL:-http://localhost}
+      TAILTICKET_INSTALL: ${TAILTICKET_INSTALL:-auto}
+      TAILTICKET_AUTO_UPGRADE: ${TAILTICKET_AUTO_UPGRADE:-true}
+      TAILTICKET_SYNC_URL: ${TAILTICKET_SYNC_URL:-true}
+      TAILTICKET_HELPDESK_NAME: ${TAILTICKET_HELPDESK_NAME:-TailTicket}
+      TAILTICKET_SYSTEM_EMAIL: ${TAILTICKET_SYSTEM_EMAIL:-support@example.com}
+      TAILTICKET_ADMIN_USER: ${TAILTICKET_ADMIN_USER:-ttadmin}
+      TAILTICKET_ADMIN_PASSWORD: ${TAILTICKET_ADMIN_PASSWORD:-}
+      TAILTICKET_ADMIN_EMAIL: ${TAILTICKET_ADMIN_EMAIL:-admin@example.com}
+      TAILTICKET_TIMEZONE: ${TAILTICKET_TIMEZONE:-Europe/Rome}
+      SMTP_URL: ${TAILTICKET_SMTP_URL:-}
+
+  cron:
+    <<: *legacy
+    command: ["cron"]
+    environment:
+      <<: *ost-env
+      TAILTICKET_ROLE: cron
+      CRON_INTERVAL: ${TAILTICKET_CRON_INTERVAL:-300}
+      TAILTICKET_SYSTEM_EMAIL: ${TAILTICKET_SYSTEM_EMAIL:-support@example.com}
+      SMTP_URL: ${TAILTICKET_SMTP_URL:-}
+
+  tailticket:
+    image: ${TAILTICKET_IMAGE:-tailticket:local}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      osticket:
+        condition: service_healthy
+    environment:
+      <<: *ost-env
+      # il DB del container gira in UTC; il fuso di visualizzazione è quello impostato in osTicket
+      OST_DB_TIMEZONE: UTC
+      APP_SESSION_SECRET: ${TAILTICKET_SESSION_SECRET:?impostare TAILTICKET_SESSION_SECRET (./tailticket init)}
+      OST_PHP_URL: /classic
+      OST_SMTP_URL: ${TAILTICKET_SMTP_URL:-}
+      # una sola istanza: codici 2FA e tentativi falliti sono in memoria
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - tailticket
+      - osticket
+    environment:
+      TAILTICKET_SITE: ${TAILTICKET_SITE:-:80}
+      TAILTICKET_HTTPS: ${TAILTICKET_HTTPS:-off}
+      TAILTICKET_CLASSIC_PORTAL: ${TAILTICKET_CLASSIC_PORTAL:-redirect}
+      TAILTICKET_TRUSTED_PROXIES: ${TAILTICKET_TRUSTED_PROXIES:-private_ranges}
+    ports:
+      - "${TAILTICKET_HTTP_PORT:-80}:80"
+      - "${TAILTICKET_HTTPS_PORT:-443}:443"
+      - "${TAILTICKET_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Server email di prova (profilo "mail"): cattura tutte le email, interfaccia web su 127.0.0.1
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["mail"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TAILTICKET_MAILPIT_PORT:-8025}:8025"
+
+volumes:
+  db:
+  osticket-plugins:
+  osticket-files:
+  caddy-data:
+  caddy-config:

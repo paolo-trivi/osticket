@@ -1,0 +1,19 @@
+# Costruisce le immagini dal repository invece di scaricarle da GHCR.
+# Dietro un proxy TLS: TAILTICKET_BUILD_CA=/percorso/ca.crt (passata come secret, non resta nelle immagini).
+services:
+  osticket:
+    build:
+      context: ..
+      dockerfile: deploy/osticket/Dockerfile
+      secrets: [build_ca]
+  # cron usa la stessa immagine costruita per "osticket"
+  cron:
+    pull_policy: never
+  tailticket:
+    build:
+      context: ../apps/web
+      secrets: [build_ca]
+
+secrets:
+  build_ca:
+    file: ${TAILTICKET_BUILD_CA:-/dev/null}

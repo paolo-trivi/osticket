@@ -1,22 +1,9 @@
-.htaccess
-php53.cgi
-include/ost-config.php
-setup/cli/modules/importer
-*.sw[a-z]
+# Root del fork TailTicket: le regole del codice osTicket sono in legacy/.gitignore,
+# quelle della app in apps/web/.gitignore.
 .DS_Store
-.vagrant
-._.DS_Store
-Vagrantfile
-# VS Code workspace files
+*.sw[a-z]
 *.code-workspace
-
-# Staging directory used for packaging script
-stage
-
-# Ignore packaged plugins and language packs
-*.phar
-
-# Ignore mPDF temp files
-include/mpdf/ttfontdata
-include/mpdf/tmp
-nbproject/
+.idea/
+# configurazione locale dello stack di deploy
+deploy/.env
+deploy/backups/

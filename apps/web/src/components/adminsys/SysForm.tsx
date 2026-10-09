@@ -1,0 +1,71 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+import { useActionState, type ReactNode } from "react";
+
+import Button from "@/components/ui/button/Button";
+
+/** Esito di una server action dell'area adminsys (errori già tradotti, chiave = campo del POST). */
+export interface SysFormState {
+  status: "idle" | "saved" | "error";
+  errors?: Record<string, string>;
+  message?: string;
+  nonce?: number;
+}
+
+export const SYS_IDLE: SysFormState = { status: "idle" };
+
+/**
+ * Form generico delle pagine admin di sistema: i campi sono passati come children (anche server
+ * component) con i nomi del POST di scp/*.php; la server action restituisce gli errori per campo,
+ * mostrati in testa con l'etichetta del campo (`labels`).
+ */
+export default function SysForm({
+  action,
+  children,
+  labels = {},
+  submitLabel,
+  savedMessage,
+  extraButtons,
+  resetOnSave = false,
+}: {
+  action: (prev: SysFormState, form: FormData) => Promise<SysFormState>;
+  children: ReactNode;
+  labels?: Record<string, string>;
+  submitLabel?: string;
+  savedMessage?: string;
+  extraButtons?: ReactNode;
+  resetOnSave?: boolean;
+}) {
+  const t = useTranslations("asys.common");
+  const [state, formAction, pending] = useActionState(action, SYS_IDLE);
+  const errors = Object.entries(state.errors ?? {});
+  return (
+    <form action={formAction} className="space-y-6" key={resetOnSave && state.status === "saved" ? state.nonce : undefined}>
+      {state.status === "saved" && (
+        <div role="status" className="rounded-lg border border-success-500 bg-success-50 p-4 text-sm text-success-700 dark:border-success-500/30 dark:bg-success-500/15 dark:text-success-400">
+          {state.message ?? savedMessage ?? t("saved")}
+        </div>
+      )}
+      {state.status === "error" && (
+        <div role="alert" className="rounded-lg border border-error-500 bg-error-50 p-4 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+          <p>{state.message ?? t("fixErrors")}</p>
+          {errors.length > 0 && (
+            <ul className="mt-2 list-disc ps-5">
+              {errors.map(([k, v]) => (
+                <li key={k}>{labels[k] ? `${labels[k]}: ${v}` : v}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {children}
+      <div className="flex flex-wrap justify-end gap-3">
+        {extraButtons}
+        <Button type="submit" disabled={pending}>
+          {pending ? t("saving") : (submitLabel ?? t("save"))}
+        </Button>
+      </div>
+    </form>
+  );
+}

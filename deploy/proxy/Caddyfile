@@ -1,0 +1,65 @@
+# TailTicket — unico punto d'ingresso.
+#   /classic/…  → pannello classico osTicket (PHP): scp/, api/ (REST e pipe email), asset
+#   tutto il resto → TailTicket (portale clienti, /agent, /admin)
+# Variabili (da deploy/.env): TAILTICKET_SITE (indirizzo del sito Caddy), TAILTICKET_HTTPS (auto|off|internal),
+# TAILTICKET_CLASSIC_PORTAL (redirect|keep).
+{
+	servers {
+		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:private_ranges}
+	}
+}
+
+(tls_auto) {
+}
+(tls_off) {
+}
+(tls_internal) {
+	tls internal
+}
+
+# Link del vecchio portale clienti (email, segnalibri) verso le pagine di TailTicket
+(portal_redirect) {
+	@classicHome path /classic/ /classic/index.php
+	redir @classicHome / 302
+	redir /classic/view.php /view?{query} 302
+	@ticketById {
+		path /classic/tickets.php
+		query id=*
+	}
+	redir @ticketById /tickets/{query.id} 302
+	redir /classic/tickets.php /tickets 302
+	redir /classic/login.php /login?{query} 302
+	redir /classic/pwreset.php /pwreset?{query} 302
+	redir /classic/account.php /account?{query} 302
+	redir /classic/open.php /open 302
+	redir /classic/profile.php /profile 302
+	@faqById {
+		path /classic/kb/faq.php
+		query id=*
+	}
+	redir @faqById /kb/faq/{query.id} 302
+	redir /classic/kb/* /kb 302
+}
+(portal_keep) {
+}
+
+{$TAILTICKET_SITE::80} {
+	import tls_{$TAILTICKET_HTTPS:off}
+	encode zstd gzip
+	header -Server
+
+	# senza slash finale Apache risponderebbe con un redirect assoluto in http://
+	redir /classic /classic/ 308
+	redir /classic/scp /classic/scp/ 308
+
+	# redir viene valutata prima di handle (ordine predefinito delle direttive di Caddy)
+	import portal_{$TAILTICKET_CLASSIC_PORTAL:redirect}
+
+	handle /classic/* {
+		reverse_proxy osticket:80
+	}
+
+	handle {
+		reverse_proxy tailticket:3000
+	}
+}

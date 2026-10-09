@@ -1,0 +1,41 @@
+# Esempio per la modalità "attach" con un nginx già esistente (alternativa a Caddy, vedi deploy/README.md).
+# Coesistenza su un unico host:
+#   /app/…  → app Next.js (build con NEXT_BASE_PATH=/app)
+#   resto   → osTicket PHP (scp/, portale clienti, api/, cron) invariato
+# In alternativa servire Next su un sottodominio dedicato (NEXT_BASE_PATH vuoto).
+upstream osticket_next { server next:3000; }
+upstream osticket_php  { server osticket-php:80; }   # adattare al server PHP esistente
+
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 32m;
+
+    location /app/ {
+        proxy_pass http://osticket_next;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Portale clienti servito da Next (opzionale): i link delle email restano quelli del PHP e
+    # vengono girati alla app. Lasciare commentato per mantenere il portale PHP.
+    # location = /         { return 302 /app/; }
+    # location = /index.php   { return 302 /app/; }
+    # location = /view.php    { return 302 /app/view$is_args$args; }
+    # location = /tickets.php { if ($arg_id) { return 302 /app/tickets/$arg_id; } return 302 /app/tickets; }
+    # location = /login.php   { return 302 /app/login$is_args$args; }
+    # location = /pwreset.php { return 302 /app/pwreset$is_args$args; }
+    # location = /open.php    { return 302 /app/open; }
+    # location = /account.php { return 302 /app/account$is_args$args; }
+    # location = /profile.php { return 302 /app/profile; }
+    # location ^~ /kb/        { return 302 /app/kb; }
+
+    location / {
+        proxy_pass http://osticket_php;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
