@@ -23,6 +23,7 @@
     "items": {
       "dashboard": "Dashboard",
       "tickets": "Ticket",
+      "board": "Board",
       "tasks": "Task",
       "users": "Utenti",
       "organizations": "Organizzazioni",

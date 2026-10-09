@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { DocsIcon, FolderIcon, GridIcon, GroupIcon, ListIcon, PlugInIcon, TaskIcon, UserCircleIcon } from "@/icons";
+import { DocsIcon, FolderIcon, GridIcon, GroupIcon, KanbanIcon, ListIcon, PlugInIcon, TaskIcon, UserCircleIcon } from "@/icons";
 import type { NavSection, ShellUser } from "@/layout/nav-types";
 import { agentQueueNav } from "@/server/domain/queue/context";
 import { GlobalPerm, TicketPerm, type Agent } from "@/server/domain/staff/staff";
@@ -31,6 +31,7 @@ export async function agentNav(agent: Agent): Promise<NavSection[]> {
           : []),
       ],
     },
+    { key: "board", label: t("items.board"), icon: <KanbanIcon />, href: "/agent/board" },
     { key: "tasks", label: t("items.tasks"), icon: <TaskIcon />, href: "/agent/tasks" },
   ];
 

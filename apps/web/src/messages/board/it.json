@@ -1,0 +1,134 @@
+{
+  "board": {
+    "pageTitle": "Board",
+    "subtitle": "Vista Kanban dei ticket",
+    "count": "{total, plural, =0 {nessun ticket} one {# ticket} other {# ticket}}",
+    "toolbar": {
+      "source": "Sorgente",
+      "allVisible": "Tutti i miei ticket visibili",
+      "queues": "Code",
+      "groupBy": "Colonne",
+      "swimlanes": "Swimlane",
+      "search": "Cerca nella board",
+      "searchPlaceholder": "Numero, email o testo",
+      "filters": "Filtri rapidi",
+      "mine": "Solo miei",
+      "unassigned": "Non assegnati",
+      "overdue": "Scaduti",
+      "priority": "Priorità",
+      "clear": "Azzera filtri",
+      "settings": "Opzioni della vista",
+      "loading": "Aggiornamento…"
+    },
+    "group": {
+      "status": "Stato",
+      "priority": "Priorità",
+      "assignee": "Assegnatario",
+      "dept": "Reparto"
+    },
+    "lane": {
+      "none": "Nessuna",
+      "priority": "Priorità",
+      "assignee": "Assegnatario",
+      "dept": "Reparto"
+    },
+    "special": {
+      "unassigned": "Non assegnato",
+      "noPriority": "Senza priorità",
+      "noDept": "Senza reparto",
+      "all": "Tutti"
+    },
+    "column": {
+      "count": "{count, plural, one {# ticket} other {# ticket}}",
+      "empty": "Nessun ticket",
+      "dropHere": "Rilascia qui",
+      "notAllowed": "Non consentito",
+      "loadMore": "Carica altri ({remaining})",
+      "loadingMore": "Caricamento…",
+      "recentOnly": "Chiusi negli ultimi {days} giorni",
+      "olderHidden": "{count, plural, one {# ticket chiuso prima non mostrato} other {# ticket chiusi prima non mostrati}}",
+      "showOlder": "Mostra anche i precedenti",
+      "showRecentOnly": "Solo i recenti",
+      "sourceNoClosed": "La coda sorgente non contiene ticket chiusi: i ticket spostati qui ne escono.",
+      "me": "Io",
+      "team": "Team",
+      "collapse": "Comprimi",
+      "expand": "Espandi"
+    },
+    "lanesHeader": {
+      "count": "{count, plural, one {# ticket} other {# ticket}}"
+    },
+    "card": {
+      "open": "Apri il ticket {number}",
+      "priority": "Priorità: {name}",
+      "assignee": "Assegnato a {name}",
+      "team": "Assegnato al team {name}",
+      "unassigned": "Non assegnato",
+      "overdue": "Scaduto",
+      "dueSoon": "Scade presto",
+      "due": "Scadenza: {date}",
+      "updated": "Aggiornato {when}",
+      "thread": "{count, plural, one {# voce nel thread} other {# voci nel thread}}",
+      "attachments": "{count, plural, one {# allegato} other {# allegati}}",
+      "locked": "Bloccato da {name}",
+      "actions": "Azioni sul ticket {number}",
+      "moveTo": "Sposta in…",
+      "current": "stato attuale",
+      "noMoves": "Nessuno spostamento consentito",
+      "preview": "Anteprima",
+      "openTicket": "Apri ticket",
+      "dragHint": "Trascina per cambiare stato"
+    },
+    "drag": {
+      "disabledGroup": "Trascinamento disponibile prossimamente per questo raggruppamento (assegnazione e trasferimento arriveranno con la prossima versione).",
+      "statusOnly": "Raggruppa per stato per spostare i ticket trascinandoli",
+      "reasonSame": "Stato attuale",
+      "reasonForbidden": "Non hai il permesso per questo stato",
+      "reasonLane": "Sposta solo all'interno della stessa swimlane",
+      "moving": "Spostamento di {number} in «{status}»…",
+      "moved": "Ticket {number} spostato in «{status}»",
+      "undoHint": "Annulla",
+      "keyboardHelp": "Usa il menu della card (Sposta in…) per spostarla da tastiera"
+    },
+    "errors": {
+      "title": "Impossibile spostare il ticket {number}",
+      "not_found": "Ticket non trovato o non più accessibile.",
+      "forbidden": "Non hai il permesso di impostare questo stato.",
+      "invalid_status": "Stato non valido.",
+      "same_status": "Il ticket è già in questo stato.",
+      "not_closeable": "Il ticket non può essere chiuso.",
+      "open_tasks": "Il ticket ha task aperti: chiudili prima di chiudere il ticket.",
+      "missing_fields": "Compila i campi obbligatori del ticket prima di chiuderlo.",
+      "topic_required": "Imposta un argomento prima di chiudere il ticket.",
+      "internal": "Errore imprevisto durante il cambio di stato.",
+      "session": "Sessione scaduta: accedi di nuovo.",
+      "invalid": "Richiesta non valida.",
+      "loadMore": "Impossibile caricare altri ticket."
+    },
+    "state": {
+      "notFound": "Coda non trovata o non accessibile.",
+      "tooShort": "Il testo da cercare deve avere almeno 3 caratteri.",
+      "noStatuses": "Nessuno stato disponibile per le colonne.",
+      "empty": "Nessun ticket corrisponde ai filtri.",
+      "readOnly": "Sola lettura: non hai i permessi per cambiare lo stato di questi ticket.",
+      "tooManyWords": "Cerca al massimo 3 parole."
+    },
+    "preview": {
+      "title": "Anteprima del ticket",
+      "close": "Chiudi anteprima",
+      "status": "Stato",
+      "priority": "Priorità",
+      "assignee": "Assegnatario",
+      "dept": "Reparto",
+      "topic": "Argomento",
+      "user": "Utente",
+      "due": "Scadenza",
+      "updated": "Ultimo aggiornamento",
+      "lastMessages": "Ultimi messaggi",
+      "noMessages": "Nessun messaggio",
+      "loading": "Caricamento…",
+      "error": "Impossibile caricare l'anteprima.",
+      "open": "Apri il ticket"
+    }
+  }
+}

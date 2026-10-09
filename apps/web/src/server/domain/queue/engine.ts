@@ -458,6 +458,54 @@ export async function orderKeyValues(
   return new Map(rows.map((r) => [Number(r.ticket_id), String(r.k)]));
 }
 
+/** Le code non mostrano i ticket figli di un merge, salvo i collegati (Ticket::FLAG_LINKED = 8). Alias T. */
+export function mergeChildFilterSql(): RawBuilder<unknown> {
+  return sql`(T.ticket_pid IS NULL OR (T.flags & 8) != 0)`;
+}
+
+/**
+ * Insieme dei ticket di una coda o ricerca, senza ordinamento né paginazione (alias della lista: T, ST, …):
+ * criteri compilati, visibilità dell'agente (salvo `search.all` per ricerche personali e temporanee), filtro
+ * sui figli dei merge per le code e ricerca full-text come tabella derivata `KW` in JOIN.
+ */
+export interface QueueScope {
+  fields: FieldRegistry;
+  conditions: RawBuilder<unknown>[];
+  joins: Set<JoinKey>;
+  /** testo del criterio :keywords (null = nessuna ricerca full-text) */
+  keywords: string | null;
+  /** JOIN della ricerca full-text (KW: ticket_id, relevance); null se assente o testo troppo corto (nessun filtro) */
+  keywordJoin: RawBuilder<unknown> | null;
+}
+
+export async function queueScope(
+  agent: Agent,
+  queue: TicketQueue,
+  ctx: { userTz: string },
+  opts: { extraCriteria?: Criterion[]; mergeFilter?: boolean } = {},
+  executor: DbOrTx = db(),
+): Promise<QueueScope> {
+  const fields = await loadFieldRegistry(executor);
+  const crit = compileCriteria([...queue.effectiveCriteria(), ...(opts.extraCriteria ?? [])], fields, { agent, userTz: ctx.userTz });
+  const joins = new Set<JoinKey>(["ST", ...crit.joins]);
+  // AdhocSearch/ricerche personali: chi ha "search.all" vede tutti i ticket (ignoreVisibilityConstraints)
+  const ignoreVisibility =
+    !queue.isAQueue && !queue.isASubQueue && queue.row.staff_id === agent.id && agent.hasGlobalPerm("search.all");
+  const conditions: RawBuilder<unknown>[] = [...crit.conditions];
+  if (!ignoreVisibility) conditions.push(visibilitySql(agent, false));
+  if ((opts.mergeFilter ?? true) && (queue.isAQueue || queue.isASubQueue)) conditions.push(mergeChildFilterSql());
+  // Full-text come tabella derivata (keywordRelevanceSql): visibilità e paginazione su tutti i risultati
+  const keywords = crit.keywords !== null ? keywordRelevanceSql(crit.keywords) : null;
+  const keywordJoin = keywords ? sql`JOIN ${keywords} KW ON (KW.ticket_id = T.ticket_id)` : null;
+  return { fields, conditions, joins, keywords: crit.keywords, keywordJoin };
+}
+
+/** `SELECT T.ticket_id …` dello scope, da usare come `T.ticket_id IN (…)` in altre query (es. la board). */
+export function queueScopeIdsSql(scope: QueueScope): RawBuilder<unknown> {
+  return sql`SELECT T.ticket_id FROM ${table("ticket")} T ${joinsFor(scope.joins)} ${scope.keywordJoin ?? sql``}
+    WHERE ${scope.conditions.length ? sql.join(scope.conditions, sql` AND `) : sql`1`}`;
+}
+
 export async function listQueueTickets(
   agent: Agent,
   queue: TicketQueue,
@@ -465,27 +513,14 @@ export async function listQueueTickets(
   ctx: { userTz: string },
   executor: DbOrTx = db(),
 ): Promise<ListResult> {
-  const fields = await loadFieldRegistry(executor);
-  const crit = compileCriteria([...queue.effectiveCriteria(), ...(opts.extraCriteria ?? [])], fields, { agent, userTz: ctx.userTz });
-  const joins = new Set<JoinKey>(["ST", ...crit.joins]);
-  // AdhocSearch/ricerche personali: chi ha "search.all" vede tutti i ticket (ignoreVisibilityConstraints)
-  const ignoreVisibility =
-    !queue.isAQueue && !queue.isASubQueue && queue.row.staff_id === agent.id && agent.hasGlobalPerm("search.all");
-  const conds: RawBuilder<unknown>[] = [...crit.conditions];
-  if (!ignoreVisibility) conds.push(visibilitySql(agent, false));
-  if (queue.isAQueue || queue.isASubQueue) {
-    // le code non mostrano i ticket figli di un merge (salvo collegati)
-    conds.push(sql`(T.ticket_pid IS NULL OR (T.flags & 8) != 0)`);
-  }
+  const scope = await queueScope(agent, queue, ctx, { extraCriteria: opts.extraCriteria }, executor);
+  const { fields, joins, conditions: conds, keywordJoin } = scope;
+  const kwJoin = keywordJoin ?? sql``;
 
-  // Full-text come tabella derivata (keywordRelevanceSql): visibilità e paginazione su tutti i risultati
-  const keywords = crit.keywords !== null ? keywordRelevanceSql(crit.keywords) : null;
-  const kwJoin = keywords ? sql`JOIN ${keywords} KW ON (KW.ticket_id = T.ticket_id)` : sql``;
-
-  const keys = keywords ? [] : await queueOrder(queue, opts, fields, joins, executor);
+  const keys = keywordJoin ? [] : await queueOrder(queue, opts, fields, joins, executor);
   // Ordinamento stabile: T.ticket_id come ultima chiave (nella direzione della prima). Il PHP ordina solo per
   // le chiavi della coda, quindi a pari merito un ticket poteva ripetersi o mancare tra una pagina e l'altra.
-  const order = keywords
+  const order = keywordJoin
     ? [sql`MAX(KW.relevance) DESC`, sql`T.ticket_id DESC`]
     : [...orderSql(keys), sql`T.ticket_id ${sql.raw(keys[0]?.desc ? "DESC" : "ASC")}`];
   const page = Math.max(1, opts.page ?? 1);
@@ -551,15 +586,12 @@ export async function exportQueueTicketIds(
   ctx: { userTz: string },
   executor: DbOrTx = db(),
 ): Promise<number[]> {
-  const fields = await loadFieldRegistry(executor);
-  const crit = compileCriteria(queue.effectiveCriteria(), fields, { agent, userTz: ctx.userTz });
-  const joins = new Set<JoinKey>(["ST", ...crit.joins]);
-  const ignoreVisibility =
-    !queue.isAQueue && !queue.isASubQueue && queue.row.staff_id === agent.id && agent.hasGlobalPerm("search.all");
-  const conds: RawBuilder<unknown>[] = [...crit.conditions];
-  if (!ignoreVisibility) conds.push(visibilitySql(agent, false));
-  if (crit.keywords !== null) {
-    const ids = await keywordTicketIds(crit.keywords, executor);
+  // Scope della lista senza filtro sui figli dei merge; full-text come lista di id (max 500, come il PHP)
+  const scope = await queueScope(agent, queue, ctx, { mergeFilter: false }, executor);
+  const { fields, joins } = scope;
+  const conds: RawBuilder<unknown>[] = [...scope.conditions];
+  if (scope.keywords !== null) {
+    const ids = await keywordTicketIds(scope.keywords, executor);
     if (ids !== null) conds.push(ids.length ? sql`T.ticket_id IN (${sql.join(ids)})` : sql`(0)`);
   }
   const order = orderSql(await queueOrder(queue, opts, fields, joins, executor));
