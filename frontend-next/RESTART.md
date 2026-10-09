@@ -1,73 +1,78 @@
 # RESTART — come riprendere il lavoro su osTicket Next
 
 Aggiornato al 09/10/2026. Branch `claude/nextjs-frontend` → PR https://github.com/paolo-trivi/osticket/pull/1.
-I commit hanno autore **paolo-trivi**, **senza righe Co-Authored-By / Claude-Session** (regola fissa).
+I commit hanno autore **paolo-trivi** (`paolo.trivisonno@gmail.com`), **senza righe Co-Authored-By / Claude-Session** (regola fissa).
 
-Obiettivo: nuova app **Next.js** (cartella `frontend-next/`, stile TailAdmin brandizzato osTicket) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di Next deve produrre **le stesse righe** del PHP.
+Obiettivo: nuova app **Next.js** (cartella `frontend-next/`, stile TailAdmin brandizzato osTicket) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di Next deve produrre **le stesse righe** (e le stesse email) del PHP.
+
+**Stato: milestone M0–M6 completate.** Restano solo i limiti noti (§5) e le rifiniture elencate in §4.
 
 Documenti da leggere prima di toccare codice:
-1. `frontend-next/AGENTS.md`: regole del progetto.
-2. `frontend-next/docs/parallel-brief.md`: convenzioni, API già pronte, come testare. È il brief usato dagli agenti.
-3. `docs/reverse-engineering/00-INDICE.md`: knowledge base di osTicket (doc 00–17).
-4. `frontend-next/docs/contract/*.md`: contratto di scrittura per area (`core.md`, `actions.md`), da far confluire nel doc 17.
-5. Piano completo delle milestone: `/root/.claude/plans/sorted-leaping-sunrise.md` (se non c'è più, vedi la sezione "Milestone" sotto).
+1. `frontend-next/README.md`: funzioni, deploy, CI, limiti noti.
+2. `frontend-next/AGENTS.md`: regole del progetto.
+3. `frontend-next/docs/parallel-brief.md`: convenzioni, API già pronte, come testare (brief per gli agenti).
+4. `docs/reverse-engineering/00-INDICE.md`: knowledge base di osTicket (doc 00–17).
+5. `docs/reverse-engineering/17-contratto-scrittura.md`: contratto di scrittura. La §3 è generata da `frontend-next/docs/contract/*.md` (un file per area: core, actions, ticketedit, create, people, portal, admin, adminsys).
 
 ---
 
 ## 1. Rimettere in piedi l'ambiente (container nuovo o riavviato)
 
 ```bash
+# pacchetti di sistema (se mancano): MariaDB e PHP 8.3 con mysqli, gd, intl, mbstring, xml, zip, apcu
+apt-get install -y mariadb-server php8.3-apcu
+echo "apc.enable_cli=1" > /etc/php/8.3/cli/conf.d/99-apcu-cli.ini   # come in CI (vedi §2)
+service mariadb start
+
 cd frontend-next
 npm ci
-
-# Opzione A — ambiente di sviluppo completo (osTicket installato da zero + seed)
-npm run dev:osticket          # crea /home/user/ost-dev/www e il DB "osticket" (servono MariaDB e PHP 8.3)
-php dev/seed.php /home/user/ost-dev/www   # dati di prova (NB: casuali, i test si basano sulla fixture)
-
-# Opzione B — consigliata: stessi dati con cui sono scritti i test (fixture)
-OST_DEV=/home/user/ost-dev bash dev/ci-setup.sh   # carica dev/fixtures/osticket-dev.sql.gz e scrive ost-config.php
-
-npm run dev:services          # MariaDB, Mailpit (SMTP 1025 / UI 8025), osTicket PHP su :8080
+OST_DEV=/home/user/ost-dev bash dev/ci-setup.sh   # DB "osticket" dalla fixture, ost-config.php, Mailpit
+npm run dev:services                               # MariaDB, Mailpit (SMTP 1025 / UI 8025), osTicket PHP su :8080
+cp .env.example .env.local                         # OST_CONFIG_PATH=/home/user/ost-dev/www/include/ost-config.php …
+npm run dev                                        # http://127.0.0.1:3000 (portale), /agent, /admin
 ```
 
-Se il container è stato riavviato basta `npm run dev:services`: i dati persistono in `/home/user/ost-dev` finché il container esiste.
+Se il container è stato solo riavviato basta `npm run dev:services`.
+In alternativa (dati casuali, non quelli dei test): `npm run dev:osticket && php dev/seed.php /home/user/ost-dev/www`.
 
 Credenziali (password `Passw0rd!dev` per tutti):
 - admin: `devadmin`;
 - agenti: `mrossi` (id 2), `lbianchi` (3), `gverdi` (4), `aesposito` (5).
 
-Avvio della app:
-```bash
-cp .env.example .env.local    # OST_CONFIG_PATH=/home/user/ost-dev/www/include/ost-config.php, APP_SESSION_SECRET, OST_PHP_URL
-npm run dev                    # http://127.0.0.1:3000/agent
-```
-
 Avvertenze pratiche:
 - **Mai** usare `pkill -f …`, perché uccide la shell stessa. Usare `fuser -k <porta>/tcp`.
+- Next 16 permette **un solo `next dev` per cartella**.
 - In `next dev` l'HMR via 127.0.0.1 a volte non idrata: per le prove E2E usare `next build && next start`.
+- L'utente DB `osticket` ha permessi solo su `osticket` e `osticket_diff%`: le copie del DB per prove manuali devono avere quel prefisso.
+- Dopo una `next build`, `tsc` può segnalare errori in `.next/types/validator.ts` se si cancellano pagine: `rm -rf .next`.
 
 ---
 
 ## 2. Verifiche (da fare prima di ogni commit)
 
 ```bash
-npm run lint && npm run typecheck && npm test        # lint, tipi, unit + integrazione
-npx next build                                       # build di produzione
-
-# Test differenziali PHP vs TypeScript: confrontano tutte le tabelle del DB (e le email via Mailpit).
-# Ogni area ha DB e Mailpit propri: OST_DIFF_TAG separa i DB (osticket_diff_<tag>_{base,php,ts}).
-npm run test:diff                                    # tutti, con DB/Mailpit di default (1025/8025)
-OST_DIFF_TAG=actions MAILPIT_SMTP_PORT=1026 MAILPIT_HTTP_PORT=8026 \
-  npx vitest run -c vitest.diff.config.mts test/diff/ticket-actions.diff.test.ts
-# Mailpit dedicato:
-# /home/user/ost-dev/bin/mailpit --smtp 127.0.0.1:1026 --listen 127.0.0.1:8026 --smtp-auth-accept-any --smtp-auth-allow-insecure &
-
-# Cosa scrive il PHP per un'operazione (trace riga per riga):
-node test/diff/trace.mjs '{"op":"ticket.reply","args":{"agent":2,"ticket":3,"response":"<p>ciao</p>"}}'
+npm run lint && npm run typecheck && npm test        # lint, tipi, unit (35 test)
+npm run test:diff                                    # 33 file, 308 scenari differenziali PHP vs TypeScript
+npx next build
 ```
 
-CI GitHub Actions (`.github/workflows/frontend-next.yml`): job `quality` (lint, typecheck, unit, build) e job `differential`.
-- Il job `differential` installa MariaDB e PHP, ricrea osTicket dalla fixture con `dev/ci-setup.sh` ed esegue `npm run test:diff`.
+I test differenziali confrontano **tutte le tabelle** del DB e le email via Mailpit.
+- `OST_DIFF_TAG` separa i DB (`osticket_diff_<tag>_{base,php,ts}`).
+- Per lavorare in parallelo ogni area usa anche un Mailpit proprio:
+  ```bash
+  OST_DIFF_TAG=actions MAILPIT_SMTP_PORT=1026 MAILPIT_HTTP_PORT=8026 \
+    npx vitest run -c vitest.diff.config.mts test/diff/ticket-actions.diff.test.ts
+  /home/user/ost-dev/bin/mailpit --smtp 127.0.0.1:1026 --listen 127.0.0.1:8026 --smtp-auth-accept-any --smtp-auth-allow-insecure &
+  ```
+- Cosa scrive il PHP per un'operazione: `node test/diff/trace.mjs '{"op":"ticket.reply","args":{"agent":2,"ticket":3,"response":"<p>ciao</p>"}}'`.
+- Operazioni PHP del runner: `test/diff/php/ops/<area>.php` (non toccare `runner.php`).
+
+Tempi e confronti: le date calcolate da `NOW()` (scadenze SLA, `est_duedate`) possono cadere a cavallo di un secondo tra PHP e TS. Alcuni test confrontano quelle colonne con tolleranza di 1–2 s, mai nell'harness condiviso.
+
+CI GitHub Actions (`.github/workflows/frontend-next.yml`):
+- job `quality`: lint, typecheck, unit, build;
+- job `differential`: MariaDB e PHP 8.3, osTicket dalla fixture con `dev/ci-setup.sh`, poi `npm run test:diff`.
+- In CI l'estensione **APCu** è caricata: serve `apc.enable_cli=1` (impostato nel workflow), altrimenti `SavedQueue::clearCounts` del PHP va in errore fatale.
 - **Se cambia il DB di sviluppo** su cui si basano i test, rigenerare la fixture:
   `mysqldump -u root --single-transaction --skip-dump-date --no-tablespaces osticket | gzip -9n > dev/fixtures/osticket-dev.sql.gz`
 
@@ -75,107 +80,75 @@ CI GitHub Actions (`.github/workflows/frontend-next.yml`): job `quality` (lint, 
 
 ## 3. Stato per milestone
 
-| Milestone | Stato | Note |
-|---|---|---|
-| M0 Fondamenta | ✅ | scaffold, DB Kysely, config, login agenti, harness, branding, tema da admin |
-| M1 Agenti sola lettura | ✅ | code/contatori/visibilità, ricerca, vista ticket, utenti/org, KB, canned, task, profilo, dashboard |
-| M2.1/M2.2 Scritture base | ✅ | nota, risposta, stato, lock, eventi, `_search`, mailer, crypto, SLA, composer UI — diff 7/7 + SLA 5/5 |
-| M2.3 A — azioni ticket ("actions") | 🟡 quasi finito | diff **33/33 verdi**; UI da rifinire e verificare |
-| M2.3 B — modifica ticket ("ticketedit") | ⬜ da fare | |
-| M3 A — creazione ticket + allegati ("create") | 🟡 in corso | servizi scritti, **nessun diff test**, niente pagina `/agent/tickets/new` |
-| M3 B — task/utenti/org/profilo ("people") | 🟡 in corso | task: diff **10/10 verdi**; directory/profilo/2FA da fare |
-| M4 Portale clienti ("portal") | ⬜ da fare | |
-| M5 A — admin impostazioni/reparti/agenti ("admin") | ⬜ da fare | menu admin già completo (`admin/layout.tsx`) |
-| M5 B — admin email/filtri/form/code/log ("adminsys") | ⬜ appena iniziato | solo `test/diff/php/ops/adminsys.php` (3 operazioni) |
-| M6 Deploy/CI/hardening | ✅ (base) | CI verde, Dockerfile, compose, nginx `/app`, basePath, CSP con nonce |
+| Milestone | Stato | Scenari diff | Note |
+|---|---|---|---|
+| M0 Fondamenta | ✅ | 3 (login) | scaffold, DB Kysely, config, login agenti, harness, branding, tema da admin |
+| M1 Agenti sola lettura | ✅ | 10 (code, accesso) | code/contatori/visibilità, ricerca, vista ticket, utenti/org, KB, canned, task, profilo, dashboard |
+| M2.1/M2.2 Scritture base | ✅ | 9 + 2 SLA + 2 date | nota, risposta, stato, lock, eventi, `_search`, mailer, crypto, SLA, composer con allegati |
+| M2.3 A Azioni ticket ("actions") | ✅ | 47 | assegna/claim/rilascio/trasferimento/referral (anche rimozione)/stato/riapertura/segna risposto |
+| M2.3 B Modifica ticket ("ticketedit") | ✅ | 60 | update/editField/proprietario, collaboratori, merge/link, delete, scaduto, ban, massa, export CSV, modifica voce |
+| M3 A Creazione ticket ("create") | ✅ | 43 | `createTicket`/`openTicket`, filtri, numerazione, form dinamici, allegati, `/agent/tickets/new` |
+| M3 B Task/utenti/org/profilo ("people") | ✅ | 28 | task UI, CRUD utenti/org + import CSV + account, profilo, password, 2FA email, reset |
+| M4 Portale clienti ("portal") | ✅ | 37 | login/registrazione/reset/ospite/token, ticket, `postMessage`, apertura, KB, profilo |
+| M5 A Admin ("admin") | ✅ | 34 | impostazioni, reparti, topic, SLA, orari, agenti, team, ruoli, dashboard |
+| M5 B Admin di sistema ("adminsys") | ✅ | 30 | email/account/template/ban list/diagnostica, filtri, form, liste, pagine, code, API key, log, sistema, plugin |
+| M6 Deploy/CI/hardening | ✅ | — | CI verde, Dockerfile, compose, nginx `/app` (+ redirect opzionali del portale), basePath, CSP con nonce |
 
-### Dettaglio del lavoro lasciato a metà (commit "WIP" di chiusura)
-
-Gli agenti si sono fermati qui. Il codice compila (typecheck, lint e build verdi), ma va completato.
-
-**actions** (M2.3 A):
-- File:
-  - `src/server/domain/ticket/{assign,transfer,ticket-state,alerts}.ts`;
-  - `src/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions-assign.ts`;
-  - `src/components/tickets/TicketActionsMenu.tsx` + `src/components/tickets/actions/*`;
-  - testi in `src/messages/actions/*`;
-  - `test/diff/ticket-actions.diff.test.ts` (33 verdi) + `test/diff/php/ops/actions.php`;
-  - `docs/contract/actions.md`.
-- Da fare: verificare a mano la UI (dropdown e modali) nella vista ticket, controllare i testi `actions` it/en, completare `docs/contract/actions.md`.
-
-**create** (M3 A):
-- File:
-  - `src/server/domain/ticket/{create,create-alerts,create-number,create-user}.ts`;
-  - `src/server/domain/filter/ticket-filter.ts`;
-  - `src/server/domain/forms/{entry,fields,load}.ts`;
-  - `src/server/domain/file/upload.ts`;
-  - `test/diff/php/ops/create.php`;
-  - modifiche additive in `thread/write.ts` (allegati, `editorSpacing`) e `ticket/post.ts` (allegati della risposta nelle email).
-- Da fare:
-  - `test/diff/ticket-create.diff.test.ts`: agente/web, topic e form, filtri, numerazione, SLA, auto-risposte e alert via Mailpit, allegati;
-  - pagina `/agent/tickets/new` con i form dinamici (`src/components/forms/dynamic/*`);
-  - input allegati nel `TicketComposer`.
-- L'agente si era fermato mentre correggeva `create.ts`.
-
-**people** (M3 B):
-- File:
-  - `src/server/domain/task/{model,vars,write}.ts`;
-  - `src/server/domain/directory/forms.ts`;
-  - `test/diff/tasks.diff.test.ts` (10 verdi);
-  - `test/diff/php/ops/people.php` (34 operazioni, anche directory e profilo).
-- Da fare:
-  - UI delle azioni sui task (`/agent/tasks/**`);
-  - CRUD utenti/org con import CSV e account;
-  - profilo agente: preferenze, cambio password, reset password;
-  - **2FA email** al login: oggi `staff-auth.ts` restituisce `mfa_unsupported`;
-  - alert all'admin per troppi login falliti;
-  - diff test di directory e profilo.
+Integrazioni fatte dal coordinatore: eliminazione definitiva agganciata allo stato "deleted" e all'eliminazione utente con ticket (`deleteTicketViaDeletedStatus`), link "Task (n)" nella vista ticket, `createTicket` nel portale, allegati nel composer, date dei template come ICU (`FormattedDate`), destinatari ordinati per nome e serializzati in ordine, `htmlChars` = `Format::htmlchars`, attributi obbligatori di htmLawed nel sanitizer, cifratura SMTP ricavata da host/porta come `class.mail.php`.
 
 ---
 
-## 4. Ripartire con gli agenti in parallelo
+## 4. Rifiniture possibili (non bloccanti)
 
-Gli agenti lavorano **nella stessa cartella**, ciascuno solo sui file della propria area: la tabella delle proprietà è nel brief e nei prompt.
-- Lanciarli **a ondate di massimo 3**. Con 8 insieme si è raggiunto il limite di sessione dell'API (errore 429) e si sono fermati tutti.
-- Ogni agente riceve come prima istruzione: *"Leggi PRIMA e per intero `frontend-next/docs/parallel-brief.md` e `frontend-next/AGENTS.md`"*, poi il compito della sua area con tag e porte.
+- `changeTicketStatus` rilegge i figli dopo aver eliminato il padre: oggi l'eliminazione dei figli avviene dentro `ticketHardDelete({children})`. Si può semplificare leggendo i figli prima di `setTicketStatus`.
+- `test/diff/tasks.diff.test.ts` contiene un aggiramento per i bit errati di `TopicFlag`, ora corretti: si può togliere.
+- Voci mancanti nella UI agenti:
+  - "Gestisci form" del ticket;
+  - "Modifica e reinvia";
+  - stampa PDF;
+  - risposte predefinite nel form di apertura;
+  - apertura di un ticket da una voce di thread;
+  - export delle ricerche ad hoc.
+- Messaggi temporanei ("flash") dopo il ritorno alla lista ticket, come fa il PHP dopo un redirect.
+- Modifica inline dei campi nella tabella dei dettagli (oggi è il dialogo "Modifica un campo").
+- Admin:
+  - creazione e modifica delle code (criteri, colonne);
+  - configurazione dei singoli campi dei form;
+  - proprietà avanzate degli elementi di lista;
+  - import CSV delle liste;
+  - traduzioni;
+  - editor visuale di template e pagine.
 
-| Area | OST_DIFF_TAG | Mailpit SMTP/HTTP | Compito |
-|---|---|---|---|
-| actions | actions | 1026 / 8026 | completare (vedi sopra) |
-| ticketedit | ticketedit | 1027 / 8027 | Ticket::update/editField + cdata + `_search`; collaboratori; merge/link; delete (collegare `hardDelete` di `setTicketStatus`); azioni di massa; export CSV; modifica voce del thread. Slot UI: `TicketExtraActions.tsx` |
-| create | create | 1028 / 8028 | completare (vedi sopra) |
-| people | people | 1029 / 8029 | completare (vedi sopra) |
-| portal | portal | 1030 / 8030 | portale clienti in `src/app/[locale]/(client)/**`: login/registrazione/reset/guest/link con token, lista e vista ticket, `postMessage` (`src/server/domain/ticket/message.ts`), KB, apertura ticket con `createTicket` |
-| admin | admin | 1031 / 8031 | `/admin/settings/{company,system,tickets,tasks,agents,users,kb}`, departments, topics, sla, schedules, agents, teams, roles, dashboard `/admin` |
-| adminsys | adminsys | 1032 / 8032 | emails (+ password cifrate con `encrypt()`), settings/emails, banlist, templates, diagnostic, filters, forms, lists, pages, queues, apikeys, logs, system, plugins |
-
-Ordine consigliato:
-1. `actions`, `create`, `people`: finire quanto già iniziato.
-2. `ticketedit`, `portal`, `admin`.
-3. `adminsys`.
-
-Dopo ogni ondata il coordinatore:
-- legge i report;
-- integra le dipendenze tra aree: voci nel menu agenti `agent/nav.tsx`, `hardDelete`, `createTicket` nel portale, allegati nel composer;
-- unisce `docs/contract/<area>.md` nel doc 17;
-- esegue tutte le verifiche (§2);
-- fa commit e push.
-
-### Prompt tipo per un agente
-> Leggi PRIMA e per intero /home/user/osticket/frontend-next/docs/parallel-brief.md e /home/user/osticket/frontend-next/AGENTS.md, poi /home/user/osticket/frontend-next/RESTART.md (stato del lavoro). AREA: "<area>" — OST_DIFF_TAG=<tag>, Mailpit SMTP <porta>/HTTP <porta> (avvialo tu). COMPITO: <riga della tabella sopra, più i "da fare" del §3>. Replica il PHP riga per riga (include/class.*.php, scp/*.php, include/ajax.*.php); test differenziali obbligatori in test/diff/<area>*.diff.test.ts con ops PHP in test/diff/php/ops/<area>.php; non fare commit; non toccare file di altre aree; report finale come da brief.
+### Ripartire con gli agenti in parallelo (se serve altro lavoro)
+- Lanciarli **a ondate di massimo 3**: con di più si supera il limite dell'API (429).
+- Ogni agente legge per primi `docs/parallel-brief.md` e `AGENTS.md`, poi lavora solo sulla sua area.
+- Ogni agente usa il suo `OST_DIFF_TAG`, il suo Mailpit (porte 1026–1032 / 8026–8032) e la sua porta per `next dev` (3101–3107).
+- Gli agenti non fanno commit. Il coordinatore verifica ogni area in un worktree separato con i soli file di quell'area (lint, typecheck, unit, tutti i diff, build), unisce `docs/contract/<area>.md` nel doc 17, poi fa commit e push.
 
 ---
 
 ## 5. Punti aperti e decisioni da ricordare
 
-- **Bug PHP non replicati** (sicurezza/permessi): `SavedQueue::counts` ignora la visibilità; `Task::checkStaffPerm` mostra a tutti i task chiusi. Sono documentati nel doc 14 e nei commenti del codice.
-- **Il testo alternativo delle email** (text/plain) è generato con `html-to-text` e può differire nell'impaginazione dal `html2text` PHP. HTML, header e Message-ID invece sono identici. I test confrontano solo la presenza di `Ref-Mid`.
-- **Batch PHP** (cron, fetch email, API REST, installer) restano al PHP e non vanno duplicati in Next.
-- **OAuth2 degli account email**: Next non lo gestisce. Con un account SMTP OAuth2 registra un errore e ripiega su sendmail o `OST_SMTP_URL`.
+- **Bug PHP non replicati** (sicurezza/permessi): elencati per area nel doc 17 §3 ("Differenze") e nel doc 14. Esempi:
+  - `SavedQueue::counts` ignora la visibilità;
+  - `Task::checkStaffPerm` mostra a tutti i task chiusi;
+  - endpoint dei collaboratori, scollegamento dei ticket e `ajax.schedule.php` senza controlli;
+  - reset password del cliente senza controllo di scadenza;
+  - strike del cliente legati alla sessione;
+  - campi solo-agente accettati dal portale;
+  - eliminazione di oggetti referenziati dai filtri (errore fatale del PHP).
+- **Testo alternativo delle email** (text/plain): generato con `html-to-text`, può differire nell'impaginazione. HTML, header e Message-ID sono identici.
+- **Batch PHP** (cron, fetch email, API REST, installer) e **plugin**: restano al PHP.
+- **OAuth2 degli account email**: non gestito. Con un account SMTP OAuth2 Next registra un errore e ripiega su sendmail o `OST_SMTP_URL`.
+- **Form con DDL** (`*__cdata`): Next rifiuta le modifiche che richiedono ALTER (`ddl_required`) e le lascia al PHP.
+- **Captcha del portale**: non replicato. Con `enable_captcha` attivo gli ospiti non possono aprire ticket da Next.
+- **2FA e strike**: codici e contatori sono nella memoria del processo, persi con più istanze o dopo un riavvio.
+- **Testo semplice** (rich text disattivato): la chiusura dei tag sbilanciati di `html_balance` non è replicata; la decodifica delle entità sì.
 - **IP del client**: si legge da `X-Forwarded-For`, quindi Next va esposto solo dietro il reverse proxy. Il compose lo pubblica su 127.0.0.1.
-- **Cookie di sessione**: `Secure` in produzione, quindi serve HTTPS (localhost escluso).
-- **Pubblicazione in un sotto-percorso**: `NEXT_BASE_PATH=/app` in fase di build; gli URL scritti a mano passano da `withBase()` (`src/lib/base-path.ts`).
-- **Fine lavori**: aggiornare `frontend-next/README.md` (funzioni, deploy, CI) e la descrizione della PR #1 con lo stato delle milestone e i limiti noti.
+- **Cookie di sessione**: `Secure` in produzione, quindi serve HTTPS (localhost escluso). Cookie agenti e cookie clienti (`ostn_client`) sono separati.
+- **Sotto-percorso**: `NEXT_BASE_PATH=/app` in fase di build; gli URL scritti a mano passano da `withBase()` (`src/lib/base-path.ts`).
+- **Email verso il portale**: i link puntano agli URL del PHP. Per far servire il portale a Next si attivano i redirect commentati in `deploy/nginx.conf`.
+- **Codici dei template negli URL admin**: usano il trattino (`ticket-alert`), perché i percorsi con un punto non passano dal middleware i18n.
 
 ## 6. Milestone (riassunto del piano)
 - **M0** Fondamenta.

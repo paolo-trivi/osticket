@@ -59,29 +59,22 @@ Il PHP non legge questo namespace. I loghi **non** vengono duplicati: si usano `
 ### 1.5 Letture verificate (M1)
 Code dei ticket: per ogni agente e coda la nuova app mostra **gli stessi ticket nello stesso ordine** del PHP (`test/diff/queues.diff.test.ts`, confronto con `CustomQueue::getQuery` + `Staff::getTicketsVisibility` + ordinamenti di `queue-tickets.tmpl.php`). Divergenza voluta: i contatori rispettano la visibilità (in PHP 1.18.4 no, vedi doc 14 §2).
 
-## 2. Operazioni da specificare (backlog per milestone)
+## 2. Copertura per milestone
 
-Per ognuna, prima di implementarla, aggiungere qui la tabella delle scritture (dal codice `include/class.*.php`) e uno scenario in `test/diff/`.
+Tutte le operazioni del backlog iniziale sono implementate in Next e coperte da scenari differenziali (`frontend-next/test/diff/`, 308 scenari). Il dettaglio delle righe scritte è nella §3, area per area.
 
-| Milestone | Operazione | Metodo PHP di riferimento |
-|---|---|---|
-| M2 | risposta agente | `Ticket::postReply` |
-| M2 | nota interna | `Ticket::postNote` |
-| M2 | cambio stato / chiusura / riapertura | `Ticket::setStatus` |
-| M2 | assegnazione, claim, rilascio | `Ticket::assign`, `claim`, `release` |
-| M2 | trasferimento, referral | `Ticket::transfer`, `refer` |
-| M2 | lock | `Lock::acquire`, `Ticket::acquireLock` |
-| M2 | modifica campi, priorità, SLA, scadenza | `Ticket::update`, `updateField` |
-| M2 | merge / link | `Ticket::merge`, `link` |
-| M2 | cancellazione | `Ticket::delete` |
-| M2 | bozze | `Draft::create/update` |
-| M2 | allegati | `AttachmentFile::create`, `Attachment` |
-| M3 | creazione ticket (tutte le origini) | `Ticket::create`, `Ticket::open` |
-| M3 | task | `Task::create`, `Task::setStatus`… |
-| M3 | utenti e organizzazioni | `User::fromVars`, `UserAccount::register`, `Organization::fromVars` |
-| M4 | messaggio del cliente dal portale | `Ticket::postMessage` |
-| M4 | registrazione / reset password cliente | `UserAccount`, `ClientPasswordResetTokenBackend` |
-| M5 | ogni salvataggio dell'area admin | `*::update` delle classi admin, `OsticketConfig::updateSettings` |
+| Milestone | Operazioni | Metodi PHP di riferimento | Contratto |
+|---|---|---|---|
+| M2 ✅ | risposta, nota, cambio stato, lock, bozze, allegati | `Ticket::postReply`, `postNote`, `setStatus`, `Lock::acquire`, `Draft`, `AttachmentFile` | §3.1 |
+| M2 ✅ | assegnazione, claim, rilascio, trasferimento, referral, segna risposto | `Ticket::assign`, `claim`, `release`, `transfer`, `refer`, `markAnswered` | §3.2 |
+| M2 ✅ | modifica campi, proprietario, collaboratori, merge/link, cancellazione, scaduto, ban, massa, export, modifica voce | `Ticket::update`, `updateField`, `merge`, `link`, `delete`, `markOverdue`, `Export::saveTickets`, `ThreadEntry::edit` | §3.3 |
+| M3 ✅ | creazione ticket (agente e web), filtri, numerazione, form dinamici | `Ticket::create`, `Ticket::open`, `Filter::apply` | §3.4 |
+| M3 ✅ | task, utenti, organizzazioni, profilo, 2FA, reset password agenti | `Task::*`, `User::fromVars`, `UserAccount::register`, `Organization::*`, `Staff::*` | §3.5 |
+| M4 ✅ | portale: login, registrazione, reset, ospite, messaggio, apertura, profilo | `UserAccount`, `ClientPasswordResetTokenBackend`, `Ticket::postMessage` | §3.6 |
+| M5 ✅ | impostazioni, reparti, topic, SLA, orari, agenti, team, ruoli | `OsticketConfig::updateSettings`, `Dept`, `Topic`, `SLA`, `Schedule`, `Staff`, `Team`, `Role` | §3.7 |
+| M5 ✅ | email, template, ban list, filtri, form, liste, pagine, code, API key, log, plugin | `Email`, `EmailTemplateGroup`, `Filter`, `DynamicForm`, `DynamicList`, `Page`, `CustomQueue`, `API`, `Plugin` | §3.8 |
+
+Restano al PHP: cron, fetch delle email, API REST, installer/upgrade, plugin (codice), OAuth2 e le modifiche ai form che richiedono DDL.
 
 <!-- BEGIN contratti per area (generato da docs/contract/*.md) -->
 ## 3. Contratti per area (Next.js)
@@ -464,7 +457,167 @@ Dopo l'azione:
 - `markAs`: in caso di errore di `markUnAnswered()` il PHP scrive `$errors['err'] - __(...)` (sottrazione invece di
   assegnazione), quindi l'errore non viene impostato. Il caso non è raggiungibile con un ticket valido.
 
-### 3.3 area "create" (M3 A: creazione ticket e allegati)
+### 3.3 modifica del ticket (M2.3 parte B, area "ticketedit")
+
+Fonte: `frontend-next/docs/contract/ticketedit.md`.
+
+Verificato con 60 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
+`test/diff/php/ops/ticketedit.php`):
+
+```
+OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
+  npx vitest run -c vitest.diff.config.mts test/diff/ticket-edit*.diff.test.ts
+```
+
+| File di test | Scenari |
+|---|---|
+| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (13) |
+| `ticket-edit-delete.diff.test.ts` | eliminazione da stato "deleted" e Ticket::delete (6) |
+| `ticket-edit-collab.diff.test.ts` | collaboratori, segna scaduto, ban list (13) |
+| `ticket-edit-merge.diff.test.ts` | link, scollegamento, merge combinato/separato (8) |
+| `ticket-edit-mass.diff.test.ts` | azioni di massa (11) |
+| `ticket-edit-entry.diff.test.ts` | modifica delle voci del thread (5) |
+| `ticket-edit-export.diff.test.ts` | export CSV delle code (4, sola lettura: CSV confrontato) |
+
+#### File
+| Livello | File | Contenuto |
+|---|---|---|
+| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
+| Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
+| Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `ticketThread` (thread T o C), `childTickets` |
+| Dominio | `src/server/domain/ticket/merge.ts` | `mergeTickets` (manageMerge + merge), `unlinkTicket(s)`, `relatedTickets` |
+| Dominio | `src/server/domain/ticket/collaborators.ts` | `addTicketCollaborator`, `addCollaborator`, `updateCollaborators` |
+| Dominio | `src/server/domain/ticket/overdue.ts` | `markTicketOverdue` (+ avvisi `ticket.overdue`), `setTicketEmailBan`, `emailInBanList` |
+| Dominio | `src/server/domain/ticket/mass.ts` | `massAssign`, `massClaim`, `massTransfer`, `massDelete`, `massChangeStatus`, `massMergeCandidates`, `massAssignableAgents` |
+| Dominio | `src/server/domain/ticket/export.ts` | `exportQueueCsv`, `queueExportFields`, `exportableFields`, `csvLine` |
+| Dominio | `src/server/domain/thread/edit.ts` | `editThreadEntry`, `canEditEntry`, `entryEditContext` |
+| Dominio (additivo) | `src/server/domain/queue/engine.ts` | `exportQueueTicketIds` |
+| Server action | `tickets/[id]/actions-edit.ts`, `tickets/actions-mass.ts` | azioni della vista ticket e della lista |
+| Route | `src/app/api/agent/tickets/export/route.ts` | download del CSV |
+| UI | `src/components/tickets/TicketExtraActions.tsx` + `edit/*`; `src/components/tickets/mass/*` | menu "Modifica"/"Gestisci" e dialoghi; barra di massa ed export nella lista |
+| Testi | `src/messages/ticketedit/{it,en}.json` | namespace `ticketEdit` |
+
+#### Convenzioni comuni
+- `Ticket::save` passa da `TicketRecord`: solo i campi cambiati (confronto debole), `updated = NOW()`, `_search` T.
+- Eventi con `logTicketEvent`/`logThreadEvent` (staff_id = assegnatario o agente se non assegnato). Dove il PHP
+  produce JSON con chiavi in un ordine particolare (array misti) i dati sono serializzati con `phpAssocJson`.
+- Tutte le operazioni ricontrollano sessione e permessi; ticket inaccessibile → `not_found`, permesso mancante → `denied`.
+
+#### Ticket::update (form "Modifica", scp/tickets.php a=update) — `updateTicket`
+Permesso `ticket.edit`. Validazione come `Validator::process` + controlli del PHP:
+- `topicId` numerico obbligatorio (anche `0`), topic esistente ma non attivo → `inactive`;
+- `slaId`, `user_id` numerici se presenti; `source` tra Phone/Email/Web/API/Other;
+- scadenza: non su ticket chiusi, interpretabile, nel futuro;
+- form dinamici: campi memorizzabili, visibili e modificabili dall'agente (obbligatori per l'agente, validatori).
+Con errori nessuna scrittura (`{error:"invalid", fields}`).
+
+Scritture, in ordine:
+1. Risposte mancanti dei campi aggiunti al form (`form_entry_values` con `value = NULL`; il PHP lo fa all'apertura della
+   pagina di modifica con `addMissingFields`).
+2. `ticket.topic_id`, `sla_id`, `source`, `duedate` (data come la scrive il PHP: stringa interpretata **in UTC**,
+   convertita nel fuso del DB — stranezza replicata), `user_id` (se indicato), `isoverdue = 0` se c'è una scadenza; save.
+3. Nota `Ticket Updated` (se c'è) con **avvisi** `note.alert` (logNote).
+4. Risposte dei form cambiate: `UPDATE form_entry_values` (value / value_id) + upsert della colonna in `ticket__cdata`;
+   `form_entry.sort` se l'ordine cambia; form rimossi → DELETE di entry e risposte.
+5. Evento **edited** con le modifiche nell'ordine di assegnazione:
+   `{"topic_id":[vecchio,nuovo],"sla_id":[...],"source":[...],"duedate":[...],"user_id":[...],"fields":{"<id>":[vecchio,nuovo]}}`;
+   i valori nuovi sono quelli inviati (stringhe), le priorità `["Label",id]`. Nessun evento senza modifiche.
+6. Se lo SLA non è stato cambiato e manca o è transitorio (`0x8`): `selectSLAId` (reparto → topic → `default_sla_id`).
+7. `updateEstDueDate` (est_duedate ricalcolata), reindicizzazione `_search`.
+
+#### Ticket::updateField (ajax editField) — `updateTicketField`
+Permesso `ticket.edit`. Valore uguale all'attuale → `already_set` senza scritture.
+- **Campi dei form** (`priority` o id del campo): `form_entry_values` + `ticket__cdata`, save del ticket; evento **edited**
+  `{"0":vecchio,"1":nuovo,"fields":{"<id>":[vecchio,nuovo]}}` (memo: tag rimossi e troncati a 200 caratteri).
+- **topic** (`topic_id`, topic attivo o attuale), **sla** (`sla_id`; un id non valido non cambia nulla ma registra
+  l'evento con dati NULL, come il PHP), **source**, **duedate**: colonna + save; evento `{"<colonna>":[vecchio,nuovo]}`.
+- Nota `<etichetta> updated` con i commenti, **senza** avvisi.
+- `lastupdate = NOW()`; per SLA e scadenza `updateEstDueDate`; save; `_search`.
+
+#### Ticket::changeOwner (do=changeuser) — `changeTicketOwner`
+`ticket.user_id` (save), cancellazione dell'eventuale collaboratore con quell'utente, evento **edited**
+`{"owner":<id>,"fields":{"Ticket Owner":"<nome>"}}`.
+
+#### Collaboratori — `addCollaborator`, `updateCollaborators`
+- Aggiunta (ajax add-collaborator / do=addcc): il proprietario non può essere collaboratore (`owner`); già presente →
+  `already_collaborator`. `INSERT thread_collaborator` (flags `ACTIVE|CC` = 3, role `M`, created/updated NOW);
+  evento **collab** `{"add":{"<user_id>":{"name":"<nome>"}}}`.
+- Aggiornamento (ajax collaborators): per ogni `del` DELETE + evento **collab** `{"del":{...}}`; `cid` → `updated = NOW()`
+  e flag ACTIVE; tutti gli altri collaboratori del thread perdono ACTIVE e ricevono comunque `updated = NOW()`.
+
+#### Merge e link — `mergeTickets`, `unlinkTickets`
+Permesso `ticket.merge` (merge) o `ticket.link` (link) su **tutti** i ticket, verificato prima di scrivere.
+- **manageMerge** (per ogni ticket nell'ordine, il primo è il padre): scioglie i link se si passa a merge o si cambia
+  il padre di un link; `sort = posizione` (ticket "visual"); se va collegato: eventi **merged|linked**
+  `{"ticket":"Ticket #<num>","id":<id>}` su padre e figlio, `ticket_pid`, flag del padre `PARENT|tipo` e del figlio `tipo`
+  (`0x1` combine, `0x2` separate, `0x8` link); per i merge con reparti diversi referral `D` sul thread del padre +
+  evento **referred** `{"dept":<id>}`.
+- **merge** (solo combine/separate): per ogni figlio collaboratori (partecipanti "all") e proprietario aggiunti al padre
+  (evento collab del proprietario con chiave vuota `{"add":{"":{"name":...}}}`: stranezza replicata); voci del thread
+  del figlio spostate nel thread del padre (`flags |= 0x400`, riga `thread_entry_merge {"thread":<thread figlio>}`,
+  `_search` H); thread del figlio `object_type = 'C'`, `extra = {"ticket_id":<padre>,"number":"<num figlio>"}`;
+  stato di chiusura forzata del figlio (setStatus, referral all'assegnatario se `auto_refer_closed`); stato del padre;
+  task del figlio spostati (`task.object_id`, senza filtro sul tipo, come il PHP); eliminazione del figlio.
+- **unlink**: figlio → `ticket_pid NULL`, `sort 1`, senza LINKED, eventi **unlinked** su figlio e padre; un padre
+  scollega tutti i figli e perde `PARENT|LINKED` (un figlio scollegato da solo lascia il padre "padre").
+- Il PHP risponde 404 ai link riusciti: qui l'esito è positivo.
+
+#### Eliminazione — `deleteTicket` / `ticketHardDelete`
+Collegata a `changeTicketStatus` (stato "deleted", permesso `ticket.delete`) con `{ hardDelete: ticketHardDelete({children}) }`.
+Ordine: DELETE ticket + `_search` T; figli di un padre → `ticket_pid NULL`, flag di merge azzerati (save), thread `T`;
+per un figlio il padre senza altri figli torna normale e il thread **non** viene eliminato; altrimenti DELETE thread,
+`_search` H delle voci, `thread_entry_email.headers = NULL`, allegati H (+ `AttachmentFile::deleteOrphans`: file `T`
+senza allegati creati da più di un giorno, con i `file_chunk`), collaboratori, referral, voci, `thread_event.thread_id = 0`;
+evento **deleted** sul vecchio thread; DELETE form_entry + risposte; bozze `ticket.%.<id>`; riga `ticket__cdata`;
+syslog Debug "Ticket #N deleted" (`<hr>` + commenti, solo con `log_level` 3). Il lock del ticket resta (come il PHP).
+Con "anche ai figli" i figli vengono eliminati dopo il padre (controllo `ticket.delete` per figlio).
+
+#### Segna scaduto e ban list — `markTicketOverdue`, `setTicketEmailBan`
+- Scaduto (solo manager del reparto, ticket aperto): `isoverdue = 1` (save), evento **overdue**, avvisi
+  `ticket.overdue` (SLA senza NOALERTS, `overdue_alert_active`; assegnatario/membri del team se
+  `overdue_alert_assigned`, altrimenti membri del reparto se non assegnato e `overdue_alert_dept_members`; più il
+  manager), poi nota di sistema `Ticket Marked Overdue` / `Ticket flagged as overdue by <agente>` (SYSTEM, senza avvisi).
+  Se già scaduto solo la nota.
+- Ban (`emails.banlist`): `INSERT filter_rule` (filtro "SYSTEM BAN LIST", `email equal <indirizzo>`, isactive 1,
+  notes '', created/updated NOW); unban: DELETE delle regole corrispondenti.
+
+#### Azioni di massa — `mass.ts`
+Riusano `assignTicket`, `assignToStaff`, `transferTicket`, `setTicketStatus`, `deleteTicket`, `mergeTickets`.
+- Assegna (agenti di `Staff::getDeptAgents` filtrati per reparti "solo membri"), presa in carico (Ticket::claim non
+  controlla stato e assegnatario: un ticket già assegnato passa all'agente), trasferisci, elimina (ticket.delete in
+  almeno un ruolo), cambio stato (`canManageTickets` + permesso per stato in almeno un ruolo; nota "Status Changed"
+  con avvisi; "deleted" elimina), merge/link.
+- Stranezza replicata: per trasferimento e cambio stato il PHP condivide `$errors` tra i ticket; dopo il primo errore
+  di validazione (già nel reparto, non chiudibile) i ticket successivi falliscono senza scritture.
+
+#### Modifica di una voce del thread — `editThreadEntry`
+Visibile per voci non di sistema (risposte solo di agenti); permesso: voce propria, manager del reparto o
+`thread.edit`. Corpo pulito identico → nessuna scrittura. Altrimenti nuova `thread_entry` (pid = voce, stessi
+autore/poster/tipo, titolo `htmlchars`, `recipients` **NULL** come il PHP), allegati non inline spostati,
+`flags = (base & ~HIDDEN & ~GUARDED) | EDITED`, `editor`/`editor_type 'S'`, `created` della base, `updated NOW`;
+la base riceve `HIDDEN`. Una seconda modifica dello stesso agente sostituisce la precedente (DELETE + `_search`).
+
+#### Export CSV — `exportQueueCsv`
+Campi della coda (`queue_export`, ereditati con `0x80`, oppure gli standard + campi cdata), eventuale selezione;
+ticket della coda con visibilità e ordinamento della lista **senza** filtro sui figli dei merge; BOM UTF-8,
+`fputcsv` (virgolette solo se il campo contiene separatore, virgolette, spazi o a capo); valori come
+`from_query ?: valore grezzo ?: ''` (contatori a 0 vuoti, Yes/No, nomi completi di reparto e topic).
+Il PHP prepara il file in background e lo invia per email se non scaricato: qui il download è immediato.
+
+#### Differenze volute (permessi) rispetto al PHP
+- Collaboratori: gli endpoint ajax controllano solo l'accesso al ticket; qui serve `ticket.reply` o `ticket.edit`
+  (come la vista). La riattivazione `cid` è limitata ai collaboratori del thread.
+- Merge/link: niente scorciatoia "thread con un referral qualsiasi" (`isReferred()`), permessi verificati su tutti i
+  ticket prima di scrivere; scollegamento (`dtids`) con `ticket.link` o `ticket.merge` (il PHP non controlla nulla).
+- Merge con thread "nipoti" ancora pieni: il PHP chiamerebbe `saveExtra` con argomenti scambiati (errore); qui le
+  voci vengono spostate normalmente.
+
+#### Altre differenze
+- `addMissingFields` avviene al salvataggio invece che all'apertura del form (stesso risultato finale).
+- Ban list mancante: il PHP crea il filtro "SYSTEM BAN LIST"; qui l'operazione risponde `no_banlist`.
+- Testi "Yes/No" e intestazioni del CSV in inglese come il PHP con lingua di sistema `en_US`.
+
+### 3.4 area "create" (M3 A: creazione ticket e allegati)
 
 Fonte: `frontend-next/docs/contract/create.md`.
 
@@ -571,7 +724,7 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 - Il messaggio di sistema `ticket.alert` non ha token/separatore (thread non è una ThreadEntry).
 - htmLawed `tidy=-1`: spazi compattati in `Format::safe_html` (ora replicato in `safeHtml`).
 
-### 3.4 task, utenti, organizzazioni, profilo agente, 2FA (M3 parte B, area "people")
+### 3.5 task, utenti, organizzazioni, profilo agente, 2FA (M3 parte B, area "people")
 
 Fonte: `frontend-next/docs/contract/people.md`.
 
@@ -690,4 +843,392 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   reset calcolata nel DB (il PHP interpreta l'ora del DB come UTC); traduzioni delle pagine di contenuto non gestite;
   eliminazione dei ticket di un utente (`deleteAllTickets`) non disponibile finché l'area ticketedit non espone
   l'eliminazione del ticket (`deleteUser` accetta `hardDeleteTicket`).
+
+### 3.6 area "portal" (M4: portale clienti)
+
+Fonte: `frontend-next/docs/contract/portal.md`.
+
+Riferimenti PHP: root `index.php`, `login.php`, `logout.php`, `view.php`, `account.php`, `pwreset.php`,
+`profile.php`, `open.php`, `tickets.php`, `kb/*`; `include/class.auth.php` (UserAuthenticationBackend,
+UserAuthStrikeBackend, osTicketClientAuthentication, AccessLinkAuthentication, AuthTokenAuthentication,
+ClientPasswordResetTokenBackend, ClientAcctConfirmationTokenBackend), `class.client.php` (TicketUser,
+EndUser, ClientAccount), `class.user.php` (User::updateInfo, UserAccount), `class.ticket.php`
+(postMessage, onMessage, notifyCollaborators, sendAccessLink, checkUserAccess), `include/client/*.inc.php`.
+Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (12),
+`portal-open.diff.test.ts` (5) con le op di `test/diff/php/ops/portal.php`.
+
+#### API
+
+```ts
+// Sessione (src/server/auth/client-auth.ts) — cookie firmato `ostn_client` (realm "client"), separato dagli agenti
+startClientSession(login: ClientLogin)        currentClient(): ClientIdentity | null   (cache per richiesta)
+touchClientSession() clientSessionKey() visitorKey(create?) clientResetToken() refreshClientSession(pwv) clientLogout()
+
+// Autenticazione (src/server/domain/client/auth.ts) — solo dominio, usabili dall'harness
+performClientLogin({login, password, ip})            → ClientAuthOutcome
+performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore
+performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null
+performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)
+performConfirm({token, ip})                          → ConfirmOutcome
+lookupByAuthToken(executor, token)  resetTokenValid(executor, cfg, token, userId)
+
+// Account (src/server/domain/client/account.ts)
+registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})
+updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg, userId, input)
+
+// Ticket (src/server/domain/ticket/message.ts, domain/client/*)
+postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
+postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
+editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(...)        // tickets.php a=edit
+openPortalTicket(cfg, client|null, vars, {ip, sessionKey})                        // open.php → createTicket 'web'
+clientCanAccess, listClientTickets, clientTicketStats, loadClientTicketView, clientAttachment, clientEditForms
+kbEnabled, publicCategories, featuredCategories, searchFaqs, publicCategory, publicFaq, publicFaqFile, contentPage
+```
+
+Rotte: pagine in `src/app/[locale]/(client)/**` (`/`, `/login`, `/account`, `/pwreset`, `/profile`, `/tickets`,
+`/tickets/[id]`, `/tickets/[id]/edit`, `/open`, `/kb`, `/kb/category/[id]`, `/kb/faq/[id]`); route handler
+`/view` (link `?auth=`), `/pwreset/confirm` (conferma account), `/api/portal/upload`, `/api/portal/file/[key]`.
+
+#### Scritture
+
+| Operazione | Righe |
+|---|---|
+| Login riuscito (client, token, link senza verifica, reset, conferma) | `syslog` Debug "User login" `<email> (<uid>) logged in [<ip>]` (solo con log_level ≥ 3); `user_account.extra` `{"browser_lang":"<lingua di sistema>"}` se l'utente ha un account e il valore cambia; solo login interattivo: `DELETE config` namespace `pwreset` value `c<uid>`; password MD5 legacy → `user_account.passwd` bcrypt `$2a$08$` |
+| Login fallito / AccessDenied | contatore per IP (il PHP: per sessione); ogni 3° tentativo `syslog` Warning "Failed login attempt (user)"; oltre `client_max_logins` blocco per `staff_login_timeout` minuti, `syslog` Error "Excessive login attempts (user)" + avviso all'admin (solo testo) se `send_login_errors` |
+| Link di accesso (verifica email) | nessuna riga; email pagina `access-link` (to: proprietario con `view.php?auth=`; cc: collaboratore con `tickets.php?id=`) dall'email predefinita, Message-ID classe `?` utente 0 |
+| Registrazione (account.php) | utente nuovo come `User::fromVars` (user, user_email, form_entry U + valori + `user__cdata`, `_search` U); utente esistente: `User::updateInfo`; `DELETE config pwreset c<uid>`; `INSERT user_account` (user_id, timezone, lang NULL, passwd, status 0); `INSERT config` pwreset `<token 48>` = `c<uid>`; email `registration-client` |
+| Conferma (pwreset.php?token) | `user_account.status \|= 1`; login (sopra); con password locale `DELETE config pwreset c<uid>`, altrimenti `status \|= 4` |
+| Richiesta reset | `INSERT config` pwreset `<token>` = `c<uid>`; email `pwreset-client`; nessuna scrittura se l'account non esiste |
+| Accesso con token di reset | `user_account.status \|= 4` (REQUIRE_PASSWD_RESET), login (sopra) senza cancellare il token |
+| Profilo | `user_account` timezone/lang (solo se cambiano), con nuova password: passwd, `DELETE config pwreset c<uid>`, `status &= ~4`; `User::updateInfo`: `user_email.address`, `form_entry_values` dei campi modificabili dai clienti (`user__cdata`), `user.name` normalizzato + `updated`, `_search` U |
+| Messaggio (postMessage) | poster ≠ proprietario e non collaboratore: `thread_collaborator` flag 3 + evento `collab`; `thread_entry` M (recipients = partecipanti attivi tranne il poster, ordine collaboratori per nome; flag REPLY_ALL/REPLY_USER, COLLABORATOR, BALANCED), `_search` H, `attachment` H; `thread.lastmessage`; `ticket` isanswered 0, lastupdate, updated; se chiuso e riapribile `Ticket::reopen` (status, reopened, closed NULL, staff riassegnato, evento `reopened` che annulla `closed`, est_duedate); `DELETE draft` `ticket.client.<id>` (+ allegati D) |
+| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search` |
+| Apertura (open.php) | `DELETE draft ticket.client.<ultimi 12 della sessione>` (anche se la creazione fallisce) poi `createTicket(ctx, vars, "web")` (vedi `create.md`) |
+
+Email del messaggio (dopo il commit, ordine del PHP): `message.autoresp` al poster (proprietario in To classe U,
+collaboratore in Cc classe C; `message_autoresponder` e reparto `message_auto_response`), `ticket.activity.notice`
+(una email: proprietario in To, collaboratori in Cc, classe M; saluto "Collaborator" se il proprietario è l'autore),
+`message.alert` agli agenti (penultimo rispondente, assegnatario o team, manager del reparto, account manager).
+
+KB: sola lettura, il PHP non registra visualizzazioni (nessuna colonna `faq.views`).
+
+#### Differenze rispetto al PHP (sicurezza, non replicate)
+- Strike per IP (in memoria) invece che per sessione: scartare il cookie non azzera il contatore.
+- `ClientAccount::update` con token di reset: il PHP non verifica scadenza del token (`&&` al posto di `||`),
+  conferma e politica della password; qui token valido e non scaduto, conferma e politica obbligatorie.
+- Registrazione/apertura ospite: `Company` legge i propri campi da `$_POST` al primo uso, quindi `%{company.name}`
+  nell'email di conferma diventa il nome inviato dal visitatore (contenuto falsificabile verso indirizzi arbitrari);
+  Next usa sempre i dati dell'azienda (l'op PHP carica Company prima di `$_POST`).
+- Ricerca dei ticket: le note interne non partecipano alla ricerca full-text del cliente.
+- Un ospite (link) vede solo il ticket del link; non può modificare il profilo.
+- Captcha (`enable_captcha`) non replicato: con il captcha attivo gli ospiti non aprono ticket da Next.
+- AccessLinkAuthentication provata nel login con password (password = numero di un proprio ticket): non replicato.
+
+#### Stranezze PHP replicate
+- `UserAuthStrikeBackend::authTimeout` usa `staff_login_timeout`, non `client_login_timeout`.
+- Ogni tentativo durante il blocco è un nuovo strike (nuovo "Excessive login attempts").
+- `ClientPasswordResetTokenBackend::signOn` riceve `$errors` per valore: l'errore mostrato è "Unknown user" (+ strike).
+- Il controllo anti-loop dell'auto-risposta (`Email::getIdByEmail('"Nome" <email>')`) non trova mai un'email di sistema.
+- `getChanges` della modifica cliente include anche i campi non visibili/modificabili assenti dal POST (es. priorità → null) nell'evento, ma salva solo i campi del cliente.
+- Testo semplice: doppia pulizia del corpo (tickets.php + ThreadEntry::create) senza doppia codifica.
+- `user_account` non ha `lastlogin`: il PHP non registra l'ultimo accesso dei clienti.
+- Lingua `browser_lang`: lingua di sistema (la negoziazione con Accept-Language non è replicata).
+
+### 3.7 area amministrazione: impostazioni, reparti, help topic, SLA, orari, agenti, team, ruoli (M5 parte A, area "admin")
+
+Fonte: `frontend-next/docs/contract/admin.md`.
+
+Verificato con i test differenziali (righe DB ed email identiche al PHP; operazioni PHP in `test/diff/php/ops/admin.php`):
+
+| File | Scenari |
+|---|---|
+| `test/diff/admin-settings.diff.test.ts` | 8 (sistema: modifica + chiavi mancanti + salvataggio identico; errori titolo/ACL/backend; ticket con autorisposte, avvisi e ordine code; errori formato/destinatari e validazione tardiva; task; agenti e utenti con errori; KB; azienda: form "C", pagine, loghi; errori) |
+| `test/diff/admin-departments.diff.test.ts` | 7 (modifica con accessi estesi/ruolo membri primari; rimozione accessi; creazione sotto-reparti; errori; massa; eliminazione con spostamenti; reparto usato da un filtro) |
+| `test/diff/admin-objects.diff.test.ts` | 10 (help topic: modifica con form/ordinamento, creazione, errori, massa + ordinamento manuale; SLA: modifica/creazione/errori, massa ed eliminazione; team: modifica/creazione/errori, massa ed eliminazione; ruoli: modifica/creazione/errori, massa ed eliminazione) |
+| `test/diff/admin-agents.diff.test.ts` | 5 (modifica completa; creazione con email di benvenuto e con password; errori e "ultimo amministratore"; password impostata e email di reset con syslog; massa: abilita/disabilita, permessi, reparto con eavesdrop, eliminazione) |
+| `test/diff/admin-schedules.diff.test.ts` | 4 (nuovo orario e clonazione; modifica con festività e ordine voci; voci annuali/settimanali/mensili/una tantum, modifica e conflitti; eliminazione voci e orari) |
+
+```
+OST_DIFF_TAG=admin MAILPIT_SMTP_PORT=1031 MAILPIT_HTTP_PORT=8031 \
+  npx vitest run -c vitest.diff.config.mts test/diff/admin-*.diff.test.ts
+```
+
+Unit test: `test/unit/admin-php.test.ts` (FormData → `$_POST`, semantica PHP, JSON dei permessi).
+I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di reset normalizzati, password verificate con
+`comparePassword`.
+
+#### File
+| Livello | File | Contenuto |
+|---|---|---|
+| Dominio | `src/server/domain/admin/php.ts` | semantica PHP sui `$vars` del POST: `isset`, `truthy`, `intval`, `isNumeric`, `formatHtmlchars` (Format::htmlchars), `usernameError` |
+| Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
+| Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
+| Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr) |
+| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
+| Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
+| Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |
+| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `deleteTopic`, `massTopics`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/sla.ts` | `saveSla`, `deleteSla`, `massSla` |
+| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `processEntryForm`, `effectiveTimezone` |
+| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff`, `setAgentPassword`, `sendAgentResetEmail`, `deleteStaff`, `massStaff`, `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/team.ts` | `saveTeam`, `deleteTeam`, `massTeams` |
+| Dominio | `src/server/domain/admin/role.ts` | `saveRole`, `massRoles`, `roleInUse`, `ALL_PERMISSIONS`, `rebuildPermissions` |
+| Dominio | `src/server/domain/admin/filters.ts` | `filterActionsReferencing` (vedi "Filtri") |
+| Dominio | `src/server/domain/admin/{common,lookups,dashboard,form-data}.ts` | esiti, elenchi per i form, sintesi della home, `parsePhpForm` |
+| Server action | `admin/{departments,topics,sla,schedules,agents,teams,roles}/actions.ts`, `admin/settings/_shared/actions.ts`, `admin/_shared/server.ts` | `requireAdminAction` (solo `isadmin`), transazione, email dopo il commit |
+| UI | `admin/page.tsx`, `admin/settings/{company,system,tickets,tasks,agents,users,kb}`, `admin/{departments,topics,sla,schedules,agents,teams,roles}/**` | pagine con `requireAdmin` |
+| UI | `src/components/admin/{AdminForm,AccessEditor,AdminList,MassBar,AdminNotice}.tsx`, `src/lib/admin/form-schema.ts` | form a schema, liste con azioni di massa |
+| Testi | `src/messages/admin/{it,en}.json` | `admUi`, `admSettings`, `admDepts`, `admTopics`, `admSla`, `admSchedules`, `admAgents`, `admTeams`, `admRoles`, `admHome` |
+
+#### Convenzioni comuni
+- Le funzioni di dominio ricevono le stesse `$vars` del POST di scp/*.php (`PhpVars`: stringhe, liste `x[]`, mappe `x[k]`);
+  la UI invia FormData con gli stessi nomi e `parsePhpForm` le ricostruisce.
+- Modelli (department, help_topic, sla, team, role, staff, schedule, schedule_entry): un campo è modificato solo se cambia
+  con confronto debole PHP (`OrmRow.set`), l'UPDATE contiene solo quei campi più `updated = NOW()`; le INSERT contengono solo
+  i campi impostati (un valore "uguale a NULL" come `0`/`''` non è impostato e prende il default della colonna).
+- `config` (Config::update): UPDATE solo se il valore cambia (confronto debole) con `updated = NOW()`; INSERT se la chiave
+  manca (valore `''` se "uguale a NULL"); booleani scritti come `1`/`0`.
+- Nessuno di questi oggetti è indicizzato in `_search` (MysqlSearchBackend indicizza solo ticket, voci, utenti, org e FAQ) e
+  nessuna scrittura genera `thread_event`; i Signal `object.created/edited` non hanno ascoltatori nel core.
+- Azioni di massa con `UPDATE` diretto (abilita/disabilita SLA, team, ruoli, agenti): solo `flags`/`isactive`, senza `updated`.
+
+#### Impostazioni (scp/settings.php → OsticketConfig::updateSettings)
+Namespace `core`. Pagine: `system`, `tickets` (con autorisposte, avvisi e `qsort[queue_id]`), `tasks`, `agents`, `users`,
+`kb`, `pages` (= "Azienda"). Chiavi e valori come `update*Settings`; in particolare:
+- sistema: `$vars` passano da `Format::htmlchars($vars, true)` (sanitize + htmlspecialchars senza doppia codifica);
+  ACL: con backend diverso da 0/2 l'IP del client deve essere nell'elenco; `default_storage_bk` aggiornato prima degli altri;
+  lingue secondarie filtrate su quelle installate (`include/i18n` dell'installazione PHP); `force_https` = `on`/`''`;
+  `acl_backend` = `Format::sanitize((int))` o `0`.
+- ticket: autorisposte e avvisi sono salvati **prima** della validazione dei campi principali (se poi fallisce restano
+  salvati: stranezza replicata); ordine delle code (`queue.sort`, `updated = NOW()` se cambia) tra le code con FLAG_QUEUE.
+- azienda: form dinamico tipo `C` (entry con `object_type 'C'`): validazione dei campi obbligatori per l'agente, poi
+  `form_entry_values` aggiornati solo se cambiano (nessun `form_entry.updated`, nessun `*__cdata`); `client_logo_id`,
+  `staff_logo_id`, `staff_backdrop_id` = id scelto o `false` (→ `0`/`''`).
+- Errori come codici (`required`, `invalid`, `hash`, `recipients`, `lockout`, `ip_required`, `inactive`…).
+
+#### Reparti (Dept)
+- `department`: tutti i campi del form; `flags` ricostruiti da zero (quindi sempre "modificati": ogni salvataggio aggiorna
+  `updated`); `path` = percorso degli antenati, per un reparto nuovo prima `//` (o `<padre>/`) e poi un secondo UPDATE con l'id.
+- Accessi: `staff_dept_access` (nuovo: `staff_id`, `role_id`, `dept_id`, `flags` solo se 1 — con avvisi disattivati la riga
+  nuova prende il default 1 della colonna: stranezza del PHP replicata), ruolo/avvisi aggiornati, accessi non più elencati
+  eliminati; ruolo dei membri primari salvato in `staff.role_id` (+ `staff.updated`).
+- Eliminazione: non il predefinito né con membri; ticket, task e agenti → reparto predefinito; help topic ed email → 0;
+  accessi estesi eliminati. Massa: enable/disable/archive (flag + `updated`); `make_public`/`make_private` del PHP usano la
+  colonna inesistente `dept_id` e falliscono sempre (non offerte nella UI).
+
+#### Help topic (Topic)
+- `help_topic` come Topic::update (assegnazione `s<id>`/`t<id>`, numerazione personalizzata con FLAG_CUSTOM_NUMBERS,
+  stato con FLAG_ACTIVE/ARCHIVED, `noautoresp`, note sanificate); nuovo sotto-topic: `sort = sort del padre + 1`.
+- Ordinamento alfabetico (`help_topic_sort_mode` = `a`): `INSERT … ON DUPLICATE KEY UPDATE sort` con l'elenco letto
+  **prima** del salvataggio (cache statica di getHelpTopics): un topic nuovo o rinominato non conta nella stessa richiesta.
+  Collator della lingua principale (Intl.Collator).
+- `help_topic_form`: form nell'ordine inviato (`sort = indice+1`), `extra = {"disable":[id campi non spuntati]}`, rimozione
+  dei form non più elencati (tranne il tipo T).
+- Eliminazione: non il predefinito; figli → `topic_pid 0`, `faq_topic` eliminati, ticket → `topic_id 0`; le righe
+  `help_topic_form` restano (come nel PHP). Massa: almeno un topic attivo; ordinamento manuale con `sort-<id>`
+  (al primo passaggio a "manuale" la chiave nuova non è letta dal PHP nella stessa richiesta: l'ordine inviato è ignorato).
+- La propagazione dello stato "disabilitato" dai padri segue la stranezza di getHelpTopics (solo dal secondo livello).
+
+#### SLA
+`sla` con `$vars` passati da Format::htmlchars (nome e note salvati con le entità HTML); flags = attivo | NOALERTS |
+TRANSIENT. Eliminazione: non il predefinito; reparti/topic → `sla_id 0`, ticket → SLA predefinito.
+
+#### Orari (Schedule)
+- Nuovo/clonazione (ajax.schedule.php): INSERT con `created/updated`, poi UPDATE di `flags` (tipo) e `updated`; clonazione
+  delle voci (`created/updated = NOW()`).
+- Modifica: nome, fuso (`NULL` se vuoto), descrizione sanificata; `config schedule.<id>` → `configuration`
+  `{"holidays":["4"]}` (id come stringhe del POST); `schedule_entry.sort` da `sort-<id>`.
+- Voci (ScheduleEntryForm::process): la data del datepicker è letta come mezzanotte UTC e convertita nel fuso dell'agente
+  (o di sistema): `starts_on` è il giorno in quel fuso (nei fusi a ovest di UTC il giorno prima, come il PHP), `stops_on` è
+  data e ora in quel fuso; tutto il giorno = 00:00:00–23:59:59; `ends_at` con secondi 59 se i minuti non sono 00;
+  `day/week/month` per settimanale/mensile/annuale; unicità come Schedule::isEntryUnique. In modifica si impostano solo
+  le chiavi calcolate (le vecchie `day/week/month` restano: stranezza replicata).
+- Eliminazione: orario e voci (la config `schedule.<id>` resta).
+
+#### Agenti (Staff)
+- `staff` come Staff::update: `isadmin`, `isactive` (= non bloccato), **`isvisible = 0` a ogni salvataggio** (il form PHP
+  non ha il campo: stranezza replicata; su un agente nuovo 0 non è impostato e resta il default 1), `onvacation`,
+  `assigned_only`, dati anagrafici (telefono con Format::phone), note, `permissions` (RolePermission JSON o `''` se nessuno),
+  `extra.def_assn_role`, password (`passwd`, `change_passwd`, `passwdreset = NOW()`, token `pwreset` dell'agente eliminati).
+- Reparto primario (setDepartmentId: rimuove l'eventuale accesso esteso a quel reparto), accessi estesi (`staff_dept_access`
+  salvati uno per uno), team (`team_member`).
+- Controllo "unico amministratore attivo": confronta con l'id dell'ultima ricerca per username/email (`$uid`), quindi se
+  cambia anche l'email il controllo non scatta (stranezza replicata).
+- Creazione: senza password e con backend locale → email di benvenuto (`registration-staff`, token in `config pwreset`,
+  nessun syslog); con password: PasswordResetForm (obbligatoria, politica, conferma).
+- ajax.staff.php setPassword: email `pwreset-staff` (syslog Warning "Agent Password Reset" con `Requested-User-Id` vuoto)
+  oppure nuova password (+ `change_passwd` facoltativo).
+- Eliminazione (non se stessi): ticket → `staff_id 0`, `thread_entry.staff_id = 0` con `poster = "Nome Cognome"`,
+  team e accessi eliminati; i task assegnati restano (come nel PHP).
+- Massa: attiva/blocca (`isactive`, senza `updated`), permessi (senza permessi il PHP non salva), reparto (con eavesdrop:
+  accesso esteso al vecchio reparto con avvisi), elimina.
+
+#### Team e ruoli
+- `team`: flags = abilitato | NOALERTS, capo team azzerato se rimosso (`remove[]`), membri `team_member` (avvisi = flag 1).
+  Eliminazione: membri eliminati, ticket → `team_id 0`.
+- `role`: nome e note sanificati, `permissions` JSON: chiavi esistenti nel loro ordine, nuove in coda nell'ordine di
+  RolePermission::allPermissions (gruppo, titolo); almeno un permesso. Eliminazione solo se nessun agente o accesso usa il ruolo.
+
+#### Filtri (differenza voluta)
+`Signal object.deleted → Filter::disableFilters` va in errore fatale nel PHP quando un'azione di filtro fa riferimento
+all'oggetto eliminato (reparto, topic, agente, team, SLA): la riga principale viene cancellata ma ticket/task/accessi
+non vengono aggiornati (dati orfani). In TS l'eliminazione viene **rifiutata senza scritture** (errore `filter`).
+Il riallineamento dei flag dei filtri al cambio di stato (FilterAction::setFilterFlags) nel PHP non scrive mai nulla
+(Filter::update fallisce per le regole mancanti): niente da replicare.
+
+#### Permessi (differenze di sicurezza)
+- ajax.schedule.php (nuovo orario, voci) richiede solo un agente autenticato: qui tutte le scritture admin richiedono `isadmin`
+  (pagine con `requireAdmin`, server action con `requireAdminAction`).
+
+#### Non gestito (resta al PHP)
+- Caricamento ed eliminazione di loghi/sfondi (`AttachmentFile::uploadLogo/uploadBackdrop/delete`): la pagina Azienda
+  permette solo di scegliere tra i file già caricati.
+- Traduzioni dei nomi (CustomDataTranslation) di reparti, topic, SLA, team, ruoli e voci degli orari.
+- Esportazione CSV degli agenti/membri del reparto; importazione agenti; "ferie di massa" (non esiste nel PHP).
+
+### 3.8 area "adminsys" (M5 parte B)
+
+Fonte: `frontend-next/docs/contract/adminsys.md`.
+
+Amministrazione di sistema: email, ban list, template, diagnostica, filtri, form, liste, pagine, code,
+API key, log, plugin, informazioni di sistema. Solo amministratori: `requireAdmin(locale)` in ogni
+pagina, `requireAdminAction()` (sessione + `isadmin`) in ogni server action. Scritture in transazione
+(`adminWrite`). Servizi in `src/server/domain/adminsys/*`, verificati con i test differenziali
+`test/diff/adminsys-*.diff.test.ts` (op PHP in `test/diff/php/ops/adminsys.php`).
+
+Convenzioni comuni:
+- `Format::sanitize` → `sanitizeHtml` (`adminsys/sanitize.ts`): `sanitizeText` + attributi obbligatori di
+  htmLawed (`<img>` senza alt → `alt="image"`, senza src → `src="src"`, `<bdo>` → `dir="ltr"`).
+- Modelli ORM con `OrmRow` dell'area admin: INSERT con i soli campi "dirty" (confronto debole PHP),
+  UPDATE dei soli campi cambiati, `updated = NOW()` se il modello lo prevede.
+- `db_affected_rows()` di mysqli conta le righe cambiate: i conteggi delle azioni di massa con UPDATE
+  diretto si calcolano sulle righe che cambiano davvero.
+- Nessun DDL (vedi Form).
+
+#### Impostazioni email — `/admin/settings/emails` (scp/emailsettings.php)
+`updateEmailsSettings(tx, vars)` = `OsticketConfig::updateEmailsSettings`.
+- Validazione: `default_template_id`, `default_email_id`, `alert_email_id` (int obbligatori),
+  `admin_email` (email obbligatoria, non può essere un'email di sistema), `reply_separator` obbligatorio
+  se `strip_quoted_reply`.
+- `config` (namespace `core`) con `Config::update`: UPDATE `value`, `updated=NOW()` solo se il valore
+  cambia; INSERT se la chiave manca (`verify_email_addrs`, `accept_unregistered_email`,
+  `add_email_collabs` nella fixture). Chiavi: default_template_id, default_email_id, alert_email_id,
+  default_smtp_id, admin_email, reply_separator; flag 1/0 (isset): verify_email_addrs, enable_auto_cron,
+  enable_mail_polling, strip_quoted_reply, use_email_priority, accept_unregistered_email,
+  add_email_collabs, email_attachments.
+
+#### Account email — `/admin/emails` (scp/emails.php, ajax.email.php)
+`saveEmail(tx, id|null, vars)` = `Email::update` / `Email::create`.
+- `email`: `email` (sanitize), `name` (striptags), `dept_id`, `priority_id`, `topic_id`, `noautoresp`,
+  `notes` (sanitize); nuova: `created=NOW()`; `updated=NOW()` se cambia qualcosa.
+- Email esistente: `email_account` mailbox e smtp creati se mancanti (`created`, `type`, `updated`,
+  `email_id`) e salvati da `setInfo` se valido (active, host, port, protocol, auth_bk, folder,
+  fetchfreq, fetchmax, postfetch, archivefolder / allow_spoofing, protocol=SMTP; azzera
+  last_activity, last_error_msg, num_errors). La mailbox viene salvata anche se poi l'SMTP fallisce.
+- Account attivo con credenziali: connessione di prova (IMAP/POP3 login e cartelle, SMTP con
+  nodemailer `verify`) → errori `mailbox_auth`/`smtp_auth` senza scritture.
+- Credenziale con tipo sconosciuto: `logActivity` (num_errors+1, last_error_msg, last_error=NOW()).
+- `saveBasicAuth(tx, id, type, {username, passwd}, stash)` = `saveAuth('basic')`: verifica la
+  connessione, poi `config` namespace `email.<eid>.account.<aid>`: `username`, `passwd` =
+  `Crypto::encrypt(pw, SECRET_SALT, md5(username . namespace))`; account `auth_bk='basic'` + host/porta/
+  protocollo dello stash, `updated=NOW()` (INSERT se l'account non esisteva).
+  - Bug PHP replicati: account non salvato → namespace `account.0`; SMTP con `auth_bk` salvato
+    "mailbox" → credenziali scritte nel namespace della mailbox (cifrate con quello SMTP).
+- `massDeleteEmails`: non l'email predefinita né quella degli avvisi; DELETE `email`, `config` dei due
+  account, `email_account`; `department.email_id` → email predefinita, `autoresp_email_id` → 0.
+  **Differenza**: se un'azione di filtro "email" usa l'indirizzo come `from` il PHP va in errore fatale
+  dopo la DELETE (dati orfani): Next rifiuta l'eliminazione (`referenced_by_filter`).
+- OAuth2 non gestito (`oauth_unsupported`).
+
+#### Ban list — `/admin/banlist` (scp/banlist.php)
+Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al PHP).
+- Aggiunta: `filter_rule` (filter_id, what=email, how=equal, val trim, isactive, notes sanitize,
+  created=NOW(), updated=NOW()); duplicati rifiutati.
+- Modifica: `FilterRule::update` (val, isactive int (default 1), notes) con `updated=NOW()` se cambia.
+- Massa: enable/disable con `UPDATE … SET isactive` (senza `updated`); delete per id del filtro.
+
+#### Template — `/admin/templates` (scp/templates.php)
+- Set nuovo: INSERT `email_template_group` (created, updated, name striptags, isactive, notes
+  sanitize, lang); clonazione: INSERT…SELECT dei messaggi del set sorgente (created/updated NOW).
+- Set modificato: UPDATE sempre con `updated=NOW()`; set in uso (reparti o predefinito) non
+  disattivabile.
+- Massa: enable (UPDATE isactive=1), disable (`updated=NOW(), isactive=0`, non se in uso), delete (non
+  se in uso: set, `department.tpl_id=0`, allegati T dei messaggi, messaggi).
+- Messaggio (`updatetpl`): UPDATE `updated=NOW()`, `subject` (non sanificato), `body` (sanitize);
+  allegati inline T con il bug di `keepOnlyFileIds` (lista per indice); bozze `tpl.<code>.<tpl_id>`
+  (allegati delle bozze e bozze).
+- Messaggio mancante (`implement`): INSERT `email_template`, allegati inline dei file citati, bozze
+  `tpl.<code><tpl_id>` dell'agente (namespace senza punto, come il PHP).
+- "Carica il testo di sistema": solo UI (YAML iniziale dell'installazione PHP), salvato con updatetpl.
+
+#### Diagnostica — `/admin/emails/diagnostic` (scp/emailtest.php)
+`sendTestEmail`: `sendMail` con l'email di sistema scelta, corpo sanificato, Message-ID classe "?",
+senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mailpit).
+
+#### Filtri — `/admin/filters` (scp/filters.php)
+`saveFilter(tx, id|null, vars)` = `Filter::update`:
+- `filter`: isactive, flags, target (`Email` se il target è un id email → `email_id`), name,
+  execorder, email_id, match_all_rules, stop_onmatch, notes (sanitize); `created` (nuovo),
+  `updated=NOW()` se cambia.
+- `filter_action`: `N<tipo>` INSERT (type, filter_id, sort=indice, configuration JSON, updated),
+  `I<id>` aggiorna configuration/sort, `D<id>` DELETE. Configurazione come i form delle TriggerAction:
+  ChoiceField → numero (JsonDataParser), testi striptags, messaggio sanitize, `[]` se vuota.
+- `filter_rule`: tutte cancellate e reinserite (what, how, val; `created` vuoto, isactive/notes di
+  default); regex senza delimitatori avvolte in `/…/iu`.
+- Stranezze replicate: senza `actions[]` nessun salvataggio e nessun errore; valore d'azione vuoto →
+  errore e stop; ultima azione esistente → `setFlag` ×3 (tre `Filter::update` sui dati del modello che
+  ricreano le regole); errori di configurazione in `save_actions` → salvataggio parziale (azioni
+  successive con configuration NULL, regole non salvate). `prepareSupportedMatches` (form L delle liste).
+- Massa: enable/disable (`updated=NOW()`), delete (filtro, regole, azioni; mai la ban list).
+
+#### Form — `/admin/forms` (scp/forms.php)
+`saveForm(tx, id|null, POST)`; POST passato per `Format::htmlchars($_POST, true)`.
+- `form` (title, notes, instructions decodificate) salvato subito in update; `form_field` esistenti
+  (label, sort, type/name se non mascherati) e nuovi (sort, label, type, name, flags dalla modalità di
+  visibilità, created) salvati solo senza errori; eliminazioni immediate (risposte presenti → campo
+  staccato `form_id=0`, altrimenti DELETE; `delete-data` cancella `form_entry_values`).
+- **DDL**: nei form T, A, U, O un campo nuovo o un cambio di nome/tipo farebbe ricreare al PHP la
+  tabella `*__cdata` (Signal model.created/updated). Next rifiuta prima di scrivere (`ddl_required`).
+- Eliminazione (massa): logica, `flags |= DELETED` solo con `FLAG_DELETABLE`.
+- Configurazione dei singoli campi e traduzioni restano al PHP.
+
+#### Liste — `/admin/lists` (scp/lists.php, ajax.forms.php)
+- Lista nuova: `list` (name, name_plural, sort_mode, notes sanitize; htmlchars) + form `L<id>`
+  ("<nome> Properties"); proprietà nuove = `form_field` (flags 12289).
+- Modifica: campi cambiati della lista, ordinamento manuale degli elementi (`sort-<id>`), proprietà
+  (etichetta, ordine, nome, tipo, eliminazione).
+- Eliminazione: non se usata da un campo `list-<id>`; DELETE lista, form L segnato DELETED, campi del
+  form eliminati (elementi lasciati come nel PHP). **Più stretto**: liste con MASK_DELETE non eliminate.
+- Elementi: aggiunta (status 1, list_id, value trim, extra, properties JSON `{id campo: valore}` o
+  `[]`; un valore esistente riusa l'elemento), modifica (value, extra NULL se vuoto, properties; il
+  controllo di unicità del PHP non blocca mai), enable/disable (bit status), delete (`list_id=NULL`).
+- Proprietà gestite: campi `text` e `memo`; altri tipi → `unsupported_property`. Lista degli stati dei
+  ticket (handler) in sola lettura. Import CSV al PHP.
+
+#### Pagine — `/admin/pages` (scp/pages.php)
+- `content`: type, name (striptags), body/notes (sanitize), isactive 1/0, created/updated.
+- Allegati inline P con `keepOnlyFileIds(array_flip(…))` (dal 2° file nuovo il nome è l'indice).
+- Bozze: dopo add `deleteForNamespace('page')`, dopo update `page.<id>%`.
+- Massa: pagine predefinite protette (salvo enable); enable `UPDATE isactive=1`; disable (già
+  disattive contano, in uso no, `updated=NOW()`); delete se non in uso. Traduzioni al PHP.
+
+#### Code — `/admin/queues` (scp/queues.php)
+Creazione/modifica (criteri, colonne, ordinamenti, esportazioni) al PHP. Massa: enable/disable
+(`flags` ± DISABLED, `updated=NOW()`), delete (solo la riga `queue`; non la coda predefinita).
+
+#### API key — `/admin/apikeys` (scp/apikeys.php)
+INSERT/UPDATE `api_key` con SQL diretto: `updated=NOW()`, isactive, can_create_tickets,
+can_exec_cron ('' se assenti → 0), notes; alla creazione `created`, `ipaddr` (IPv4/IPv6 valido),
+`apikey` casuale 48 caratteri [A-Z0-9]. Massa: enable/disable (UPDATE isactive), delete.
+
+#### Log — `/admin/logs` (scp/logs.php)
+Elenco con filtri (tipo, intervallo date, ordinamento, pagine). Eliminazione: `DELETE FROM syslog
+WHERE log_id IN (…)`.
+
+#### Plugin — `/admin/plugins` (scp/plugins.php)
+Elenco; enable/disable plugin (`UPDATE plugin SET isactive`) e istanze (`flags | 1`, `flags & ~1`).
+Installazione, disinstallazione, configurazione ed eliminazione delle istanze richiedono il codice PHP.
+
+#### Sistema — `/admin/system`
+Sola lettura: versione osTicket (bootstrap.php), Next/Node, MySQL, schema, spazio, fuso del DB.
 <!-- END contratti per area -->

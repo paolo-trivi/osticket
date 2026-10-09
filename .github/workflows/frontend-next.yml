@@ -51,6 +51,8 @@ jobs:
         with:
           php-version: "8.3"
           extensions: mysqli, gd, imap, intl, mbstring, xml, zip, apcu
+          # come il PHP web: APCu attivo anche da CLI (SavedQueue::clearCounts usa APCUIterator)
+          ini-values: apc.enable_cli=1
       - name: MariaDB
         run: |
           sudo apt-get update -q
