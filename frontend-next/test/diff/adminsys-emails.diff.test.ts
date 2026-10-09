@@ -75,20 +75,21 @@ async function alignPasswords(): Promise<number> {
     const [ts] = (await conn.query(q.replaceAll("%db", TS_DB))) as unknown as [{ namespace: string; value: string; username: string }[]];
     expect(ts.map((r) => r.namespace)).toEqual(php.map((r) => r.namespace));
     const md5 = async (s: string) => (await import("node:crypto")).createHash("md5").update(s).digest("hex");
-    // la chiave è md5(username . namespace dell'account), che può differire da quello in cui è salvata
-    const plain = async (r: { namespace: string; value: string; username: string }) => {
-      const base = r.namespace.replace(/\d+$/, "");
-      for (let k = 0; k < 10; k++) {
-        const v = decrypt(r.value, cfg.secretSalt, await md5(r.username + base + k));
-        if (v !== false) return v;
-      }
-      return false;
-    };
+    // la chiave è md5(username . namespace dell'account), che può differire da quello in cui è salvata.
+    // Con una chiave sbagliata AES-CBC supera il controllo del padding circa una volta su 256 e
+    // restituisce byte casuali: si accetta solo il candidato con cui PHP e TS si decifrano nello
+    // stesso testo stampabile.
+    const PRINTABLE = /^[\x20-\x7e]+$/;
     for (let i = 0; i < php.length; i++) {
-      const a = await plain(php[i]);
-      const b = await plain(ts[i]);
-      expect(a).not.toBe(false);
-      expect(b).toBe(a);
+      const base = php[i].namespace.replace(/\d+$/, "");
+      let match: string | null = null;
+      for (let k = 0; k < 10 && match === null; k++) {
+        const sub = await md5(php[i].username + base + k);
+        const a = decrypt(php[i].value, cfg.secretSalt, sub);
+        const b = decrypt(ts[i].value, cfg.secretSalt, sub);
+        if (a !== false && b !== false && a === b && PRINTABLE.test(a)) match = a;
+      }
+      if (match === null) expect.fail(`password di ${php[i].namespace}: PHP e TS non si decifrano nello stesso testo`);
       await conn.query(`UPDATE \`${TS_DB}\`.${p}config SET value = ? WHERE namespace = ? AND \`key\` = 'passwd'`, [php[i].value, php[i].namespace]);
     }
     return php.length;
