@@ -56,6 +56,9 @@ Scenario differenziale: password errata → **nessuna scrittura** da entrambe le
 
 Il PHP non legge questo namespace. I loghi **non** vengono duplicati: si usano `core.staff_logo_id`, `core.client_logo_id`, `core.staff_backdrop_id`, gestiti dal pannello classico.
 
+### 1.5 Letture verificate (M1)
+Code dei ticket: per ogni agente e coda la nuova app mostra **gli stessi ticket nello stesso ordine** del PHP (`test/diff/queues.diff.test.ts`, confronto con `CustomQueue::getQuery` + `Staff::getTicketsVisibility` + ordinamenti di `queue-tickets.tmpl.php`). Divergenza voluta: i contatori rispettano la visibilità (in PHP 1.18.4 no, vedi doc 14 §2).
+
 ## 2. Operazioni da specificare (backlog per milestone)
 
 Per ognuna, prima di implementarla, aggiungere qui la tabella delle scritture (dal codice `include/class.*.php`) e uno scenario in `test/diff/`.

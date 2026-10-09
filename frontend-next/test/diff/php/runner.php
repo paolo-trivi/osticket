@@ -52,6 +52,55 @@ case 'config.set':
         $c->set($k, $v);
     break;
 
+case 'queue.list':
+    // Stessa logica di include/staff/templates/queue-tickets.tmpl.php
+    $thisstaff = Staff::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $queue = CustomQueue::lookup($op['args']['queue']);
+    $tickets = $queue->getQuery();
+    $ignoreVisibility = $queue->ignoreVisibilityConstraints($thisstaff);
+    if (!$ignoreVisibility || ($ignoreVisibility && ($queue->isAQueue() || $queue->isASubQueue())))
+        $tickets->filter($thisstaff->getTicketsVisibility());
+    if ($queue->isAQueue() || $queue->isASubQueue())
+        $tickets->filter(Q::any(array('ticket_pid' => null, 'flags__hasbit' => Ticket::FLAG_LINKED)));
+    TicketForm::ensureDynamicDataView();
+    $sorted = false;
+    $sort = $op['args']['sort'] ?? null;
+    $dir = (int) ($op['args']['dir'] ?? 0);
+    if ($sort !== null && is_numeric($sort)) {
+        foreach ($queue->getColumns() as $C) {
+            if ($C->id == $sort) {
+                $tickets = $C->applySort($tickets, $dir);
+                $sorted = true;
+            }
+        }
+    }
+    if (!$sorted) {
+        $qs = null;
+        if ($sort && strpos($sort, 'qs-') === 0)
+            $qs = QueueSort::lookup(substr($sort, 3));
+        $qs = $qs ?: $queue->getDefaultSort();
+        if ($qs) $qs->applySort($tickets, $dir);
+        else $tickets->order_by('-created');
+    }
+    $tickets->distinct('ticket_id');
+    $limit = (int) ($op['args']['pageSize'] ?? 25);
+    $page = (int) ($op['args']['page'] ?? 1);
+    $tickets->limit($limit)->offset(($page - 1) * $limit);
+    $ids = array();
+    foreach ($tickets->values_flat('ticket_id') as $row)
+        $ids[] = (int) $row[0];
+    $counts = SavedQueue::counts($thisstaff, false);
+    $result = ['ok' => true, 'ids' => $ids, 'count' => $counts['q'.$queue->getId()] ?? null];
+    break;
+
+case 'queue.counts':
+    $thisstaff = Staff::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $counts = SavedQueue::counts($thisstaff, false);
+    $result = ['ok' => true, 'counts' => $counts];
+    break;
+
 default:
     fwrite(STDERR, "Operazione sconosciuta: {$op['op']}\n");
     exit(3);

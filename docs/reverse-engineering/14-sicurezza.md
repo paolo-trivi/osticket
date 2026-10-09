@@ -45,6 +45,7 @@
     - Rotta `/scp/ajax.php/report/*` verso file inesistente.
     - Chiavi config inutilizzate (`allow_client_updates`, `show_related_tickets`, `default_task_sla_id`).
     - `getUserStats()` usa colonna `status` inesistente su `ticket` (legacy).
+    - `SavedQueue::counts()` (class.search.php): la query aggregata eredita il `GROUP BY ticket_id` di `applyVisibility()` → più righe → `->one()` lancia `ObjectNotUnique` → fallback su `getTotal()` **senza agente**: i contatori delle code ignorano la visibilità (un agente di un altro reparto vede i totali di tutto l'helpdesk). La nuova app conta solo i ticket visibili.
 11. **Upload**: validazione MIME basata su estensione/`fileinfo`; nessun antivirus → integrare scansione (ClamAV) se richiesto (ambito sanitario).
 12. **Log**: `syslog` può contenere dati personali (email, IP) → policy di retention/GDPR.
 13. **Dati sanitari** (contesto ospedaliero): i ticket possono contenere dati sanitari; prevedere cifratura a riposo, audit di accesso (in osTicket l'audit è solo via plugin), minimizzazione nelle email (le notifiche includono il corpo del messaggio).
