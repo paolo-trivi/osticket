@@ -1,0 +1,9 @@
+{
+  "stats": {
+    "range": "From {start} to {stop} inclusive ({tz} time zone)",
+    "datePlaceholder": "e.g. Sep 9, 2026",
+    "rows": "{count, plural, one {# row} other {# rows}}",
+    "export": "Export CSV",
+    "exportTitle": "Download the “{tab}” tab as CSV for the selected period"
+  }
+}
