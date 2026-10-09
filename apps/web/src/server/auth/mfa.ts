@@ -34,7 +34,7 @@ function sweep(): void {
 }
 
 /** Misc::randNumber(6): prima cifra 1-9, poi 0-9 */
-export function randNumber(len = 6): string {
+function randNumber(len = 6): string {
   let out = String(randomInt(1, 10));
   while (out.length < len) out += String(randomInt(0, 10));
   return out;

@@ -53,7 +53,7 @@ export async function saveSla(executor: DbOrTx, slaId: number | null, input: Php
  * SLA::delete(): non lo SLA predefinito; reparti e topic perdono lo SLA, i ticket passano allo SLA
  * predefinito.
  */
-export async function deleteSla(executor: DbOrTx, slaId: number): Promise<{ ok: boolean; error?: string }> {
+async function deleteSla(executor: DbOrTx, slaId: number): Promise<{ ok: boolean; error?: string }> {
   const { slaId: def } = await adminDefaults(executor);
   if (slaId === def) return { ok: false, error: "default" };
   if (await filterActionsReferencing(executor, FILTER_REFS.sla, slaId)) return { ok: false, error: "filter" };

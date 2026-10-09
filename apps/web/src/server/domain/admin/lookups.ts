@@ -7,7 +7,7 @@ import { PersonsName } from "../../format/persons-name";
 import { helpTopicsSnapshot } from "./topic";
 
 /** Opzioni dei menu a tendina dei form admin (elenchi di oggetti osTicket). */
-export interface Opt {
+interface Opt {
   value: string;
   label: string;
 }

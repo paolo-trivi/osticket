@@ -12,12 +12,12 @@ import { NOW, type DbOrTx } from "../../db";
  */
 
 /** Sequence::getDigitCount: numero di "#" non preceduti da "\" */
-export function digitCount(format: string): number {
+function digitCount(format: string): number {
   return (format.match(/(?<!\\)#/g) ?? []).length;
 }
 
 /** Sequence::format($format, $number) */
-export function formatSequence(format: string, number: number | string, padding = "0"): string {
+function formatSequence(format: string, number: number | string, padding = "0"): string {
   const groups = [...format.matchAll(/(?<!\\)#+/g)];
   const total = groups.reduce((n, g) => n + g[0].length, 0);
   let num = String(number);
@@ -38,7 +38,7 @@ export function formatSequence(format: string, number: number | string, padding 
 }
 
 /** Misc::randNumber($len): prima cifra 1-9, le altre 0-9 */
-export function randNumber(len: number): number {
+function randNumber(len: number): number {
   let s = "";
   for (let i = 0; i < len; i++) s += String(randomInt(i === 0 ? 1 : 0, 10));
   return Number(s);
@@ -54,7 +54,7 @@ async function isNumberUnique(executor: DbOrTx, number: string): Promise<boolean
  * `next` incrementato di `increment` e `updated = NOW()`; con RandomSequence (sequenza 0 o mancante)
  * numeri casuali di almeno 6 cifre.
  */
-export async function nextSequenceNumber(executor: DbOrTx, sequenceId: number, format: string): Promise<string> {
+async function nextSequenceNumber(executor: DbOrTx, sequenceId: number, format: string): Promise<string> {
   const digits = digitCount(format);
   const seq = sequenceId
     ? await executor.selectFrom("sequence").select(["id", "next", "increment", "padding"]).where("id", "=", sequenceId).executeTakeFirst()

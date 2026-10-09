@@ -33,8 +33,7 @@ import { connectionErrors, connectionOf, probeMailbox, probeSmtp, type Credentia
  *   dell'email (account, config e reparti restano orfani). Non si replica: se un'azione "Send an
  *   Email" del filtro usa l'indirizzo come mittente, l'eliminazione è rifiutata.
  */
-export const MAILBOX_PROTOCOLS = ["IMAP", "POP"];
-export const POSTFETCH = ["archive", "delete", "nothing"];
+const MAILBOX_PROTOCOLS = ["IMAP", "POP"];
 
 type AccountType = "mailbox" | "smtp";
 
@@ -46,7 +45,7 @@ const ACCOUNT_VARS: Record<AccountType, string[]> = {
 const strcasecmp = (a: PhpVal, b: PhpVal) => str(a).toLowerCase() !== str(b).toLowerCase();
 
 /** Email::getIdByEmail */
-export async function emailIdByAddress(executor: DbOrTx, address: string): Promise<number | null> {
+async function emailIdByAddress(executor: DbOrTx, address: string): Promise<number | null> {
   const row = await executor.selectFrom("email").select("email_id").where("email", "=", address).executeTakeFirst();
   return row?.email_id ?? null;
 }

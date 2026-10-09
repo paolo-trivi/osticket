@@ -3,7 +3,7 @@ import { PaperclipIcon } from "@/icons";
 
 import VisibilityBadge, { type VisibilityLabels } from "./VisibilityBadge";
 
-export interface FaqListEntry {
+interface FaqListEntry {
   id: number;
   question: string;
   visibility: 0 | 1 | 2;

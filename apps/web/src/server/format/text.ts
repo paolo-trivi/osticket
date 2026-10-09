@@ -44,7 +44,7 @@ export function sanitizeText(text: string, striptags = false): string {
 }
 
 /** Format::stripExternalImages($input, $display=false) */
-export function stripExternalImages(input: string, allowExternal: boolean, display = false): string {
+function stripExternalImages(input: string, allowExternal: boolean, display = false): string {
   const allowed = ["gif", "png", "jpg", "jpeg"];
   return input.replace(/<img\b([^>]*?)\bsrc\s*=\s*(["'])(.*?)\2([^>]*)\/?>/gi, (m, _a, _q, src: string) => {
     const local = src.trimStart().toLowerCase().startsWith("cid:");

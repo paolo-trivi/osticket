@@ -7,7 +7,6 @@ import { sql } from "kysely";
 
 import { NOW, table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
-import { isEmail } from "../directory/forms";
 import { phpLooseEquals } from "../ticket/record";
 import { ConfigWriter, type ConfigValue } from "./config-write";
 import { saveCompanyForm, validateCompanyForm } from "./company";
@@ -26,9 +25,8 @@ import { validate, type Errors, type FieldRule } from "./validator";
  * - enable_captcha: si assume disponibile l'estensione GD (come nell'installazione PHP di riferimento).
  */
 export type SettingsPage = "system" | "tickets" | "tasks" | "agents" | "users" | "pages" | "kb";
-export const SETTINGS_PAGES: SettingsPage[] = ["system", "tickets", "tasks", "agents", "users", "pages", "kb"];
 
-export interface SettingsResult {
+interface SettingsResult {
   ok: boolean;
   errors: Errors;
 }
@@ -428,4 +426,3 @@ export async function settingsValues(executor: DbOrTx): Promise<Record<string, s
   return out;
 }
 
-export { isEmail };

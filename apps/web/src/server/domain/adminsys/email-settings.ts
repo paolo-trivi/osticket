@@ -12,7 +12,7 @@ import { isEmail } from "../directory/forms";
  * "core" con Config::update (UPDATE solo se il valore cambia, INSERT se la chiave manca).
  * Gli errori sono codici al posto dei messaggi tradotti del PHP.
  */
-export interface EmailsSettingsResult {
+interface EmailsSettingsResult {
   ok: boolean;
   errors: Errors;
 }

@@ -7,7 +7,7 @@ import { defaultFormOf, entriesFor, fieldChoices, hasData, isEditableToStaff, is
  * Dati per i form della UI (utenti, organizzazioni, task): campi dei form dinamici con i valori
  * attuali, serializzabili per i componenti client.
  */
-export interface DynFieldData {
+interface DynFieldData {
   id: number;
   name: string;
   label: string;
@@ -29,7 +29,7 @@ function valueOf(f: FieldDef, raw: string | null): string {
 }
 
 /** Campi visibili all'agente di un form (con filtro facoltativo, es. modificabili). */
-export function toDynFields(fields: FieldDef[], values: Record<string, string> = {}, filter: (f: FieldDef) => boolean = isVisibleToStaff): DynFieldData[] {
+function toDynFields(fields: FieldDef[], values: Record<string, string> = {}, filter: (f: FieldDef) => boolean = isVisibleToStaff): DynFieldData[] {
   return fields
     .filter((f) => hasData(f) && !PRESENTATION.has(f.type) && filter(f))
     .map((f) => ({
@@ -51,7 +51,7 @@ export async function newFormFields(type: "U" | "O", executor: DbOrTx = db()): P
 }
 
 /** Valori correnti delle entry di un oggetto per i campi modificabili dall'agente. */
-export function entryValues(entries: FormEntry[]): Record<string, string> {
+function entryValues(entries: FormEntry[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of entries) {
     for (const f of e.fields) {

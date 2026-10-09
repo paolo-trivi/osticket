@@ -6,7 +6,7 @@ import { cn } from "@/utils";
 
 import { controlClass, type Opt } from "./fields";
 
-export interface RepeaterColumn {
+interface RepeaterColumn {
   key: string;
   label: string;
   kind: "text" | "number" | "select" | "checkbox" | "static";
@@ -15,7 +15,7 @@ export interface RepeaterColumn {
   placeholder?: string;
 }
 
-export interface RepeaterRow {
+interface RepeaterRow {
   /** nomi del POST per colonna (righe esistenti) */
   names: Record<string, string>;
   values: Record<string, string | boolean>;

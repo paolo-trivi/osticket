@@ -5,7 +5,7 @@ import { cache } from "react";
 import { coreConfig } from "../../config/config";
 import { agentTimeZone } from "../../format/datetime";
 import type { Agent } from "../staff/staff";
-import { loadQueues, navigableQueues, queueCounts, type TicketQueue } from "./engine";
+import { loadQueues, navigableQueues, queueCounts } from "./engine";
 
 /** Code navigabili dell'agente con i contatori (una query per richiesta). */
 export const agentQueueNav = cache(async (agent: Agent) => {
@@ -28,6 +28,3 @@ export async function pageSizeFor(agent: Agent): Promise<number> {
   return agent.row.max_page_size || (await coreConfig()).int("max_page_size", 25) || 25;
 }
 
-export function queueTitleKey(q: TicketQueue): string {
-  return q.title;
-}

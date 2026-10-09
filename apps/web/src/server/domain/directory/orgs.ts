@@ -29,7 +29,7 @@ import { createUser, loadUserCore, reindexUser, removeUserFromOrg, setUserOrgani
  * Organizzazioni (include/class.organization.php, include/ajax.orgs.php, scp/orgs.php): righe
  * organization, form_entry(_values), organization__cdata, _search; stato e membri.
  */
-export const OrgFlag = {
+const OrgFlag = {
   COLLAB_ALL_MEMBERS: 0x0001,
   COLLAB_PRIMARY_CONTACT: 0x0002,
   ASSIGN_AGENT_MANAGER: 0x0004,
@@ -37,7 +37,7 @@ export const OrgFlag = {
   SHARE_EVERYBODY: 0x0010,
 } as const;
 
-export interface OrgCore {
+interface OrgCore {
   id: number;
   name: string;
   manager: string;
@@ -45,7 +45,7 @@ export interface OrgCore {
   domain: string;
 }
 
-export async function loadOrgCore(executor: DbOrTx, id: number, forUpdate = false): Promise<OrgCore | null> {
+async function loadOrgCore(executor: DbOrTx, id: number, forUpdate = false): Promise<OrgCore | null> {
   let q = executor.selectFrom("organization").select(["id", "name", "manager", "status", "domain"]).where("id", "=", id);
   if (forUpdate) q = q.forUpdate();
   const r = await q.executeTakeFirst();
@@ -103,7 +103,7 @@ export async function createOrg(ctx: WriteContext, input: Record<string, unknown
 }
 
 /** Variabili del profilo dell'organizzazione (ajax.orgs.php:updateOrg con profile). */
-export interface OrgProfileVars {
+interface OrgProfileVars {
   domain?: string;
   /** "s<id>" agente, "t<id>" team, vuoto = nessuno */
   manager?: string;
@@ -305,5 +305,3 @@ export async function addOrgUser(ctx: WriteContext, orgId: number, opts: { userI
   const r = await setUserOrganization(ctx, userId, orgId, false, created);
   return r.ok ? { ok: true, id: userId } : r;
 }
-
-export { reindexOrg };

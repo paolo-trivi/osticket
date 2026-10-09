@@ -49,7 +49,7 @@ export async function clientCanAccess(client: ClientIdentity, ticketId: number, 
 
 export type ClientSort = "id" | "subject" | "status" | "dept" | "date";
 
-export interface ClientTicketQuery {
+interface ClientTicketQuery {
   status?: "open" | "closed";
   topicId?: number;
   keywords?: string;
@@ -59,7 +59,7 @@ export interface ClientTicketQuery {
   pageSize?: number;
 }
 
-export interface ClientTicketRow {
+interface ClientTicketRow {
   id: number;
   number: string;
   created: string;
@@ -163,13 +163,13 @@ export async function clientTicketStats(cfg: ConfigNamespace, client: ClientIden
   return { open, closed, topics: [...topics.values()].sort((a, b) => a.name.localeCompare(b.name)) };
 }
 
-export interface ClientAnswer {
+interface ClientAnswer {
   formTitle: string;
   label: string;
   value: string;
 }
 
-export interface ClientTicketView {
+interface ClientTicketView {
   id: number;
   number: string;
   subject: string;

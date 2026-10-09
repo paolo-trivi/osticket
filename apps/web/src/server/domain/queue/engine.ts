@@ -13,7 +13,7 @@ import { keywordRelevanceSql, keywordTicketIds } from "./search";
  * Code dei ticket (CustomQueue/SavedQueue di include/class.queue.php e class.search.php):
  * ereditarietà di criteri/colonne/ordinamenti, visibilità dell'agente, lista paginata e contatori.
  */
-export const QueueFlag = {
+const QueueFlag = {
   PUBLIC: 0x0001,
   QUEUE: 0x0002,
   DISABLED: 0x0004,
@@ -23,7 +23,7 @@ export const QueueFlag = {
   INHERIT_DEF_SORT: 0x0040,
 } as const;
 
-export interface QueueRow {
+interface QueueRow {
   id: number;
   parent_id: number;
   columns_id: number | null;
@@ -49,7 +49,7 @@ export interface QueueColumnDef {
   sortable: boolean;
 }
 
-export interface QueueSortDef {
+interface QueueSortDef {
   id: number;
   name: string;
   columns: { path: string; desc: boolean }[];
@@ -180,11 +180,11 @@ export function navigableQueues(all: Map<number, TicketQueue>, agent: Agent): Ti
 
 // --- Campi -------------------------------------------------------------------
 
-export interface FieldRegistry {
+interface FieldRegistry {
   get(path: string): FieldDef | undefined;
 }
 
-export async function loadFieldRegistry(executor: DbOrTx = db()): Promise<FieldRegistry> {
+async function loadFieldRegistry(executor: DbOrTx = db()): Promise<FieldRegistry> {
   const cfg = await coreConfig();
   const fields: Record<string, FieldDef> = baseFields(cfg.str("agent_name_format", "full"));
   // Campi del form ticket (form.type = 'T') con dati memorizzabili → ticket__cdata
@@ -275,14 +275,14 @@ export function visibilitySql(agent: Agent, excludeArchived: boolean): RawBuilde
   return sql`(${sql.join(visibility, sql` OR `)})`;
 }
 
-export interface CriteriaSql {
+interface CriteriaSql {
   conditions: RawBuilder<unknown>[];
   joins: Set<JoinKey>;
   /** criterio :keywords presente (ricerca full-text) */
   keywords: string | null;
 }
 
-export function compileCriteria(
+function compileCriteria(
   criteria: Criterion[],
   fields: FieldRegistry,
   ctx: { agent: Agent; userTz: string },
@@ -305,7 +305,7 @@ export function compileCriteria(
 
 // --- Lista ---------------------------------------------------------------------
 
-export interface ListOptions {
+interface ListOptions {
   /** ?sort=<id colonna> oppure "qs-<id ordinamento>" */
   sort?: string;
   dir?: 0 | 1;
@@ -315,7 +315,7 @@ export interface ListOptions {
   extraCriteria?: Criterion[];
 }
 
-export interface ListResult {
+interface ListResult {
   ids: number[];
   total: number | null;
   page: number;
@@ -382,7 +382,7 @@ async function loadSort(id: number, executor: DbOrTx): Promise<QueueSortDef | nu
   return r ? { id: r.id, name: r.name, columns: parseSortColumns(r.columns) } : null;
 }
 
-export interface OrderKey {
+interface OrderKey {
   expr: RawBuilder<unknown>;
   desc: boolean;
 }
@@ -398,7 +398,7 @@ function orderFor(field: FieldDef | undefined, desc: boolean, joins: Set<JoinKey
 }
 
 /** Ordinamento come queue-tickets.tmpl.php: colonna cliccata, poi ordinamento della coda, poi -created. */
-export async function queueOrder(
+async function queueOrder(
   queue: TicketQueue,
   opts: Pick<ListOptions, "sort" | "dir">,
   fields: FieldRegistry,
@@ -439,7 +439,7 @@ export async function queueOrder(
   return [{ expr: sql`T.created`, desc: true }];
 }
 
-export const orderSql = (keys: OrderKey[]) => keys.map((k) => sql`${k.expr} ${sql.raw(k.desc ? "DESC" : "ASC")}`);
+const orderSql = (keys: OrderKey[]) => keys.map((k) => sql`${k.expr} ${sql.raw(k.desc ? "DESC" : "ASC")}`);
 
 /** Valori delle chiavi di ordinamento per un insieme di ticket (serve ai test sui pari merito). */
 export async function orderKeyValues(
@@ -468,7 +468,7 @@ export function mergeChildFilterSql(): RawBuilder<unknown> {
  * criteri compilati, visibilità dell'agente (salvo `search.all` per ricerche personali e temporanee), filtro
  * sui figli dei merge per le code e ricerca full-text come tabella derivata `KW` in JOIN.
  */
-export interface QueueScope {
+interface QueueScope {
   fields: FieldRegistry;
   conditions: RawBuilder<unknown>[];
   joins: Set<JoinKey>;

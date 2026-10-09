@@ -24,6 +24,7 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run lint:unused   # codice, export e dipendenze inutilizzati (knip)
       - run: npm run typecheck
       - run: npx vitest run test/unit
       - run: npm run build

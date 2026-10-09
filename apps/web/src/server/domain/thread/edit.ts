@@ -20,7 +20,7 @@ import { createThreadEntry, EntryFlag } from "./write";
  * è gestito: si salva solo la nuova versione.
  */
 
-export type EntryEditResult = { ok: true; id: number; unchanged?: boolean } | { error: string };
+type EntryEditResult = { ok: true; id: number; unchanged?: boolean } | { error: string };
 
 interface EntryRow {
   id: number;

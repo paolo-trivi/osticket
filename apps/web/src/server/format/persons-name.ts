@@ -2,7 +2,7 @@
  * Port di PersonsName / AgentsName / UsersName (include/class.user.php): scomposizione del nome e
  * formati configurabili (core.agent_name_format, core.client_name_format).
  */
-export type NameFormat =
+type NameFormat =
   | "first" | "last" | "full" | "legal" | "lastfirst" | "formal" | "short" | "shortformal" | "complete" | "original";
 
 interface NameParts {

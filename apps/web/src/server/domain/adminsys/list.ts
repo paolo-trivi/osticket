@@ -48,7 +48,7 @@ export function htmlcharsVars(vars: PhpVars, sanitize: boolean): PhpVars {
   return out;
 }
 
-export async function loadList(executor: DbOrTx, id: number) {
+async function loadList(executor: DbOrTx, id: number) {
   return (await executor.selectFrom("list").selectAll().where("id", "=", id).executeTakeFirst()) ?? null;
 }
 

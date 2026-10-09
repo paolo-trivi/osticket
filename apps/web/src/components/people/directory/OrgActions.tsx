@@ -11,7 +11,7 @@ import PeopleDialog from "../PeopleDialog";
 import type { Choice, DynField } from "../types";
 import { ImportUsersButton, MassBar } from "./DirectoryButtons";
 
-export interface OrgActionsData {
+interface OrgActionsData {
   orgId: number;
   name: string;
   fields: DynField[];

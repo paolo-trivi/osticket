@@ -11,14 +11,14 @@ import { addWorkingHours, loadBusinessHoursSchedule, phpRound, type ScheduleData
  * (Ticket::getSLADueDate($recompute=true), include/class.ticket.php).
  */
 
-export const SlaFlag = {
+const SlaFlag = {
   ACTIVE: 0x0001,
   ESCALATE: 0x0002,
   NOALERTS: 0x0004,
   TRANSIENT: 0x0008,
 } as const;
 
-export interface SlaData {
+interface SlaData {
   id: number;
   flags: number;
   /** ore (colonna INT: in DB non esistono periodi frazionari, ma il calcolo li supporta) */
@@ -26,7 +26,7 @@ export interface SlaData {
   scheduleId: number;
 }
 
-export function slaIsActive(sla: Pick<SlaData, "flags">): boolean {
+function slaIsActive(sla: Pick<SlaData, "flags">): boolean {
   return (sla.flags & SlaFlag.ACTIVE) !== 0;
 }
 
@@ -93,7 +93,7 @@ async function deptScheduleId(deptId: number, core: ConfigNamespace, executor: D
   return dept ? dept.schedule_id : null;
 }
 
-export interface SlaDueDateOptions {
+interface SlaDueDateOptions {
   slaId: number;
   deptId: number;
   /** reopened ?: created del ticket, 'Y-m-d H:i:s' nel fuso del DB */
@@ -132,7 +132,7 @@ export async function slaDueDate(opts: SlaDueDateOptions, executor: DbOrTx = db(
 }
 
 /** Parte pura di getSLADueDate: data di partenza nel fuso DB → scadenza nel fuso DB. */
-export function computeSlaDueDate(
+function computeSlaDueDate(
   start: string,
   dbZone: string,
   gracePeriod: number,

@@ -89,7 +89,7 @@ const CREATE_ONLY_ROLE: RoleInfo = {
   perms: new PermissionSet(JSON.stringify({ [TicketPerm.CREATE]: 1 })),
 };
 
-export type StaffRow = Selectable<StaffTable>;
+type StaffRow = Selectable<StaffTable>;
 
 export class Agent {
   constructor(
@@ -251,7 +251,7 @@ export async function loadAgent(staffId: number, executor: DbOrTx = db()): Promi
 }
 
 /** Default di Staff::getConfig() (include/class.staff.php). */
-export const STAFF_CONFIG_DEFAULTS = {
+const STAFF_CONFIG_DEFAULTS = {
   default_from_name: "",
   datetime_format: "",
   thread_view_order: "",

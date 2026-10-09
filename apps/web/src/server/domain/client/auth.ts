@@ -65,7 +65,7 @@ export interface ClientLogin {
   resetToken?: string;
 }
 
-export type ClientAuthOutcome = ({ ok: true } & ClientLogin) | { ok: false; error: ClientAuthError };
+type ClientAuthOutcome = ({ ok: true } & ClientLogin) | { ok: false; error: ClientAuthError };
 
 const REALM = "client";
 
@@ -202,7 +202,7 @@ async function ticketUser(executor: DbOrTx, ticket: { ticket_id: number; user_id
   return c ? { ticketId: ticket.ticket_id, collabId: c.id } : null;
 }
 
-export type AccessLinkOutcome = { ok: true; sent: true } | ({ ok: true; sent: false } & ClientLogin) | { ok: false; error: ClientAuthError };
+type AccessLinkOutcome = { ok: true; sent: true } | ({ ok: true; sent: false } & ClientLogin) | { ok: false; error: ClientAuthError };
 
 /**
  * login.php (POST lemail/lticket) → AccessLinkAuthentication. Con client_verify_email (default) invia
@@ -241,7 +241,7 @@ export async function performAccessLink(input: { email: string; number: string; 
 }
 
 /** TicketUser::lookupByToken: ospite (proprietario o collaboratore) di un link `?auth=` */
-export async function lookupByAuthToken(executor: DbOrTx, token: string): Promise<{ userId: number; guest: GuestAccess } | null> {
+async function lookupByAuthToken(executor: DbOrTx, token: string): Promise<{ userId: number; guest: GuestAccess } | null> {
   const m = /^(\w)(\d+)x(.*)$/i.exec(token);
   if (!m) return null;
   const packed = base32Decode(m[3].slice(0, 13).toLowerCase());
@@ -362,7 +362,7 @@ export async function performResetTokenLogin(input: { userid: string; token: str
   return out;
 }
 
-export type ConfirmOutcome =
+type ConfirmOutcome =
   | ({ ok: true; confirmed: true; forceReset: boolean } & ClientLogin)
   | { ok: true; confirmed: false; form: true }
   | { ok: false; error: ClientAuthError | "not_found" };

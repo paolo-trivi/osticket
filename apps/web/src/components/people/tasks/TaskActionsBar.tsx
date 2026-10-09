@@ -19,7 +19,7 @@ import { DynamicField, SelectField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
 import type { Choice, DynField } from "../types";
 
-export interface TaskActionsData {
+interface TaskActionsData {
   taskId: number;
   number: string;
   isOpen: boolean;

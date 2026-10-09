@@ -40,7 +40,7 @@ export interface FieldDef {
 
 export type Criterion = [string, string | null, unknown];
 
-export interface CriteriaContext {
+interface CriteriaContext {
   agent: Agent;
   /** fuso dell'utente (OsticketConfig::getTimezone) per i periodi */
   userTz: string;
@@ -51,7 +51,7 @@ const TICKET_FLAG_SEPARATE = 0x0002;
 const TICKET_FLAG_LINKED = 0x0008;
 
 /** Ordinamento per nome agente secondo agent_name_format (Staff::getsortby). */
-export function staffSortCols(alias: string, nameFormat: string): string[] {
+function staffSortCols(alias: string, nameFormat: string): string[] {
   return ["last", "lastfirst", "legal"].includes(nameFormat)
     ? [`${alias}.lastname`, `${alias}.firstname`]
     : [`${alias}.firstname`, `${alias}.lastname`];

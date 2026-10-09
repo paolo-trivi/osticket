@@ -33,14 +33,14 @@ export type EntryRecipients = Partial<Record<"to" | "cc" | "bcc", RecipientList>
 const recipientPairs = (l: RecipientList | undefined): Array<[string, string]> => (Array.isArray(l) ? l : Object.entries(l ?? {}));
 
 /** json_encode dei destinatari con l'ordine delle chiavi preservato */
-export function encodeRecipients(r: EntryRecipients): string {
+function encodeRecipients(r: EntryRecipients): string {
   const obj = (pairs: Array<[string, string]>) =>
     pairs.length ? `{${pairs.map(([k, v]) => `${phpJsonEncode(String(k))}:${phpJsonEncode(v)}`).join(",")}}` : "[]";
   const groups = Object.entries(r).filter(([, l]) => l !== undefined) as Array<[string, RecipientList]>;
   return `{${groups.map(([k, l]) => `${phpJsonEncode(k)}:${obj(recipientPairs(l))}`).join(",")}}`;
 }
 
-export interface NewThreadEntry {
+interface NewThreadEntry {
   threadId: number;
   type: "M" | "R" | "N";
   body: string;
@@ -60,7 +60,7 @@ export interface NewThreadEntry {
   files?: AttachInput[];
 }
 
-export interface CreatedEntry {
+interface CreatedEntry {
   id: number;
   body: string;
   title: string | null;
@@ -128,16 +128,6 @@ export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: New
   if (e.userId || e.staffId) await replaceSearchRow(tx, "H", id, bodySearchable(body, e.format), title ?? "");
 
   return { id, body, title, format: e.format, flags };
-}
-
-/** Thread di un oggetto (T ticket, A task). */
-export async function threadOf(tx: DbOrTx, objectType: "T" | "A", objectId: number) {
-  return tx
-    .selectFrom("thread")
-    .selectAll()
-    .where("object_type", "=", objectType)
-    .where("object_id", "=", objectId)
-    .executeTakeFirst();
 }
 
 /** Thread::getLastMessage: ultimo messaggio (tipo M) del thread, eventualmente filtrato. */

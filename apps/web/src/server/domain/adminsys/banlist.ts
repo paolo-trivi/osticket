@@ -17,7 +17,7 @@ import { isEmail } from "../directory/forms";
  * il filtro esiste sempre dopo l'installazione, qui se manca si restituisce l'errore `no_banlist`
  * e la creazione resta al pannello PHP.
  */
-export const BANLIST_NAME = "SYSTEM BAN LIST";
+const BANLIST_NAME = "SYSTEM BAN LIST";
 
 /** Filter::getByName('SYSTEM BAN LIST') */
 export async function banlistFilterId(executor: DbOrTx): Promise<number | null> {
@@ -25,7 +25,7 @@ export async function banlistFilterId(executor: DbOrTx): Promise<number | null> 
   return row?.id ?? null;
 }
 
-export interface BanRule {
+interface BanRule {
   id: number;
   val: string;
   isactive: number;

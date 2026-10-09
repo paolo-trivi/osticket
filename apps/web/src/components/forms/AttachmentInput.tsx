@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { withBase } from "@/lib/base-path";
 import { cn } from "@/utils";
 
-export interface UploadedFile {
+interface UploadedFile {
   id: number;
   name: string;
   size: number;

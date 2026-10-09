@@ -4,7 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { DownloadIcon } from "@/icons";
 import { cn } from "@/utils";
 
-export interface StatsTab {
+interface StatsTab {
   key: string;
   label: string;
   /** righe della tabella della scheda */

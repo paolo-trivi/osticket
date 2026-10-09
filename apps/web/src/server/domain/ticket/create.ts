@@ -54,7 +54,7 @@ import { DeptFlag, isSelectableStatus, loadStatus, setTicketStatus, stateOf, upd
  * (origine "staff") e dal portale clienti (origine "web").
  */
 
-export type CreateOrigin = "staff" | "web";
+type CreateOrigin = "staff" | "web";
 
 /**
  * Dati della richiesta come `$vars` del PHP. Campi noti:
@@ -441,7 +441,7 @@ function parseUserDate(value: string, zone: string): DateTime | null {
   return null;
 }
 
-export interface CreateOptions {
+interface CreateOptions {
   autorespond?: boolean;
   alertstaff?: boolean;
 }
@@ -803,7 +803,7 @@ async function prioritySelection(executor: DbOrTx, id: number): Promise<{ id: nu
   return p ? { id: p.priority_id, label: p.priority_desc } : null;
 }
 
-export interface OpenTicketInput extends CreateTicketVars {
+interface OpenTicketInput extends CreateTicketVars {
   /** risposta iniziale (opzionale) */
   response?: string;
   /** nota interna (opzionale; commenti dell'assegnazione se c'è assignId) */

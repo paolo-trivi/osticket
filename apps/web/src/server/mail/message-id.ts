@@ -9,7 +9,7 @@ export type RecipientClass = "S" | "U" | "C" | "M" | "?";
 const RAND_CHARS = "abcdefghiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_=";
 
 /** Mailer::getSystemMessageIdCode */
-export function systemMessageIdCode(secretSalt: string): string {
+function systemMessageIdCode(secretSalt: string): string {
   const md5 = createHash("md5").update(`mail${secretSalt}`, "utf8").digest("base64");
   return md5.replace(/\+/g, "=").slice(0, 6);
 }
@@ -45,7 +45,7 @@ export function buildMessageId(opts: {
   return `B${sysid}-${rand}-${tag}-${sig}`;
 }
 
-export interface DecodedMessageId {
+interface DecodedMessageId {
   loopback: boolean;
   version: string | false;
   code?: string;
@@ -85,7 +85,7 @@ export function decodeMessageId(mid: string, secretSalt: string): DecodedMessage
 const BASE32 = "abcdefghijklmnopqrstuvwxyz012345";
 
 /** Base32::encode di osTicket (alfabeto minuscolo a-z0-5, senza padding). */
-export function base32Encode(buf: Buffer): string {
+function base32Encode(buf: Buffer): string {
   let bits = "";
   for (const b of buf) bits += b.toString(2).padStart(8, "0");
   const rem = bits.length % 5;

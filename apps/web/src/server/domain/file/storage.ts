@@ -7,7 +7,7 @@ import { db, type DbOrTx } from "../../db";
  * Backend supportati: "D" = AttachmentChunkedData (contenuto nel DB, a blocchi ordinati per chunk_id).
  * Gli altri backend (es. "F" del plugin storage-fs) richiedono configurazione dedicata.
  */
-export interface StoredFile {
+interface StoredFile {
   id: number;
   name: string;
   type: string;

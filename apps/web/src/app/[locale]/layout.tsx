@@ -11,7 +11,6 @@ import { setRequestLocale } from "next-intl/server";
 import { FONT_CLASS } from "@/lib/fonts";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import "simplebar-react/dist/simplebar.min.css";
 import "../globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {

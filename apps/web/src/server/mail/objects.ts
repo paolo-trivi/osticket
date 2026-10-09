@@ -90,7 +90,7 @@ export class FormattedDate implements TemplateVariable {
   }
 }
 
-export interface StaffInfo {
+interface StaffInfo {
   staff_id: number;
   firstname: string;
   lastname: string;
@@ -160,7 +160,7 @@ export async function deptVar(executor: DbOrTx, deptId: number, cfg: ConfigNames
   );
 }
 
-export async function topicVar(executor: DbOrTx, topicId: number): Promise<TemplateVariable | null> {
+async function topicVar(executor: DbOrTx, topicId: number): Promise<TemplateVariable | null> {
   if (!topicId) return null;
   const all = await executor.selectFrom("help_topic").select(["topic_id", "topic_pid", "topic"]).execute();
   const byId = new Map(all.map((t) => [t.topic_id, t]));
@@ -193,7 +193,7 @@ export interface EntryInfo {
 }
 
 /** ThreadEntryBody::display('email') */
-export function entryBodyForEmail(body: string, format: string): string {
+function entryBodyForEmail(body: string, format: string): string {
   if (!body || body === "-") return "(empty)";
   if (format === "html") return body;
   return `<div style="white-space:pre-wrap">${htmlChars(body)}</div>`;
@@ -217,7 +217,7 @@ export function entryVar(e: EntryInfo, cfg: ConfigNamespace, dbZone: string, sta
   );
 }
 
-export interface TicketInfo {
+interface TicketInfo {
   ticket_id: number;
   number: string;
   user_id: number;
@@ -234,7 +234,7 @@ export interface TicketInfo {
   est_duedate: string | null;
 }
 
-export async function loadTicketInfo(executor: DbOrTx, ticketId: number): Promise<TicketInfo | null> {
+async function loadTicketInfo(executor: DbOrTx, ticketId: number): Promise<TicketInfo | null> {
   const t = await executor
     .selectFrom("ticket")
     .select(["ticket_id", "number", "user_id", "dept_id", "topic_id", "staff_id", "team_id", "status_id", "source", "created", "closed", "lastupdate", "duedate", "est_duedate"])
@@ -243,7 +243,7 @@ export async function loadTicketInfo(executor: DbOrTx, ticketId: number): Promis
   return (t as TicketInfo | undefined) ?? null;
 }
 
-export interface OwnerInfo {
+interface OwnerInfo {
   id: number;
   name: string;
   email: string;
@@ -305,7 +305,7 @@ export function contactVar(
   );
 }
 
-export interface TicketVarDeps {
+interface TicketVarDeps {
   info: TicketInfo;
   cfg: ConfigNamespace;
   dbZone: string;
@@ -323,7 +323,7 @@ export interface TicketVarDeps {
   sourceLabel: string;
 }
 
-export function ticketVar(d: TicketVarDeps): TemplateVariable {
+function ticketVar(d: TicketVarDeps): TemplateVariable {
   const base = d.cfg.str("helpdesk_url").replace(/\/+$/, "");
   const date = (v: string | null | undefined) => (v ? new FormattedDate(v, d.cfg, d.dbZone) : "");
   const fixed: Record<string, unknown> = {

@@ -153,7 +153,7 @@ function parseDate(v: string | undefined, tz: string): { ms: number; ymd: string
 }
 
 /** Fuso effettivo ($cfg->getTimezone()): quello dell'agente, poi quello di sistema. */
-export async function effectiveTimezone(executor: DbOrTx, staffId: number): Promise<string> {
+async function effectiveTimezone(executor: DbOrTx, staffId: number): Promise<string> {
   const s = await executor.selectFrom("staff").select("timezone").where("staff_id", "=", staffId).executeTakeFirst();
   if (s?.timezone) return s.timezone;
   const c = await executor.selectFrom("config").select("value").where("namespace", "=", "core").where("key", "=", "default_timezone").executeTakeFirst();
@@ -167,7 +167,7 @@ function parseTime(v: string | undefined): [number, number] | null {
 }
 
 /** ScheduleEntryForm::isValid() + process(): campi obbligatori visibili, poi i valori della voce. */
-export function processEntryForm(input: EntryInput, holidays: boolean, tz = "UTC"): { vars: EntryVars } | { errors: Record<string, string> } {
+function processEntryForm(input: EntryInput, holidays: boolean, tz = "UTC"): { vars: EntryVars } | { errors: Record<string, string> } {
   const errors: Record<string, string> = {};
   const allday = input.allday ?? holidays;
   if (!input.name?.trim()) errors.name = "required";

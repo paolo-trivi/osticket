@@ -117,7 +117,7 @@ export async function deptCanAssign(executor: DbOrTx, deptId: number, staff: Age
   return staff.isAvailable;
 }
 
-export interface TeamInfo {
+interface TeamInfo {
   team_id: number;
   name: string;
   flags: number;

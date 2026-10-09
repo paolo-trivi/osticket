@@ -15,7 +15,7 @@ import type { BoardPreview } from "./types";
  * semplice. Sola lettura: niente lock né eventi (come aprire la lista, non la vista del ticket).
  */
 
-export type { BoardPreview, PreviewEntry } from "./types";
+export type { BoardPreview,  } from "./types";
 
 const EXCERPT = 320;
 

@@ -15,7 +15,7 @@ import { reopenTicket, type ActionResult } from "./ticket-state";
 /** SLA::FLAG_TRANSIENT */
 const SLA_TRANSIENT = 0x0008;
 
-export interface TransferInput {
+interface TransferInput {
   ticketId: number;
   deptId: number;
   /** mantieni il referral al reparto attuale */

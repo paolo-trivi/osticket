@@ -7,7 +7,7 @@ import { checkTaskPerm, loadTask } from "../task/tasks";
 import { checkStaffPerm, loadTicket } from "../ticket/ticket";
 
 /** Valori di attachment.type serviti agli agenti (ObjectModel / Attachment di osTicket). */
-export const AttachmentType = {
+const AttachmentType = {
   /** voce di thread (ThreadEntry): ticket (thread.object_type 'T') o task ('A') */
   THREAD_ENTRY: "H",
   /** FAQ della knowledge base */
@@ -16,14 +16,14 @@ export const AttachmentType = {
   CANNED: "C",
 } as const;
 
-export interface AgentFileRef {
+interface AgentFileRef {
   fileId: number;
   /** nome dell'allegato (attachment.name) se diverso da quello del file */
   name: string | null;
 }
 
 /** Chiave di file accettata nell'URL (file.key: 32 caratteri [A-Za-z0-9_-], margine per vecchi dati). */
-export function isValidFileKey(key: string): boolean {
+function isValidFileKey(key: string): boolean {
   return /^[\w-]{1,64}$/.test(key);
 }
 

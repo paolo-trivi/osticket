@@ -88,7 +88,7 @@ export async function deleteTicket(ctx: WriteContext, rec: TicketRecord, comment
 }
 
 /** Thread::delete (include/class.thread.php:743) per il thread indicato. */
-export async function deleteThread(tx: DbOrTx, threadId: number): Promise<boolean> {
+async function deleteThread(tx: DbOrTx, threadId: number): Promise<boolean> {
   const del = await sql`DELETE FROM ${table("thread")} WHERE id = ${threadId} LIMIT 1`.execute(tx);
   if (Number(del.numAffectedRows ?? 0) !== 1) return false;
   // Signal model.deleted → MysqlSearchBackend::delete(Thread): righe H delle voci del thread
@@ -118,7 +118,7 @@ async function deleteThreadAttachments(tx: DbOrTx, threadId: number): Promise<nu
  * ognuno DELETE file e i dati del backend (file_chunk per il backend "D" nel DB). Con un backend su
  * filesystem il PHP rimuove anche il file su disco: qui non viene fatto (Next non gestisce quei backend).
  */
-export async function deleteOrphanFiles(tx: DbOrTx): Promise<void> {
+async function deleteOrphanFiles(tx: DbOrTx): Promise<void> {
   const { rows } = await sql<{ id: number; bk: string }>`SELECT F.id, F.bk FROM ${table("file")} F
     LEFT JOIN ${table("attachment")} A ON (A.file_id = F.id)
     WHERE A.object_id IS NULL AND F.ft = 'T' AND F.created < (NOW() - INTERVAL 1 DAY)`.execute(tx);

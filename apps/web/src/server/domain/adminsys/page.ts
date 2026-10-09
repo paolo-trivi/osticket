@@ -21,7 +21,7 @@ import { sanitizeHtml } from "./sanitize";
  * l'allegato prende come nome l'indice. Le traduzioni delle pagine (trans[…]) restano al pannello PHP.
  */
 export const PAGE_TYPES = ["landing", "offline", "thank-you", "other"] as const;
-export const LIST_TYPES = ["other", "landing", "thank-you", "offline"];
+const LIST_TYPES = ["other", "landing", "thank-you", "offline"];
 
 async function defaultPages(executor: DbOrTx): Promise<string[]> {
   const rows = await executor

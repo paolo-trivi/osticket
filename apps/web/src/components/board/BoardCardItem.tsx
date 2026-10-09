@@ -11,7 +11,7 @@ import { cn } from "@/utils";
 import AssigneeAvatar from "./AssigneeAvatar";
 import PriorityPill, { priorityStripe } from "./PriorityPill";
 
-export interface BoardCardItemProps {
+interface BoardCardItemProps {
   card: BoardCard;
   /** la card si può trascinare */
   draggable: boolean;

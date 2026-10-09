@@ -44,7 +44,7 @@ export default function MassBar({ actions }: { actions: { value: string; label: 
 }
 
 /** Casella "seleziona tutto" per gli ids[] del form. */
-export function SelectAll({ label }: { label: string }) {
+function SelectAll({ label }: { label: string }) {
   return (
     <input
       type="checkbox"

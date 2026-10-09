@@ -4,7 +4,7 @@ import { sql } from "kysely";
 
 import type { ConfigNamespace } from "../../config/config";
 import { table, type DbOrTx } from "../../db";
-import { companyVar, deptVar, entryVar, FormattedDate, loadStaffInfo, staffVar, type EntryInfo } from "../../mail/objects";
+import { deptVar, entryVar, FormattedDate, loadStaffInfo, staffVar, type EntryInfo } from "../../mail/objects";
 import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { answerToString } from "../../mail/objects";
 import type { TaskDbRow } from "./model";
@@ -83,4 +83,3 @@ export async function threadEntryVar(executor: DbOrTx, entryId: number, cfg: Con
   return entryVar(row as unknown as EntryInfo, cfg, dbZone, poster ? staffVar(poster, cfg) : null);
 }
 
-export { companyVar };

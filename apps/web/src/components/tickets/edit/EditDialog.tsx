@@ -7,7 +7,7 @@ import type { EditActionState } from "@/app/[locale]/(staff)/agent/(panel)/ticke
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 
-export type EditAction = (prev: EditActionState, form: FormData) => Promise<EditActionState>;
+type EditAction = (prev: EditActionState, form: FormData) => Promise<EditActionState>;
 
 const box = "rounded-lg px-4 py-3 text-theme-sm";
 

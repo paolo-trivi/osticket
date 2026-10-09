@@ -16,14 +16,14 @@ import { maskAlertTime } from "./alert-time";
 const run = promisify(execFile);
 
 export const OST_ROOT = process.env.OST_DIR ?? "/home/user/ost-dev/www";
-export const BASE_DB = process.env.OST_DIFF_SOURCE_DB ?? "osticket";
+const BASE_DB = process.env.OST_DIFF_SOURCE_DB ?? "osticket";
 /** OST_DIFF_TAG separa i DB di lavoro di suite eseguite in parallelo (es. "assign" → osticket_diff_assign_php) */
 const TAG = process.env.OST_DIFF_TAG ? `_${process.env.OST_DIFF_TAG}` : "";
-export const SNAPSHOT_DB = `${BASE_DB}_diff${TAG}_base`;
+const SNAPSHOT_DB = `${BASE_DB}_diff${TAG}_base`;
 export const PHP_DB = `${BASE_DB}_diff${TAG}_php`;
 export const TS_DB = `${BASE_DB}_diff${TAG}_ts`;
 /** mail() del PHP consegna a Mailpit (SMTP finto dell'ambiente di sviluppo); porta per suite con MAILPIT_SMTP_PORT */
-export const SENDMAIL =
+const SENDMAIL =
   process.env.OST_SENDMAIL ?? `/home/user/ost-dev/bin/mailpit sendmail -S 127.0.0.1:${process.env.MAILPIT_SMTP_PORT ?? "1025"}`;
 
 async function connect(): Promise<Connection> {
@@ -47,7 +47,7 @@ async function tablesOf(conn: Connection, dbName: string): Promise<string[]> {
 }
 
 /** Copia completa di un database (struttura + dati). */
-export async function cloneDatabase(source: string, target: string): Promise<void> {
+async function cloneDatabase(source: string, target: string): Promise<void> {
   const conn = await connect();
   try {
     await conn.query(`DROP DATABASE IF EXISTS \`${target}\``);
@@ -71,7 +71,7 @@ export async function resetWorkingDatabases(): Promise<void> {
   await Promise.all([cloneDatabase(SNAPSHOT_DB, PHP_DB), cloneDatabase(SNAPSHOT_DB, TS_DB)]);
 }
 
-export interface PhpOp {
+interface PhpOp {
   op: string;
   args?: Record<string, unknown>;
   ip?: string;
@@ -87,9 +87,9 @@ export async function runPhp<T = Record<string, unknown>>(op: PhpOp, dbName = PH
 }
 
 export type Row = Record<string, unknown>;
-export type Dump = Record<string, Row[]>;
+type Dump = Record<string, Row[]>;
 
-export interface NormalizeOptions {
+interface NormalizeOptions {
   /** colonne da ignorare, nella forma "tabella.colonna" (senza prefisso) o "*.colonna" */
   ignore?: string[];
   /** tabelle da escludere (senza prefisso); default: session (sessioni HTTP del PHP, non dati di dominio) */
@@ -101,7 +101,7 @@ export interface NormalizeOptions {
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
 /** Dump di tutte le tabelle, righe ordinate, datetime "recenti" sostituiti da <NOW>. */
-export async function dumpDatabase(dbName: string, opts: NormalizeOptions = {}): Promise<Dump> {
+async function dumpDatabase(dbName: string, opts: NormalizeOptions = {}): Promise<Dump> {
   const conn = await connect();
   const prefix = installConfig().tablePrefix;
   const window = opts.nowWindowSec ?? 600;
@@ -148,7 +148,7 @@ export interface TableDiff {
 }
 
 /** Differenze riga per riga tra i dump PHP e TS (vuoto = comportamento identico). */
-export function diffDumps(php: Dump, ts: Dump): TableDiff[] {
+function diffDumps(php: Dump, ts: Dump): TableDiff[] {
   const diffs: TableDiff[] = [];
   for (const table of new Set([...Object.keys(php), ...Object.keys(ts)])) {
     const a = (php[table] ?? []).map((r) => JSON.stringify(r));

@@ -12,11 +12,11 @@ import { TicketRecord } from "./record";
  * ajax.tickets.php): righe in `lock`, collegate a ticket.lock_id. Modalità core.ticket_lock:
  * 0 disattivato, 1 alla visualizzazione, 2 all'attività (default); durata core.autolock_minutes.
  */
-export const LockMode = { DISABLED: 0, ON_VIEW: 1, ON_ACTIVITY: 2 } as const;
+const LockMode = { DISABLED: 0, ON_VIEW: 1, ON_ACTIVITY: 2 } as const;
 
 const LOCK_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_=";
 
-export interface LockInfo {
+interface LockInfo {
   lock_id: number;
   staff_id: number;
   code: string | null;
@@ -39,7 +39,7 @@ async function lockRow(executor: DbOrTx, lockId: number): Promise<LockInfo | nul
 }
 
 /** Ticket::getLock: lock non scaduto del ticket. */
-export async function ticketLock(executor: DbOrTx, ticketId: number): Promise<LockInfo | null> {
+async function ticketLock(executor: DbOrTx, ticketId: number): Promise<LockInfo | null> {
   const t = await executor.selectFrom("ticket").select("lock_id").where("ticket_id", "=", ticketId).executeTakeFirst();
   const lock = await lockRow(executor, t?.lock_id ?? 0);
   return lock && !lock.expired ? lock : null;
@@ -49,7 +49,7 @@ async function renew(executor: DbOrTx, lockId: number, minutes: number): Promise
   await sql`UPDATE ${sql.table("lock")} SET expire = (NOW() + INTERVAL ${minutes} MINUTE) WHERE lock_id = ${lockId}`.execute(executor);
 }
 
-export type AcquireResult = { ok: true; lock: LockInfo } | { ok: false; lockedBy?: number; retry: boolean };
+type AcquireResult = { ok: true; lock: LockInfo } | { ok: false; lockedBy?: number; retry: boolean };
 
 /** ajax.tickets.php acquireLock + Ticket::acquireLock */
 export async function acquireTicketLock(executor: DbOrTx, cfg: ConfigNamespace, ticketId: number, staffId: number): Promise<AcquireResult> {

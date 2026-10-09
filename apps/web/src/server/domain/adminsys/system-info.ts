@@ -14,7 +14,7 @@ import { installConfig } from "../../env";
  * Next: versione di osTicket letta da bootstrap.php dell'installazione, dati del database e del
  * runtime Node/Next al posto di PHP ed estensioni.
  */
-export interface SystemInfo {
+interface SystemInfo {
   osticketVersion: string | null;
   nodeVersion: string;
   nextVersion: string | null;

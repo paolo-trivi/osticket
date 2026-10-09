@@ -68,7 +68,7 @@ export function comparePassword(password: string, hash: string | null | undefine
   return false;
 }
 
-export type PasswordCheck =
+type PasswordCheck =
   | { ok: false }
   /** `rehash` valorizzato: l'hash era MD5 legacy e va sostituito (come fa check_passwd). */
   | { ok: true; rehash?: string };

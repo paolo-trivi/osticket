@@ -6,7 +6,7 @@ import type { Agent } from "./staff";
 /** StaffDeptAccess::FLAG_ALERTS (include/class.staff.php): avvisi email per il reparto. */
 const ACCESS_FLAG_ALERTS = 0x0001;
 
-export interface AgentAccess {
+interface AgentAccess {
   primary: { dept: string; role: string };
   extended: { dept: string; role: string; alerts: boolean }[];
   teams: string[];

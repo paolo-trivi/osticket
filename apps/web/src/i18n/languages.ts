@@ -2,7 +2,7 @@ import { ItFlagIcon, UsFlagIcon } from "@/icons";
 
 import type { Locale } from "./routing";
 
-export interface Language {
+interface Language {
   id: Locale;
   name: string;
   shortName: string;
@@ -17,7 +17,7 @@ export const languages: Language[] = [
   { id: "en", name: "English", shortName: "EN", dir: "ltr", FlagIcon: UsFlagIcon, osticket: "en_US" },
 ];
 
-export function getLanguage(locale: Locale): Language {
+function getLanguage(locale: Locale): Language {
   return languages.find((l) => l.id === locale) || languages[0];
 }
 

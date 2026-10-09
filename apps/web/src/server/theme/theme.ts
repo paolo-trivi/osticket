@@ -6,7 +6,7 @@ import { NOW, db } from "../db";
 import { stripFourByteChars } from "../format/html";
 import { DEFAULT_THEME, ThemeSchema, type ThemeSettings } from "@/lib/theme/schema";
 
-export { DEFAULT_THEME, ThemeSchema, themeCss, type ThemeSettings } from "@/lib/theme/schema";
+export { DEFAULT_THEME,  themeCss,  } from "@/lib/theme/schema";
 
 /**
  * Tema della nuova interfaccia, configurabile dall'area admin.
@@ -15,7 +15,7 @@ export { DEFAULT_THEME, ThemeSchema, themeCss, type ThemeSettings } from "@/lib/
  * I loghi sono quelli già gestiti da osTicket (Admin > Impostazioni > Sistema/Logo):
  * config core.staff_logo_id, core.client_logo_id, core.staff_backdrop_id.
  */
-export const THEME_NAMESPACE = "nextui.theme";
+const THEME_NAMESPACE = "nextui.theme";
 
 export interface ResolvedTheme extends ThemeSettings {
   /** nome mostrato: app_name oppure core.helpdesk_title */

@@ -10,7 +10,7 @@ export interface TemplateVariable {
   asVar(replacer: VariableReplacer): string;
 }
 
-export function isTemplateVariable(v: unknown): v is TemplateVariable {
+function isTemplateVariable(v: unknown): v is TemplateVariable {
   return typeof v === "object" && v !== null && typeof (v as TemplateVariable).getVar === "function" && typeof (v as TemplateVariable).asVar === "function";
 }
 

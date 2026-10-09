@@ -18,15 +18,15 @@ import { faqTopicMap, faqVisibleForTopics, loadHelpTopics, staffTopicIds } from 
  */
 
 /** Category::VISIBILITY_* e FAQ::VISIBILITY_*: 0 interna/privata, 1 pubblica, 2 in evidenza */
-export type KbVisibility = 0 | 1 | 2;
-export const visibilityOf = (v: number | null | undefined): KbVisibility => (v === 1 || v === 2 ? v : 0);
+type KbVisibility = 0 | 1 | 2;
+const visibilityOf = (v: number | null | undefined): KbVisibility => (v === 1 || v === 2 ? v : 0);
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 // ---------------------------------------------------------------------------------------------
 // Allegati di oggetti KB (attachment.type 'F' FAQ, 'C' risposta predefinita)
 
-export interface KbAttachment {
+interface KbAttachment {
   id: number;
   name: string;
   size: number;
@@ -113,7 +113,7 @@ const fullName = (tree: CategoryTree, id: number) =>
     .map((c) => c.name)
     .join(" / ");
 
-export interface KbCategorySummary {
+interface KbCategorySummary {
   id: number;
   name: string;
   visibility: KbVisibility;
@@ -127,7 +127,7 @@ function summary(tree: CategoryTree, id: number): KbCategorySummary {
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 
-export interface KbTopCategory extends KbCategorySummary {
+interface KbTopCategory extends KbCategorySummary {
   descriptionHtml: string;
   children: KbCategorySummary[];
 }
@@ -148,7 +148,7 @@ export async function listTopCategories(executor: DbOrTx = db()): Promise<KbTopC
 // ---------------------------------------------------------------------------------------------
 // Ricerca e filtri
 
-export interface KbFilterOption {
+interface KbFilterOption {
   id: number;
   name: string;
   faqCount: number;
@@ -182,7 +182,7 @@ export async function kbSearchFilters(agent: Agent, executor: DbOrTx = db()): Pr
   return { total, categories, topics: topicOptions };
 }
 
-export interface KbFaqListItem {
+interface KbFaqListItem {
   id: number;
   question: string;
   visibility: KbVisibility;
@@ -245,7 +245,7 @@ export async function searchFaqs(
 // ---------------------------------------------------------------------------------------------
 // Categoria
 
-export interface KbCategoryDetail {
+interface KbCategoryDetail {
   id: number;
   name: string;
   fullName: string;
@@ -296,7 +296,7 @@ export async function faqVisibleToAgent(agent: Agent, faqId: number, executor: D
   return faqVisibleForTopics(topics.get(faqId) ?? [], allowed);
 }
 
-export interface KbFaqDetail {
+interface KbFaqDetail {
   id: number;
   question: string;
   answerHtml: string;
@@ -414,7 +414,7 @@ export async function listCanned(
   return rows.map((r) => ({ ...r, files: Number(r.files ?? 0) }));
 }
 
-export interface CannedDetail {
+interface CannedDetail {
   id: number;
   title: string;
   isEnabled: boolean;

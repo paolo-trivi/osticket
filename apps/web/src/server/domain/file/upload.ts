@@ -14,15 +14,15 @@ import { sanitizeText } from "../../format/text";
  * "D" (AttachmentChunkedData, blocchi da 500 KiB in file_chunk) e collegamento alle voci del thread
  * (ThreadEntry::createAttachments → attachment di tipo H).
  */
-export const CHUNK_SIZE = 500 * 1024;
+const CHUNK_SIZE = 500 * 1024;
 
-export interface UploadInput {
+interface UploadInput {
   name: string;
   type: string;
   data: Buffer;
 }
 
-export interface StoredFileRef {
+interface StoredFileRef {
   id: number;
   name: string;
   key: string;
@@ -33,7 +33,7 @@ export interface StoredFileRef {
 const urlSafe = (s: string) => s.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 
 /** AttachmentFile::_getKeyAndHash: chiave (5 caratteri casuali dal prefisso microtime + sha1) e firma */
-export function fileKeyAndHash(data: Buffer): { key: string; signature: string } {
+function fileKeyAndHash(data: Buffer): { key: string; signature: string } {
   const sha1 = createHash("sha1").update(data).digest("base64");
   const md5 = createHash("md5").update(data).digest("base64");
   const prefix = createHash("sha1").update(`${process.hrtime.bigint()} ${randomBytes(8).toString("hex")}`).digest("base64");
@@ -44,7 +44,7 @@ export function fileKeyAndHash(data: Buffer): { key: string; signature: string }
  * AttachmentFile::create($file, 'T', deduplicate=true): se esiste già un file con stessa firma e
  * dimensione si restituisce quello; altrimenti riga `file` + blocchi `file_chunk`, bk 'D', attrs NULL.
  */
-export async function createAttachmentFile(executor: DbOrTx, input: UploadInput, ft = "T"): Promise<StoredFileRef> {
+async function createAttachmentFile(executor: DbOrTx, input: UploadInput, ft = "T"): Promise<StoredFileRef> {
   const { key, signature } = fileKeyAndHash(input.data);
   const size = input.data.length;
   if (size > 0) {
@@ -74,7 +74,7 @@ export async function createAttachmentFile(executor: DbOrTx, input: UploadInput,
 }
 
 /** Configurazione di upload di un campo (FileUploadField::getConfiguration) */
-export interface UploadRules {
+interface UploadRules {
   /** dimensione massima in byte */
   size: number;
   /** estensioni ammesse ('.pdf'), vuoto = tutte */
@@ -100,7 +100,7 @@ export function uploadRules(config: Record<string, unknown>, cfg: ConfigNamespac
 }
 
 /** FileUploadField::isValidFileType */
-export function isAllowedFileType(rules: UploadRules, name: string, type: string): boolean {
+function isAllowedFileType(rules: UploadRules, name: string, type: string): boolean {
   if (type && rules.mimetypes.includes(type)) return true;
   if (!rules.extensions.length || rules.extensions.includes(".*")) return true;
   const m = /\.([^./\\]+)$/.exec(name);
@@ -109,7 +109,7 @@ export function isAllowedFileType(rules: UploadRules, name: string, type: string
 }
 
 /** FileUploadField::isValidFile: un file dichiarato immagine deve esserlo davvero (exif_imagetype) */
-export function looksLikeImage(data: Buffer, type: string): boolean {
+function looksLikeImage(data: Buffer, type: string): boolean {
   if (!type.toLowerCase().startsWith("image/")) return true;
   const sig = (bytes: number[]) => bytes.every((b, i) => data[i] === b);
   if (sig([0x89, 0x50, 0x4e, 0x47]) || sig([0xff, 0xd8, 0xff]) || sig([0x47, 0x49, 0x46, 0x38]) || sig([0x42, 0x4d])) return true;
@@ -118,7 +118,7 @@ export function looksLikeImage(data: Buffer, type: string): boolean {
   return /<svg[\s>]/i.test(data.subarray(0, 2048).toString("utf8"));
 }
 
-export type UploadError = "invalid" | "type" | "size";
+type UploadError = "invalid" | "type" | "size";
 
 /**
  * FileUploadField::ajaxUpload: nome decodificato e sanificato (AttachmentFile::format), controllo del

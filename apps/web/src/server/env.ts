@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
  * Fonte primaria: include/ost-config.php dell'installazione osTicket (OST_CONFIG_PATH, in sola lettura);
  * ogni valore può essere sovrascritto da variabili d'ambiente.
  */
-export interface OstInstallConfig {
+interface OstInstallConfig {
   dbHost: string;
   dbPort: number;
   dbName: string;
@@ -20,7 +20,7 @@ export interface OstInstallConfig {
 }
 
 /** Estrae le define('NOME', 'valore') da ost-config.php. */
-export function parseOstConfigPhp(source: string): Record<string, string> {
+function parseOstConfigPhp(source: string): Record<string, string> {
   const out: Record<string, string> = {};
   const re = /^\s*define\(\s*'([A-Z_]+)'\s*,\s*'((?:[^'\\]|\\.)*)'\s*\)\s*;/gm;
   for (const m of source.matchAll(re)) {
