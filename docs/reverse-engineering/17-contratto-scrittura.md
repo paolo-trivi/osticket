@@ -746,7 +746,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 10 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -763,6 +763,7 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 | Livello | File | Contenuto |
 |---|---|---|
 | Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
+| Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
 | Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
 | Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
@@ -795,7 +796,8 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` da `sequence` o casuale),
 `task__cdata`, `form_entry(_values)`, `thread` (A), `thread_entry` (M con flag ORIGINAL, N, R), `thread_event`
 (`created`, `assigned` con `claim`/`staff`(AgentsName)/`team`, `transferred`, `closed`, `reopened` con annullamento,
-`edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso), `_search`,
+`edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso tramite `Ticket::reopen` di
+`ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
 

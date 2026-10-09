@@ -121,6 +121,36 @@ describe("task: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("riapertura del ticket dal task: stato di riapertura non consentito o non aperto (TicketStatus::getReopenStatus)", async () => {
+    // Stato "Closed" con reopenstatus ma allowreopen falso, "Resolved" con reopenstatus verso uno stato chiuso:
+    // in entrambi i casi il PHP ignora la configurazione e usa lo stato predefinito.
+    await execBoth(
+      "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":false,\"reopenstatus\":6}' WHERE id = 3",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":3}' WHERE id = 2",
+      "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id IN (2, 3)",
+      "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
+      "UPDATE {p}ticket SET status_id = 2, closed = NOW(), topic_id = 0 WHERE ticket_id = 24",
+    );
+    await runPhp({ op: "task.status", args: { agent: 2, task: 3, status: "open", comments: "" } });
+    await runPhp({ op: "task.status", args: { agent: 2, task: 2, status: "open", comments: "" } });
+    await withTask(2, 3, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
+    await withTask(2, 2, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("riapertura del ticket dal task con stato di riapertura configurato", async () => {
+    await execBoth(
+      "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":6}' WHERE id = 3",
+      "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id = 3",
+      "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
+    );
+    await runPhp({ op: "task.status", args: { agent: 2, task: 3, status: "open", comments: "" } });
+    await withTask(2, 3, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("modifica dei campi, scadenza ed eliminazione", async () => {
     await runPhp({ op: "task.edit", args: { agent: 2, task: 1, fields: { title: "Nuovo titolo" }, note: "<p>cambiato</p>" } });
     await runPhp({ op: "task.duedate", args: { agent: 2, task: 2, duedate: "2027-01-15T10:30:00Z", comments: "<p>scadenza</p>" } });

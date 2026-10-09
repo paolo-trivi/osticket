@@ -1,14 +1,13 @@
 import "server-only";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, loadUserContact, staffVar, ticketLink, userPersonsName } from "../../mail/objects";
-import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from "../../mail/mailer";
+import { loadSystemEmail, sendMail, type SystemEmail } from "../../mail/mailer";
 import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
+import { alertOrDefaultEmail } from "../directory/content-mail";
 import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
-import { loadAgent } from "../staff/staff";
+import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { TicketRecord } from "./record";
@@ -71,19 +70,13 @@ function recipientsJson(r: { to: Contact[]; cc: Contact[] }): EntryRecipients {
 
 async function deptEmail(ctx: WriteContext, deptId: number): Promise<SystemEmail | null> {
   const d = await ctx.tx.selectFrom("department").select(["email_id"]).where("id", "=", deptId).executeTakeFirst();
-  return (await loadSystemEmail(d?.email_id ?? 0, ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+  return deptAlertEmail(ctx.tx, ctx.cfg, d?.email_id);
 }
 
-/** Membri del reparto disponibili per gli avvisi (Dept::getMembersForAlerts). */
-async function deptAlertMemberCount(executor: DbOrTx, deptId: number): Promise<number> {
-  const d = await executor.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
-  if (!d || d.group_membership === 2) return 0;
-  const { rows } = await sql<{ n: number }>`SELECT COUNT(DISTINCT S.staff_id) AS n FROM ${table("staff")} S
-    LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${deptId})
-    WHERE S.isactive = 1 AND S.onvacation = 0
-      AND (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId})
-      AND (S.dept_id = ${deptId} OR (${d.group_membership} = 1 AND (A.flags & 1) != 0))`.execute(executor);
-  return Number(rows[0]?.n ?? 0);
+/** Dept::getNumMembersForAlerts() */
+async function deptAlertMemberCount(ctx: WriteContext, deptId: number): Promise<number> {
+  const d = await ctx.tx.selectFrom("department").select(["id", "group_membership", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
+  return d ? (await deptAlertMembers(ctx.tx, d, ctx.cfg.str("agent_name_format"))).length : 0;
 }
 
 /**
@@ -99,10 +92,10 @@ export async function onActivity(
 ): Promise<void> {
   const { tx, cfg } = ctx;
   if (!alert || !cfg.bool("note_alert_active")) return;
-  if (!(await deptAlertMemberCount(tx, rec.get("dept_id")))) return;
-  const email = (await loadSystemEmail(cfg.int("alert_email_id"), tx)) ?? (await loadSystemEmail(cfg.int("default_email_id"), tx));
+  if (!(await deptAlertMemberCount(ctx, rec.get("dept_id")))) return;
+  const email = await alertOrDefaultEmail(tx, cfg);
   if (!email) return;
-  const tpl = await loadMsgTemplate(tx, await templateGroupFor(tx, rec.get("dept_id"), cfg), "note.alert");
+  const tpl = await deptMsgTemplate(ctx, rec.get("dept_id"), "note.alert");
   if (!tpl) return;
 
   const recipients: number[] = [];
@@ -114,15 +107,7 @@ export async function onActivity(
   if (cfg.bool("note_alert_assigned")) {
     if (vars.assigneeId) recipients.push(vars.assigneeId);
     else if (state === "open" && rec.get("staff_id")) recipients.push(rec.get("staff_id"));
-    if (rec.get("team_id")) {
-      const members = await tx
-        .selectFrom("team_member")
-        .select("staff_id")
-        .where("team_id", "=", rec.get("team_id"))
-        .where(sql<boolean>`(flags & 1) != 0`)
-        .execute();
-      recipients.push(...members.map((m) => m.staff_id));
-    }
+    if (rec.get("team_id")) recipients.push(...(await teamAlertMembers(tx, rec.get("team_id"))));
   }
   if (cfg.bool("note_alert_dept_manager")) {
     const d = await tx.selectFrom("department").select("manager_id").where("id", "=", rec.get("dept_id")).executeTakeFirst();
@@ -145,26 +130,22 @@ export async function onActivity(
     company,
   };
 
-  const sent = new Set<string>();
-  for (const staffId of recipients) {
-    const staff = await loadAgent(staffId, tx);
-    if (!staff || !staff.isAvailable || staff.id === posterStaff || sent.has(staff.email)) continue;
-    if (state === "closed") {
+  // Sostituzione unica (variabili + recipient) sul modello: il PHP sostituisce prima le variabili
+  // dell'attività e poi il destinatario (differenza solo se il testo della nota contiene variabili)
+  await sendStaffAlerts(ctx, {
+    email,
+    msg: tpl,
+    vars: base,
+    recipients,
+    skip: async (staff) => {
+      if (staff.id === posterStaff) return true;
+      if (state !== "closed") return false;
       const { checkStaffPerm, loadTicket } = await import("./ticket");
       const t = await loadTicket(rec.id, staff.id, tx);
-      if (!t || !(await checkStaffPerm(t, staff, undefined, tx))) continue;
-    }
-    const info = await loadStaffInfo(tx, staff.id);
-    const recipientVar = info ? staffVar(info, cfg) : null;
-    const r = new VariableReplacer().assign({ ...base, recipient: recipientVar });
-    const subject = r.replaceVars(tpl.subj);
-    const body = r.replaceVars(tpl.body);
-    const to: MailContact = { name: agentDisplayName(staff, cfg), address: staff.email };
-    ctx.after.push(async () => {
-      await sendMail({ email, to: [to], subject, body, recipient: { userId: staff.id, utype: "S" }, thread: { entryId: vars.entry.id, threadId }, notice: true });
-    });
-    sent.add(staff.email);
-  }
+      return !t || !(await checkStaffPerm(t, staff, undefined, tx));
+    },
+    thread: { entryId: vars.entry.id, threadId },
+  });
 }
 
 interface PostNoteInput {

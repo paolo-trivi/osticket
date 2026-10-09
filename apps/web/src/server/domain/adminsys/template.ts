@@ -8,7 +8,7 @@ import { sql } from "kysely";
 import { NOW, table, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { localizeInlineImages } from "../../format/text";
-import { deleteDraftsForNamespace } from "./page";
+import { deleteDraftsForNamespace } from "../drafts";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
 import { isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "../admin/php";

@@ -5,6 +5,7 @@ import { sql } from "kysely";
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
+import { staffSortColumns } from "../staff-alerts";
 import type { Agent } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
 import { logThreadEvent, type Actor, type EventState } from "../ticket/events";
@@ -75,36 +76,15 @@ export function agentName(agent: Agent, cfg: ConfigNamespace): string {
   return new PersonsName({ first: agent.name.first, last: agent.name.last }, cfg.str("agent_name_format")).toString();
 }
 
-/** Dept::getMembers() ordinati come Staff::nsort (formato del nome agente). */
-async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespace, alertsOnly: boolean): Promise<number[]> {
-  const d = await executor.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
+/** Dept::getMembers(): primari, manager o con accesso esteso, ordinati come Staff::nsort (formato del nome agente). */
+async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespace): Promise<number[]> {
+  const d = await executor.selectFrom("department").select("manager_id").where("id", "=", deptId).executeTakeFirst();
   if (!d) return [];
-  if (alertsOnly && d.group_membership === 2) return [];
-  const order = ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format")) ? sql`S.lastname, S.firstname` : sql`S.firstname, S.lastname`;
-  const alertCond = alertsOnly
-    ? sql`AND S.isactive = 1 AND S.onvacation = 0 AND (S.dept_id = ${deptId} OR (${d.group_membership} = 1 AND (A.flags & 1) != 0))`
-    : sql``;
+  const [x, y] = staffSortColumns(cfg.str("agent_name_format"));
   const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
     LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${deptId})
-    WHERE (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId}) ${alertCond}
-    ORDER BY ${order}`.execute(executor);
-  return rows.map((r) => r.staff_id);
-}
-
-/** Dept::getMembersForAlerts */
-export function deptMembersForAlerts(executor: DbOrTx, deptId: number, cfg: ConfigNamespace): Promise<number[]> {
-  return deptMembers(executor, deptId, cfg, true);
-}
-
-/** Team::getMembersForAlerts (membri con flag alert, ordine della tabella) */
-export async function teamMembersForAlerts(executor: DbOrTx, teamId: number): Promise<number[]> {
-  const rows = await executor
-    .selectFrom("team_member")
-    .select("staff_id")
-    .where("team_id", "=", teamId)
-    .where(sql<boolean>`(flags & 1) != 0`)
-    .orderBy("staff_id")
-    .execute();
+    WHERE (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId})
+    ORDER BY S.${sql.ref(x)}, S.${sql.ref(y)}`.execute(executor);
   return rows.map((r) => r.staff_id);
 }
 
@@ -113,7 +93,7 @@ export async function deptCanAssign(executor: DbOrTx, deptId: number, staff: Age
   const d = await executor.selectFrom("department").select(["flags"]).where("id", "=", deptId).executeTakeFirst();
   if (!d) return false;
   if (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY && staff.deptId !== deptId) return false;
-  if (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg, false)).includes(staff.id)) return false;
+  if (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg)).includes(staff.id)) return false;
   return staff.isAvailable;
 }
 
@@ -155,7 +135,7 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
     const membersOnly = !!d && (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) !== 0;
     if (primaryOnly) conds.push(sql`S.dept_id = ${deptId}`);
     else if (membersOnly) {
-      const ids = await deptMembers(executor, deptId, cfg, false);
+      const ids = await deptMembers(executor, deptId, cfg);
       conds.push(ids.length ? sql`S.staff_id IN (${sql.join(ids)})` : sql`0 = 1`);
     }
   }

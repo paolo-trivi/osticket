@@ -4,31 +4,42 @@ import { sql } from "kysely";
 import { DateTime } from "luxon";
 
 import { NOW, table, type DbOrTx } from "../../db";
-import { loadSystemEmail, sendMail, type SystemEmail } from "../../mail/mailer";
+import type { SystemEmail } from "../../mail/mailer";
 import { companyVar, loadStaffInfo, staffVar } from "../../mail/objects";
-import { loadMsgTemplate, templateGroupFor, type TemplateCode } from "../../mail/templates";
-import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
+import type { TemplateCode } from "../../mail/templates";
+import type { TemplateVariable } from "../../mail/variables";
 import { logSystem } from "../../system/syslog";
+import { alertOrDefaultEmail } from "../directory/content-mail";
 import { defaultFormOf, createEntry, deleteEntries, entriesFor, saveEntryAnswers, validateInput } from "../forms/answers";
 import { FieldFlag, hasAnswerRow, isEditableToStaff } from "../forms/fields";
+import { deleteDraftsForNamespace } from "../drafts";
 import { deleteSearchRow } from "../search/index-writer";
+import { nextSequenceNumber } from "../sequence";
+import {
+  deptAlertEmail as deptEmailOf,
+  deptAlertMembers,
+  DeptAlerts,
+  deptMsgTemplate,
+  replaceAlertVars,
+  sendAdminAlert,
+  sendStaffAlerts,
+  teamAlertMembers,
+} from "../staff-alerts";
 import { loadAgent, TaskPerm, type Agent } from "../staff/staff";
 import { createThreadEntry, lastMessage, touchThread } from "../thread/write";
 import type { WriteContext } from "../ticket/context";
 import { logNote, ticketThreadId } from "../ticket/post";
 import { TicketRecord } from "../ticket/record";
-import { loadStatus, setTicketStatus } from "../ticket/status";
+import { reopenTicket } from "../ticket/ticket-state";
 import {
   agentName,
   assignableAgents,
   agentsNameJson,
   deptCanAssign,
-  deptMembersForAlerts,
   loadTaskRow,
   loadTeam,
   logTaskEvent,
   taskThreadId,
-  teamMembersForAlerts,
   updateTaskRow,
   type TaskDbRow,
 } from "./model";
@@ -55,54 +66,22 @@ function bodyFormat(ctx: WriteContext): "html" | "text" {
 
 /* ------------------------------------------------------------------ numerazione */
 
-/** Sequence::format */
-function formatSequence(format: string, number: number, padding: string): string {
-  const groups = [...format.matchAll(/(?<!\\)#+/g)];
-  const total = groups.reduce((n, g) => n + g[0].length, 0);
-  let num = String(number);
-  if (num.length < total) num = (padding || "0").repeat(total).slice(0, total - num.length) + num;
-  let out = "";
-  let start = 0;
-  let noff = 0;
-  for (const g of groups) {
-    const size = g[0].length;
-    out += format.slice(start, g.index).replace(/\\#/g, "#");
-    out += num.slice(noff, noff + size);
-    start = (g.index ?? 0) + size;
-    noff += size;
-  }
-  if (num.length > noff) out += num.slice(noff);
-  out += format.slice(start).replace(/\\#/g, "#");
-  return out;
-}
-
-/** $cfg->getNewTaskNumber(): Sequence::next con controllo di unicità (RandomSequence se non configurata). */
+/** $cfg->getNewTaskNumber(): sequenza task_sequence_id (RandomSequence se assente) con Task::isNumberUnique. */
 async function nextTaskNumber(ctx: WriteContext): Promise<string> {
   const { tx, cfg } = ctx;
-  const format = cfg.str("task_number_format");
-  const seqId = cfg.int("task_sequence_id");
-  const seq = seqId ? await tx.selectFrom("sequence").selectAll().where("id", "=", seqId).forUpdate().executeTakeFirst() : undefined;
-  for (;;) {
-    let formatted: string;
-    if (seq) {
-      const next = seq.next;
-      seq.next = next + (seq.increment ?? 1);
-      await tx.updateTable("sequence").set({ next: seq.next, updated: NOW }).where("id", "=", seq.id).execute();
-      formatted = format ? formatSequence(format, next, seq.padding ?? "0") : String(next);
-    } else {
-      const digits = Math.max(6, (format.match(/(?<!\\)#/g) ?? []).length);
-      let n = String(Math.floor(Math.random() * 9) + 1);
-      while (n.length < digits) n += String(Math.floor(Math.random() * 10));
-      formatted = format ? formatSequence(format, Number(n), "0") : n;
-    }
-    const dup = await tx.selectFrom("task").select("id").where("number", "=", formatted).executeTakeFirst();
-    if (!dup) return formatted;
-  }
+  return nextSequenceNumber(tx, cfg.int("task_sequence_id"), cfg.str("task_number_format"), async (n) => {
+    const dup = await tx.selectFrom("task").select("id").where("number", "=", n).executeTakeFirst();
+    return !dup;
+  });
 }
 
 /* ------------------------------------------------------------------ avvisi */
 
-async function sendStaffAlerts(
+/**
+ * Invio di un avviso del task (Task::replaceVars): primo passaggio con le variabili dell'operazione, il
+ * secondo con le stesse variabili più il destinatario; avviso all'amministratore facoltativo.
+ */
+async function sendTaskAlerts(
   ctx: WriteContext,
   opts: {
     email: SystemEmail | null;
@@ -117,52 +96,32 @@ async function sendStaffAlerts(
 ): Promise<void> {
   const { tx, cfg } = ctx;
   if (!opts.email) return;
-  const tpl = await loadMsgTemplate(tx, await templateGroupFor(tx, opts.deptId, cfg), opts.code);
+  const tpl = await deptMsgTemplate(ctx, opts.deptId, opts.code);
   if (!tpl) return;
-  const base = { url: cfg.str("helpdesk_url").replace(/\/+$/, ""), company: await companyVar(tx) };
-  // Primo passaggio: variabili dell'operazione; il secondo aggiunge il destinatario (come Task::replaceVars)
-  const first = new VariableReplacer().assign({ ...opts.vars, ...base });
-  const subj1 = first.replaceVars(tpl.subj);
-  const body1 = first.replaceVars(tpl.body);
-  const sent = new Set<string>();
+  const vars = { ...opts.vars, url: cfg.str("helpdesk_url").replace(/\/+$/, ""), company: await companyVar(tx) };
+  const msg = replaceAlertVars(tpl, vars);
   const email = opts.email;
-  for (const staffId of opts.recipients) {
-    const staff = await loadAgent(staffId, tx);
-    if (!staff || !staff.isAvailable || sent.has(staff.email)) continue;
-    if (opts.skip && (await opts.skip(staff))) continue;
-    const info = await loadStaffInfo(tx, staff.id);
-    const r = new VariableReplacer().assign({ ...opts.vars, ...base, recipient: info ? staffVar(info, cfg) : null });
-    const subject = r.replaceVars(subj1);
-    const body = r.replaceVars(body1);
-    const to = { name: agentName(staff, cfg), address: staff.email };
-    ctx.after.push(async () => {
-      await sendMail({ email, to: [to], subject, body, recipient: { userId: staff.id, utype: "S" }, thread: opts.thread, notice: true });
-    });
-    sent.add(staff.email);
-  }
-  if (opts.adminAlert) {
-    // Bug PHP replicato: in_array() cerca l'indirizzo tra i valori di $sentlist (tutti 1), quindi
-    // l'amministratore riceve l'avviso anche se è già tra gli agenti avvisati.
-    const admin = cfg.str("admin_email");
-    if (admin) {
-      const r = new VariableReplacer().assign({ ...opts.vars, ...base, recipient: "Admin" });
-      const subject = r.replaceVars(subj1);
-      const body = r.replaceVars(body1);
-      ctx.after.push(async () => {
-        await sendMail({ email, to: [{ name: "", address: admin }], subject, body, recipient: { userId: 0, utype: "?" }, thread: opts.thread, notice: true });
-      });
-    }
-  }
+  await sendStaffAlerts(ctx, { email, msg, vars, recipients: opts.recipients, skip: opts.skip, thread: opts.thread });
+  // Bug PHP replicato: in_array() cerca l'indirizzo tra i valori di $sentlist (tutti 1), quindi
+  // l'amministratore riceve l'avviso anche se è già tra gli agenti avvisati.
+  if (opts.adminAlert && cfg.str("admin_email")) sendAdminAlert(ctx, { email, msg, vars, utype: "?", thread: opts.thread });
 }
 
-async function alertEmail(ctx: WriteContext): Promise<SystemEmail | null> {
-  return (await loadSystemEmail(ctx.cfg.int("alert_email_id"), ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+/** $cfg->getAlertEmail(): email degli avvisi o predefinita */
+function alertEmail(ctx: WriteContext): Promise<SystemEmail | null> {
+  return alertOrDefaultEmail(ctx.tx, ctx.cfg);
 }
 
 /** Dept::getAlertEmail(): email del reparto o email predefinita */
 async function deptAlertEmail(ctx: WriteContext, deptId: number): Promise<SystemEmail | null> {
   const d = await ctx.tx.selectFrom("department").select("email_id").where("id", "=", deptId).executeTakeFirst();
-  return (await loadSystemEmail(d?.email_id ?? 0, ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+  return deptEmailOf(ctx.tx, ctx.cfg, d?.email_id);
+}
+
+/** Dept::getMembersForAlerts() del reparto indicato */
+async function deptMembersForAlerts(ctx: WriteContext, deptId: number): Promise<number[]> {
+  const d = await ctx.tx.selectFrom("department").select(["id", "manager_id", "group_membership"]).where("id", "=", deptId).executeTakeFirst();
+  return d ? deptAlertMembers(ctx.tx, d, ctx.cfg.str("agent_name_format")) : [];
 }
 
 async function staffTemplateVar(ctx: WriteContext, staffId: number): Promise<TemplateVariable | null> {
@@ -193,7 +152,7 @@ async function onActivity(
   if (cfg.bool("task_activity_alert_assigned")) {
     if (assigneeId) recipients.push(assigneeId);
     else if (isOpen(task) && task.staff_id) recipients.push(task.staff_id);
-    if (task.team_id) recipients.push(...(await teamMembersForAlerts(tx, task.team_id)));
+    if (task.team_id) recipients.push(...(await teamAlertMembers(tx, task.team_id)));
   }
   if (cfg.bool("task_activity_alert_dept_manager")) {
     const d = await tx.selectFrom("department").select("manager_id").where("id", "=", task.dept_id).executeTakeFirst();
@@ -203,7 +162,7 @@ async function onActivity(
   const message = await threadEntryVar(tx, entry.id, cfg, ctx.dbZone);
   const closed = !isOpen(task);
   const row = await loadTask(task.id, tx);
-  await sendStaffAlerts(ctx, {
+  await sendTaskAlerts(ctx, {
     email,
     code: "task.activity.alert",
     deptId: task.dept_id,
@@ -219,16 +178,16 @@ async function onNewTask(ctx: WriteContext, task: TaskDbRow): Promise<void> {
   const { tx, cfg } = ctx;
   if (!cfg.bool("task_alert_active")) return;
   const dept = await tx.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", task.dept_id).executeTakeFirst();
-  if (!dept || dept.group_membership === 2) return;
+  if (!dept || dept.group_membership === DeptAlerts.DISABLED) return;
   const email = await alertEmail(ctx);
   if (!email) return;
-  const adminOnly = dept.group_membership === 3;
+  const adminOnly = dept.group_membership === DeptAlerts.ADMIN_ONLY;
   const recipients: number[] = [];
   if (cfg.bool("task_alert_dept_manager") && dept.manager_id && !adminOnly) recipients.push(dept.manager_id);
-  if (cfg.bool("task_alert_dept_members") && !adminOnly) recipients.push(...(await deptMembersForAlerts(tx, task.dept_id, cfg)));
+  if (cfg.bool("task_alert_dept_members") && !adminOnly) recipients.push(...(await deptMembersForAlerts(ctx, task.dept_id)));
   const poster = ctx.actor?.kind === "staff" ? ctx.actor.id : 0;
   const row = await loadTask(task.id, tx);
-  await sendStaffAlerts(ctx, {
+  await sendTaskAlerts(ctx, {
     email,
     code: "task.alert",
     deptId: task.dept_id,
@@ -306,23 +265,11 @@ export async function postTaskReply(ctx: WriteContext, task: TaskDbRow, input: {
 
 /* ------------------------------------------------------------------ stato */
 
-/** Ticket::reopen(): stato di riapertura dello stato chiuso o stato predefinito. */
-async function reopenTicket(ctx: WriteContext, ticketId: number): Promise<void> {
+/** $task->ticket->reopen(): Ticket::reopen di ticket-state (TicketStatus::getReopenStatus o stato predefinito). */
+async function reopenParentTicket(ctx: WriteContext, ticketId: number): Promise<void> {
   const rec = await TicketRecord.load(ctx.tx, ticketId, true);
   if (!rec) return;
-  const current = await loadStatus(ctx.tx, rec.get("status_id"));
-  if (current?.state !== "closed") return;
-  let statusId = 0;
-  try {
-    const props = current.properties ? (JSON.parse(current.properties) as Record<string, unknown>) : {};
-    statusId = Number(props.reopenstatus) || 0;
-  } catch {
-    statusId = 0;
-  }
-  if (!statusId) statusId = ctx.cfg.int("default_ticket_status_id", 1);
-  if (!statusId) return;
-  const threadId = await ticketThreadId(ctx.tx, rec.id);
-  await setTicketStatus(ctx, rec, threadId, statusId, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
+  await reopenTicket(ctx, rec, await ticketThreadId(ctx.tx, rec.id));
 }
 
 /** Campi del form del task obbligatori per la chiusura e senza valore (Task::getMissingRequiredFields). */
@@ -345,7 +292,7 @@ export async function setTaskStatus(ctx: WriteContext, task: TaskDbRow, status: 
     ecb = async () => {
       await logTaskEvent(ctx, task, threadId, "reopened", null, undefined, "closed");
       if (task.object_type === "T" && task.object_id) {
-        await reopenTicket(ctx, task.object_id);
+        await reopenParentTicket(ctx, task.object_id);
         await logNote(ctx, task.object_id, `Task ${task.number} Reopened`, "Task reopened");
       }
     };
@@ -384,7 +331,7 @@ async function onAssignment(ctx: WriteContext, task: TaskDbRow, assignee: { staf
   if (assignee.staff) {
     if (cfg.bool("task_assignment_alert_staff")) recipients.push(assignee.staff.id);
   } else if (assignee.team && !(assignee.team.flags & 0x0002)) {
-    const members = await teamMembersForAlerts(tx, assignee.team.team_id);
+    const members = await teamAlertMembers(tx, assignee.team.team_id);
     if (cfg.bool("task_assignment_alert_team_members") && members.length) recipients.push(...members);
     else if (cfg.bool("task_assignment_alert_team_lead") && assignee.team.lead_id) recipients.push(assignee.team.lead_id);
   }
@@ -393,7 +340,7 @@ async function onAssignment(ctx: WriteContext, task: TaskDbRow, assignee: { staf
   const assigneeVar = assignee.staff
     ? await staffTemplateVar(ctx, assignee.staff.id)
     : { getVar: (t: string) => (t === "name" ? assignee.team!.name : t === "id" ? assignee.team!.team_id : ""), asVar: () => assignee.team!.name };
-  await sendStaffAlerts(ctx, {
+  await sendTaskAlerts(ctx, {
     email,
     code: "task.assignment.alert",
     deptId: task.dept_id,
@@ -472,12 +419,12 @@ export async function transferTask(ctx: WriteContext, task: TaskDbRow, deptId: n
   const assigned = isOpen(task) && !!(task.staff_id || task.team_id);
   if (assigned && cfg.bool("task_transfer_alert_assigned")) {
     if (task.staff_id) recipients.push(task.staff_id);
-    else if (task.team_id) recipients.push(...(await teamMembersForAlerts(tx, task.team_id)));
+    else if (task.team_id) recipients.push(...(await teamAlertMembers(tx, task.team_id)));
   } else if (cfg.bool("task_transfer_alert_dept_members") && !assigned) {
-    recipients.push(...(await deptMembersForAlerts(tx, dept.id, cfg)));
+    recipients.push(...(await deptMembersForAlerts(ctx, dept.id)));
   }
   if (cfg.bool("task_transfer_alert_dept_manager") && dept.manager_id) recipients.push(dept.manager_id);
-  await sendStaffAlerts(ctx, {
+  await sendTaskAlerts(ctx, {
     email,
     code: "task.transfer.alert",
     deptId: dept.id,
@@ -655,11 +602,7 @@ export async function deleteTask(ctx: WriteContext, task: TaskDbRow, comments = 
     await tx.updateTable("thread_event").set({ thread_id: 0 }).where("thread_id", "=", threadId).execute();
     await logTaskEvent(ctx, task, threadId, "deleted");
   }
-  // Draft::deleteForNamespace('task.%.<id>')
-  const ns = `task.%.${task.id}`;
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${ns.replace(/([%_\\])/g, "\\$1") + "%"}`.execute(tx);
-  await tx.deleteFrom("draft").where("namespace", "like", ns).execute();
+  await deleteDraftsForNamespace(tx, `task.%.${task.id}`);
   await deleteEntries(tx, "A", task.id);
   let log = `Task #${task.number} deleted by ${agent ? agentName(agent, cfg) : "SYSTEM"}`;
   if (comments) log += `<hr>${comments}`;

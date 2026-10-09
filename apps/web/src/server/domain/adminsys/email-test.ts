@@ -6,7 +6,7 @@ import type { SaveResult } from "../admin/common";
 import { str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
 import { isValidEmail } from "../forms/validator";
-import { deleteDraftsForNamespace } from "./page";
+import { deleteDraftsForNamespace } from "../drafts";
 import { sanitizeHtml } from "./sanitize";
 
 /**

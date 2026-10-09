@@ -34,10 +34,5 @@ export async function isEmailBanned(executor: DbOrTx, address: string): Promise<
   return rows.length > 0;
 }
 
-/** Draft::deleteForNamespace($ns, $staffId) con namespace esatto (es. ticket.response.<id>). */
-export async function deleteDraftsFor(executor: DbOrTx, namespace: string, staffId: number): Promise<void> {
-  const like = namespace.replace(/([%_\\])/g, "\\$1") + "%";
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${like} AND D.staff_id = ${staffId}`.execute(executor);
-  await executor.deleteFrom("draft").where("namespace", "like", namespace).where("staff_id", "=", staffId).execute();
-}
+/** Draft::deleteForNamespace($ns, $staffId) (es. ticket.response.<id>): vedi ../drafts.ts */
+export { deleteDraftsForNamespace as deleteDraftsFor } from "../drafts";

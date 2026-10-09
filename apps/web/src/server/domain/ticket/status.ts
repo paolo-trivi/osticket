@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 
 import { NOW, table, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
+import { deleteDraftsForNamespace } from "../drafts";
 import { slaDueDate } from "../sla/sla";
 import { loadAgent, TicketPerm, type Agent, type RoleInfo } from "../staff/staff";
 import type { WriteContext } from "./context";
@@ -149,11 +150,8 @@ export async function isCloseable(ctx: WriteContext, rec: TicketRecord, currentS
 
 /** Ticket::deleteDrafts → Draft::deleteForNamespace('ticket.%.<id>') con la stessa (strana) LIKE del PHP. */
 export async function deleteTicketDrafts(executor: DbOrTx, ticketId: number): Promise<void> {
-  const ns = `ticket.%.${ticketId}`;
-  // startswith: la % del namespace viene escapata (corrisponde solo a un '%' letterale)
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${ns.replace(/([%_\\])/g, "\\$1") + "%"}`.execute(executor);
-  await executor.deleteFrom("draft").where("namespace", "like", ns).execute();
+  // startswith degli allegati: la % del namespace viene escapata (corrisponde solo a un '%' letterale)
+  await deleteDraftsForNamespace(executor, `ticket.%.${ticketId}`);
 }
 
 /** Thread::refer($staff): referral all'agente se non già presente (controllo stretto). */

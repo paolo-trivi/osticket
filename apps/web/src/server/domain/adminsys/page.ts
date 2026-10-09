@@ -1,14 +1,13 @@
 import "server-only";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { localizeInlineImages } from "../../format/text";
 import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { inArray, phpLooseEquals, str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
+import { deleteDraftsForNamespace } from "../drafts";
 import { sanitizeHtml } from "./sanitize";
 
 /**
@@ -38,16 +37,6 @@ async function defaultPages(executor: DbOrTx): Promise<string[]> {
 async function isInUse(executor: DbOrTx, id: number): Promise<boolean> {
   const t = await executor.selectFrom("help_topic").select("topic_id").where("page_id", "=", id).executeTakeFirst();
   return !!t || inArray(id, await defaultPages(executor));
-}
-
-/** Draft::deleteForNamespace($namespace) */
-export async function deleteDraftsForNamespace(executor: DbOrTx, namespace: string, staffId?: number): Promise<void> {
-  const prefix = `${namespace.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  await sql`DELETE a.* FROM ${table("attachment")} a JOIN ${table("draft")} d ON (a.object_id=d.id AND a.type='D')
-    WHERE d.namespace LIKE ${prefix}${staffId ? sql` AND d.staff_id=${staffId}` : sql``}`.execute(executor);
-  let q = executor.deleteFrom("draft").where("namespace", "like", namespace);
-  if (staffId) q = q.where("staff_id", "=", staffId);
-  await q.execute();
 }
 
 /** Page::update($vars, $errors) per una pagina nuova (pageId null) o esistente. */

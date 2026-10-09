@@ -1,12 +1,13 @@
 import "server-only";
 
-import { randomBytes, randomInt } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import type { ConfigNamespace } from "../config/config";
 import type { DbOrTx } from "../db";
 import { phpJsonDecode } from "../format/php-json";
 import { loadStaffInfo, staffVar } from "../mail/objects";
 import { alertOrDefaultEmail, loadContentPage, sendContentMail } from "../domain/directory/content-mail";
+import { randNumber } from "../domain/sequence";
 
 /**
  * Secondo fattore via email per gli agenti (include/class.2fa.php, Email2FABackend "2fa-email").
@@ -31,13 +32,6 @@ const store = new Map<string, OtpState>();
 function sweep(): void {
   const limit = Date.now() / 1000 - TIMEOUT_MIN * 60 * 2;
   for (const [k, v] of store) if (v.time < limit) store.delete(k);
-}
-
-/** Misc::randNumber(6): prima cifra 1-9, poi 0-9 */
-function randNumber(len = 6): string {
-  let out = String(randomInt(1, 10));
-  while (out.length < len) out += String(randomInt(0, 10));
-  return out;
 }
 
 export function newMfaKey(): string {
@@ -67,7 +61,8 @@ export async function prepare2faEmail(
   if (!Object.keys(staff2faConfig(staff.config)).length) return false;
   const email = await alertOrDefaultEmail(executor, cfg);
   if (!email) return false;
-  const otp = randNumber(6);
+  // Misc::randNumber(6): 6 cifre senza zeri iniziali, confrontato come stringa (strcmp)
+  const otp = String(randNumber(6));
   sweep();
   store.set(key, { staffId: staff.id, otp, time: Math.floor(Date.now() / 1000), strikes: 0 });
   const page = await loadContentPage(executor, "email2fa-staff");
