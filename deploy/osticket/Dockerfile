@@ -2,7 +2,9 @@
 # Contesto di build: la root del repository (vedi Dockerfile.dockerignore accanto a questo file).
 #   docker build -f deploy/osticket/Dockerfile -t tailticket-legacy .
 # Ruoli (primo argomento): "web" (Apache, default) oppure "cron" (php api/cron.php a intervalli).
-FROM php:8.3-apache
+# Immagine base: in CI si usa un mirror di Docker Hub (--build-arg PHP_IMAGE=mirror.gcr.io/library/php:8.3-apache)
+ARG PHP_IMAGE=php:8.3-apache
+FROM ${PHP_IMAGE}
 
 # APCu (cache usata da osTicket): sorgente PECL scaricato con curl, che rispetta HTTPS_PROXY
 ARG APCU_VERSION=5.1.24

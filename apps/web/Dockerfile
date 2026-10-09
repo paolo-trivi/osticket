@@ -2,14 +2,16 @@
 # Build: docker build -t tailticket apps/web
 #        (opzionale: --build-arg NEXT_BASE_PATH=/app per servirla in un sotto-percorso)
 # Dietro un proxy TLS aziendale: --secret id=build_ca,src=/percorso/ca.crt (non resta nell'immagine).
-FROM node:22-alpine AS deps
+# Immagine base: in CI si usa un mirror di Docker Hub (--build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-alpine)
+ARG NODE_IMAGE=node:22-alpine
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca npm_config_cafile=/run/secrets/build_ca; fi; \
     npm ci --no-audit --no-fund
 
-FROM node:22-alpine AS build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 ARG NEXT_BASE_PATH=""
 ENV NEXT_OUTPUT=standalone NEXT_BASE_PATH=${NEXT_BASE_PATH} NEXT_TELEMETRY_DISABLED=1
@@ -21,7 +23,7 @@ RUN --mount=type=secret,id=build_ca,required=false \
     OST_DB_NAME=build OST_DB_USER=build OST_DB_PASS=build OST_SECRET_SALT=build-only \
     APP_SESSION_SECRET=build-only-build-only-build-only-0123 npm run build
 
-FROM node:22-alpine AS run
+FROM ${NODE_IMAGE} AS run
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 # msmtp fa da "sendmail" verso il relay SMTP quando non si usano gli account SMTP di osTicket
