@@ -11,7 +11,7 @@ import type { ConfigNamespace } from "../config/config";
  * uno schema che TailTicket non ha ancora verificato con i test differenziali, le scritture vengono
  * rifiutate (sola lettura) finché la nuova firma non è aggiunta qui dopo la verifica.
  */
-export interface VerifiedSchema {
+interface VerifiedSchema {
   signature: string;
   osticket: string;
 }
@@ -20,9 +20,9 @@ export interface VerifiedSchema {
 export const VERIFIED_SCHEMAS: readonly VerifiedSchema[] = [{ signature: "5fb92bef17f3b603659e024c01cc7a59", osticket: "1.18.x (verificato su 1.18.4)" }];
 
 /** Variabile d'ambiente per forzare le scritture su uno schema non verificato (sconsigliato). */
-export const ALLOW_UNVERIFIED_ENV = "TAILTICKET_ALLOW_UNVERIFIED_SCHEMA";
+const ALLOW_UNVERIFIED_ENV = "TAILTICKET_ALLOW_UNVERIFIED_SCHEMA";
 
-export interface SchemaStatus {
+interface SchemaStatus {
   signature: string;
   verified: VerifiedSchema | null;
   /** scritture consentite: schema verificato oppure override esplicito */

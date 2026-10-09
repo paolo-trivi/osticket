@@ -15,7 +15,7 @@ import { deleteUser, loadUserCore, setUserOrganization, type DirError, type DirR
  * Account dei clienti (UserAccount in include/class.user.php; ajax.users.php register/manage,
  * scp/users.php confirmlink/pwreset/mass_process). Stato: bit di UserAccountStatus.
  */
-export const AccountStatus = {
+const AccountStatus = {
   CONFIRMED: 0x0001,
   LOCKED: 0x0002,
   REQUIRE_PASSWD_RESET: 0x0004,
@@ -25,7 +25,7 @@ export const AccountStatus = {
 /** Alfabeto predefinito di Misc::randCode */
 export const MISC_RAND_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_=";
 
-export interface AccountRow {
+interface AccountRow {
   id: number;
   user_id: number;
   status: number;
@@ -37,7 +37,7 @@ export interface AccountRow {
   extra: string | null;
 }
 
-export async function loadAccount(ctx: WriteContext, userId: number): Promise<AccountRow | null> {
+async function loadAccount(ctx: WriteContext, userId: number): Promise<AccountRow | null> {
   const row = await ctx.tx
     .selectFrom("user_account")
     .select(["id", "user_id", "status", "timezone", "lang", "username", "passwd", "backend", "extra"])

@@ -12,7 +12,7 @@ import { GlobalPerm, type Agent } from "../staff/staff";
  * Tutto si basa su thread_event (eventi non annullati) nel periodo scelto.
  */
 export const PERIOD_CHOICES = ["now", "+7 days", "+14 days", "+1 month", "+3 months"] as const;
-export type PeriodEnd = (typeof PERIOD_CHOICES)[number];
+type PeriodEnd = (typeof PERIOD_CHOICES)[number];
 
 export interface ReportRange {
   start: string;
@@ -61,7 +61,7 @@ async function eventIds(executor: DbOrTx): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((r) => [r.name, r.id]));
 }
 
-export interface PlotData {
+interface PlotData {
   days: string[];
   series: { name: string; data: number[] }[];
 }

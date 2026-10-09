@@ -1,12 +1,12 @@
 import { Link } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
 
-export interface KbSearchOption {
+interface KbSearchOption {
   id: number;
   label: string;
 }
 
-export interface KbSearchLabels {
+interface KbSearchLabels {
   search: string;
   searchButton: string;
   reset: string;

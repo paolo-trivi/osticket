@@ -14,7 +14,7 @@ export const TicketFlag = {
   PARENT: 0x0010,
 } as const;
 
-export type MergeType = "combine" | "separate" | "visual";
+type MergeType = "combine" | "separate" | "visual";
 
 /** Ticket::getMergeTypeByFlag */
 export function mergeTypeOf(flags: number): MergeType {
@@ -32,7 +32,7 @@ export function isParentFlags(flags: number): boolean {
  * 3 = ticket normale (tutti i flag azzerati). Il confronto PHP 8 `$combine == $key` è debole: null
  * vale 0 (separate), una stringa vuota non corrisponde a nessuna chiave.
  */
-export function mergeFlags(flags: number, combine: number | string | null | undefined, parent: boolean): number {
+function mergeFlags(flags: number, combine: number | string | null | undefined, parent: boolean): number {
   const keys = [TicketFlag.SEPARATE_THREADS, TicketFlag.COMBINE_THREADS, TicketFlag.LINKED];
   const c = combine === null || combine === undefined ? 0 : combine === "" ? NaN : Number(combine);
   keys.forEach((flag, key) => {

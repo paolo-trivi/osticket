@@ -22,20 +22,20 @@ export async function kbEnabled(cfg: ConfigNamespace, client: ClientIdentity | n
 }
 
 /** FAQ::countPublishedFAQs */
-export async function countPublishedFaqs(executor: DbOrTx = db()): Promise<number> {
+async function countPublishedFaqs(executor: DbOrTx = db()): Promise<number> {
   const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("faq")} F JOIN ${table("faq_category")} C ON (C.category_id = F.category_id)
     WHERE F.ispublished != 0 AND C.ispublic != 0`.execute(executor);
   return Number(rows[0]?.n ?? 0);
 }
 
-export interface KbFaqLink {
+interface KbFaqLink {
   id: number;
   question: string;
   teaser?: string;
   attachments?: number;
 }
 
-export interface KbCategory {
+interface KbCategory {
   id: number;
   name: string;
   description: string;
@@ -150,7 +150,7 @@ export async function searchFaqs(opts: { q?: string; categoryId?: number; topicI
   return rows.map((r) => ({ id: r.faq_id, question: r.question, attachments: Number(r.atts) }));
 }
 
-export interface KbCategoryView {
+interface KbCategoryView {
   id: number;
   name: string;
   description: string;
@@ -184,7 +184,7 @@ export async function publicCategory(id: number, executor: DbOrTx = db()): Promi
   };
 }
 
-export interface KbFaqView {
+interface KbFaqView {
   id: number;
   question: string;
   answer: string;

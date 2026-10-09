@@ -29,7 +29,7 @@ import { reopenTicket } from "./ticket-state";
  * Email (dopo il commit): message.autoresp al poster, ticket.activity.notice ai partecipanti,
  * message.alert agli agenti.
  */
-export interface PostMessageInput {
+interface PostMessageInput {
   ticketId: number;
   /** $thisclient->getId() */
   userId: number;

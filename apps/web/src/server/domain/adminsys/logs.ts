@@ -12,7 +12,7 @@ import type { MassResult } from "../admin/common";
 export const LOG_TYPES = ["Error", "Warning", "Debug"] as const;
 export const LOG_SORTS = { id: "log_id", title: "title", type: "log_type", ip: "ip_address", date: "created", created: "created", updated: "updated" } as const;
 
-export interface LogFilter {
+interface LogFilter {
   type?: string;
   /** date "YYYY-MM-DD" (strtotime della pagina PHP, nel fuso del DB) */
   startDate?: string;

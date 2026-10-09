@@ -34,7 +34,7 @@ export function clientActor(cfg: ConfigNamespace, client: ClientIdentity, ip: st
   };
 }
 
-export type PortalOpenError = "login_required" | "captcha_unsupported";
+type PortalOpenError = "login_required" | "captcha_unsupported";
 
 /**
  * Regole di open.php: con "solo clienti registrati" (clients_only) servono un utente autenticato e

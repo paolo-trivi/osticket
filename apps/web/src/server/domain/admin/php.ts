@@ -49,11 +49,6 @@ export function intval(v: PhpVal): number {
   return m ? Math.trunc(Number(m[0])) : 0;
 }
 
-/** $a ?: $b */
-export function elvis<T>(v: PhpVal, fallback: T): PhpVal | T {
-  return truthy(v) ? v : fallback;
-}
-
 /** Array PHP come lista di valori (foreach $vars['x'] as $v). */
 export function list(v: PhpVal): PhpVal[] {
   if (Array.isArray(v)) return v;

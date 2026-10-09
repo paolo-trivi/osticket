@@ -6,7 +6,7 @@ import { stripTags } from "../../format/html";
 import { PersonsName } from "../../format/persons-name";
 import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from "../../mail/mailer";
 import { answerToString, companyVar } from "../../mail/objects";
-import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/variables";
+import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 
 /**
  * Email basate sulle pagine di contenuto (Page::lookupByType + osTicket::replaceTemplateVariables +
@@ -14,7 +14,7 @@ import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/vari
  * 2FA degli agenti. Le traduzioni delle pagine (tabella translation) non sono gestite: si usano nome
  * e corpo della pagina (la tabella è vuota nelle installazioni senza lingue aggiuntive).
  */
-export type ContentType = "pwreset-client" | "registration-client" | "pwreset-staff" | "registration-staff" | "email2fa-staff";
+type ContentType = "pwreset-client" | "registration-client" | "pwreset-staff" | "registration-staff" | "email2fa-staff";
 
 export async function loadContentPage(executor: DbOrTx, type: ContentType): Promise<{ name: string; body: string } | null> {
   const row = await executor.selectFrom("content").select(["name", "body"]).where("type", "=", type).orderBy("id").executeTakeFirst();
@@ -86,7 +86,6 @@ export async function alertOrDefaultEmail(executor: DbOrTx, cfg: ConfigNamespace
   return (await loadSystemEmail(cfg.int("alert_email_id"), executor)) ?? (await loadSystemEmail(cfg.int("default_email_id"), executor));
 }
 
-export { VarBag };
 
 /** $cfg->getBaseUrl(): helpdesk_url senza "/" finale */
 export function baseUrl(cfg: ConfigNamespace): string {

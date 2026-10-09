@@ -109,7 +109,7 @@ export function safeHtml(input: string, options: { iframeWhitelist?: string[]; d
  * dopo un tag di apertura si elimina; il contenuto di pre/script/textarea e CDATA resta intatto.
  * `\s` di PCRE senza /u: solo spazio, \t, \n, \v, \f, \r.
  */
-export function htmLawedCompact(html: string): string {
+function htmLawedCompact(html: string): string {
   const keep: string[] = [];
   const hidden = html.replace(/(<(!\[CDATA\[))([\s\S]+?)(\]\]>)|(<(!--))([\s\S]+?)(-->)|(<(pre|script|textarea)[^>]*?>)([\s\S]+?)(<\/\10>)/g, (m) => {
     keep.push(m);

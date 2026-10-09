@@ -19,7 +19,7 @@ export const AccountStatus = {
 } as const;
 
 /** Organization::SHARE_* */
-export const OrgShare = { PRIMARY_CONTACT: 0x0008, EVERYBODY: 0x0010 } as const;
+const OrgShare = { PRIMARY_CONTACT: 0x0008, EVERYBODY: 0x0010 } as const;
 
 export interface ClientAccountRow {
   id: number;
@@ -78,7 +78,7 @@ export async function loadClientAccount(executor: DbOrTx, userId: number, forUpd
 }
 
 /** Validator::is_username */
-export function isUsername(v: string): boolean {
+function isUsername(v: string): boolean {
   return Buffer.byteLength(v) >= 2 && !/^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(v) && /^[\p{L}\d._-]+$/u.test(v);
 }
 
@@ -131,7 +131,3 @@ export function clientDisplayName(c: Pick<ClientIdentity, "name" | "email">, cfg
   return new PersonsName(c.name || c.email.split("@")[0], cfg.str("client_name_format")).toString();
 }
 
-/** (string) User::getEmail(): '"Nome" <indirizzo>' con il nome formattato e addcslashes sulle virgolette */
-export function userEmailAddress(c: Pick<ClientIdentity, "name" | "email">, cfg: ConfigNamespace): string {
-  return `"${clientDisplayName(c, cfg).replace(/"/g, '\\"')}" <${c.email}>`;
-}

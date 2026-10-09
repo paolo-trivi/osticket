@@ -20,7 +20,7 @@ import type { Agent } from "../staff/staff";
  */
 
 /** CustomQueue::getExportableFields(): campi standard + campi del form del ticket (cdata). */
-export const STANDARD_EXPORT_FIELDS: [string, string][] = [
+const STANDARD_EXPORT_FIELDS: [string, string][] = [
   ["number", "Ticket Number"],
   ["created", "Date Created"],
   ["cdata__subject", "Subject"],
@@ -52,7 +52,7 @@ async function ticketFormFields(executor: DbOrTx, cfg: ConfigNamespace): Promise
   return (await loadFormDef(executor, cfg, { type: "T" }, "staff"))?.fields ?? [];
 }
 
-export async function exportableFields(executor: DbOrTx, cfg: ConfigNamespace): Promise<[string, string][]> {
+async function exportableFields(executor: DbOrTx, cfg: ConfigNamespace): Promise<[string, string][]> {
   const cdata: [string, string][] = [];
   for (const f of await ticketFormFields(executor, cfg)) {
     if (f.name === "priority" || !hasData(f) || isPresentationOnly(f) || !(f.flags & FieldFlag.ENABLED)) continue;
@@ -82,7 +82,7 @@ export async function queueExportFields(executor: DbOrTx, cfg: ConfigNamespace, 
  * Campi scelti nel dialogo di export ($_SESSION['Export:Q<id>']['fields']): intersezione con i
  * campi della coda (nel loro ordine), poi quelli scelti mancanti presi dagli esportabili.
  */
-export function selectExportFields(fields: [string, string][], selected: string[] | undefined, exportable: [string, string][]): [string, string][] {
+function selectExportFields(fields: [string, string][], selected: string[] | undefined, exportable: [string, string][]): [string, string][] {
   if (!selected) return fields;
   const out = fields.filter(([p]) => selected.includes(p));
   for (const p of selected) {
@@ -94,7 +94,7 @@ export function selectExportFields(fields: [string, string][], selected: string[
 }
 
 /** fputcsv($fp, $data, $delimiter, '"', ''): virgolette se il campo contiene separatore, virgolette, spazi o a capo. */
-export function csvLine(values: string[], delimiter: string): string {
+function csvLine(values: string[], delimiter: string): string {
   return (
     values
       .map((v) => (v.includes(delimiter) || /["\n\r\t ]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v))
@@ -204,7 +204,7 @@ function render(path: string, row: Row, lk: Lookups, cdataFields: Map<string, Fi
   }
 }
 
-export interface ExportOptions {
+interface ExportOptions {
   /** campi scelti (percorsi), come nel dialogo di export */
   fields?: string[];
   /** separatore (csv-delimiter); default ',' */
@@ -267,7 +267,3 @@ export async function exportQueueCsv(executor: DbOrTx, cfg: ConfigNamespace, age
   return { filename: `${queue.title} Tickets-${ymd}.csv`, content };
 }
 
-/** Etichetta di un campo esportabile (per il dialogo). */
-export function exportFieldLabel(fields: [string, string][], path: string): string {
-  return fields.find(([p]) => p === path)?.[1] ?? path;
-}

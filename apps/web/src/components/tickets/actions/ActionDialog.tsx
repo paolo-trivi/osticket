@@ -8,7 +8,7 @@ import RichTextEditor from "@/components/editor/RichTextEditor";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 
-export type TicketAction = (prev: TicketActionState, form: FormData) => Promise<TicketActionState>;
+type TicketAction = (prev: TicketActionState, form: FormData) => Promise<TicketActionState>;
 
 interface ActionDialogProps {
   ticketId: number;
@@ -32,7 +32,7 @@ interface ActionDialogProps {
 const box = "rounded-lg px-4 py-3 text-theme-sm";
 
 /** Messaggio d'errore tradotto di un'azione (chiave errors.<codice>, altrimenti generico). */
-export function useActionError() {
+function useActionError() {
   const t = useTranslations("ticketActions");
   return (state: TicketActionState) => (state.error ? (t.has(`errors.${state.error}`) ? t(`errors.${state.error}`) : t("errors.generic")) : "");
 }

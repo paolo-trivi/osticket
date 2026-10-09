@@ -1,6 +1,6 @@
 import { DownloadIcon } from "@/icons";
 
-export interface AttachmentItem {
+interface AttachmentItem {
   id: number;
   name: string;
   size: number;

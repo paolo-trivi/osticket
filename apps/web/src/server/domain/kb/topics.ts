@@ -4,7 +4,7 @@ import { db, type DbOrTx } from "../../db";
 import { GlobalPerm, type Agent } from "../staff/staff";
 import { visibleTopicIds, type HelpTopicInfo } from "./topic-filter";
 
-export { faqVisibleForTopics, visibleTopicIds, type HelpTopicInfo } from "./topic-filter";
+export { faqVisibleForTopics,   } from "./topic-filter";
 
 /** Topic::FLAG_ACTIVE */
 const TOPIC_FLAG_ACTIVE = 0x0002;

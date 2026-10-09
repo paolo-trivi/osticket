@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { Link } from "@/i18n/navigation";
 import { ChevronLeftIcon } from "@/icons";
 
-export interface BreadcrumbItem {
+interface BreadcrumbItem {
   label: string;
   /** assente per la voce corrente */
   href?: string;

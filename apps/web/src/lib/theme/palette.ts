@@ -3,7 +3,7 @@
  * dei token Tailwind del tema (--color-brand-*). Il colore scelto diventa il 500.
  */
 export const SHADES = ["25", "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"] as const;
-export type Shade = (typeof SHADES)[number];
+type Shade = (typeof SHADES)[number];
 
 /** quanto mescolare con bianco (valori positivi) o nero (negativi) per ogni tonalità */
 const MIX: Record<Shade, number> = {

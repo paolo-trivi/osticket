@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 /** Dati del tema configurato in admin che servono ai componenti client (logo, nome, sidebar). */
-export interface Branding {
+interface Branding {
   displayName: string;
   sidebarStyle: "light" | "dark" | "brand";
   /** loghi caricati in osTicket (Admin > Impostazioni): serviti da /api/branding/<tipo> */

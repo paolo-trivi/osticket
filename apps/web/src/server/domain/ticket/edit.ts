@@ -57,17 +57,17 @@ const SLA_TRANSIENT = 0x0008;
 const TOPIC_ACTIVE = 0x0002;
 
 /** Frammento JSON già serializzato da inserire così com'è in phpAssocJson. */
-export class RawJson {
+class RawJson {
   constructor(readonly json: string) {}
 }
 
 /** JSON di un array associativo PHP con l'ordine delle chiavi preservato (anche numeriche). */
-export function phpAssocJson(pairs: [string, unknown][]): string {
+function phpAssocJson(pairs: [string, unknown][]): string {
   return `{${pairs.map(([k, v]) => `${phpJsonEncode(String(k))}:${v instanceof RawJson ? v.json : phpJsonEncode(v)}`).join(",")}}`;
 }
 
 /** ThreadEntryBody::clean per l'HTML di un agente: '' se il corpo è vuoto (solo spazi, <, >, b, r, /). */
-export function cleanHtmlBody(body: string): string {
+function cleanHtmlBody(body: string): string {
   const b = phpTrim(body ?? "", " <>br/\t\n\r") ? body : "";
   return b ? sanitizeText(editorSpacing(b)) : "";
 }
@@ -79,7 +79,7 @@ const isNumeric = (v: unknown) => typeof v === "number" || (typeof v === "string
  * interpretata da Format::parseDateTime nel fuso predefinito del PHP (UTC, anche se l'agente ha un
  * altro fuso: stranezza del PHP replicata) e convertita nel fuso del DB.
  */
-export function userDateToDb(input: string, dbZone: string): { db: string; past: boolean } | null {
+function userDateToDb(input: string, dbZone: string): { db: string; past: boolean } | null {
   const dt = phpParseDateTime(input);
   if (!dt) return null;
   return { db: dt.setZone(dbZone).toFormat("yyyy-MM-dd HH:mm:ss"), past: dt.toMillis() <= Date.now() };
@@ -199,7 +199,7 @@ async function threadIdOf(tx: DbOrTx, ticketId: number): Promise<number> {
   return (await ticketThread(tx, ticketId))?.id ?? 0;
 }
 
-export interface TicketUpdateInput {
+interface TicketUpdateInput {
   ticketId: number;
   topicId: string;
   slaId: string;
@@ -364,7 +364,7 @@ async function logEditedRaw(ctx: WriteContext, rec: TicketRecord, threadId: numb
 }
 
 /** Ticket::selectSLAId(): SLA del reparto, poi del topic, poi quello predefinito; setSLAId salva. */
-export async function selectSlaId(ctx: WriteContext, rec: TicketRecord): Promise<number | false> {
+async function selectSlaId(ctx: WriteContext, rec: TicketRecord): Promise<number | false> {
   const { tx, cfg } = ctx;
   let slaId = 0;
   const dept = await tx.selectFrom("department").select("sla_id").where("id", "=", rec.get("dept_id")).executeTakeFirst();
@@ -383,10 +383,7 @@ export async function selectSlaId(ctx: WriteContext, rec: TicketRecord): Promise
   return slaId;
 }
 
-/** Campi modificabili singolarmente (Ticket::getField): speciali o id numerico di un campo dei form. */
-export type EditableField = "priority" | "topic" | "sla" | "source" | "duedate" | `${number}`;
-
-export interface FieldUpdateInput {
+interface FieldUpdateInput {
   ticketId: number;
   field: string;
   /** valori del campo come $_POST (per nome del campo, o topic_id / sla_id / source / duedate) */

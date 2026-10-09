@@ -79,7 +79,7 @@ export async function loadFormDef(
   return { id: form.id, type: form.type, title: form.title ?? "", instructions: form.instructions ?? "", fields };
 }
 
-export interface TopicFormDef extends FormDef {
+interface TopicFormDef extends FormDef {
   /** campi disattivati per il topic (help_topic_form.extra.disable) */
   disabled: number[];
 }

@@ -18,7 +18,7 @@ import type { DbOrTx } from "../../db";
  *    referenziato da un'azione di filtro viene rifiutata (nessuna scrittura) e l'interfaccia chiede
  *    di modificare prima il filtro.
  */
-export type FilterRef = { type: "dept" | "topic" | "agent" | "team" | "sla"; key: "dept_id" | "topic_id" | "staff_id" | "team_id" | "sla_id" };
+type FilterRef = { type: "dept" | "topic" | "agent" | "team" | "sla"; key: "dept_id" | "topic_id" | "staff_id" | "team_id" | "sla_id" };
 
 export const FILTER_REFS = {
   dept: { type: "dept", key: "dept_id" },

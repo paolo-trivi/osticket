@@ -215,7 +215,7 @@ export async function matchFieldList(executor: DbOrTx): Promise<{ key: string; g
 }
 
 /** preg_match($pattern, ' ') !== false: delimitatori, modificatori e corpo compilabile (approssimato in JS). */
-export function pregValid(pattern: string): boolean {
+function pregValid(pattern: string): boolean {
   const m = /^\s*([^a-zA-Z0-9\\\s])/.exec(pattern);
   if (!m) return false;
   const open = m[1];

@@ -38,17 +38,17 @@ export interface FieldDef {
   config: Record<string, unknown>;
 }
 
-export type FormObjectType = "U" | "O" | "A";
+type FormObjectType = "U" | "O" | "A";
 
 /** Valore "PHP" di un campo dopo parse()/to_php(): stringa, booleano, scelte {chiave: etichetta} o null. */
-export type FieldValue = string | boolean | Record<string, string> | null;
+type FieldValue = string | boolean | Record<string, string> | null;
 
 const NO_DATA = new Set(["break", "info"]);
 const PRESENTATION_ONLY = new Set(["thread", "break", "info"]);
 
 export const hasData = (f: FieldDef) => !NO_DATA.has(f.type);
-export const isStorable = (f: FieldDef) => (f.flags & FieldFlag.EXT_STORED) === 0;
-export const isEnabled = (f: FieldDef) => (f.flags & FieldFlag.ENABLED) !== 0;
+const isStorable = (f: FieldDef) => (f.flags & FieldFlag.EXT_STORED) === 0;
+const isEnabled = (f: FieldDef) => (f.flags & FieldFlag.ENABLED) !== 0;
 export const isVisibleToStaff = (f: FieldDef) => isEnabled(f) && (f.flags & FieldFlag.AGENT_VIEW) !== 0;
 export const isEditableToStaff = (f: FieldDef) => isEnabled(f) && (f.flags & FieldFlag.AGENT_EDIT) !== 0;
 export const isRequiredForStaff = (f: FieldDef) => (f.flags & FieldFlag.AGENT_REQUIRED) !== 0;
@@ -170,7 +170,7 @@ export function formatPhone(phone: string): string {
 }
 
 /** FormField::toString() */
-export function valueToString(f: FieldDef, v: FieldValue): string {
+function valueToString(f: FieldDef, v: FieldValue): string {
   if (f.type === "bool") return v ? "Yes" : "No";
   if (v === null || v === undefined) return "";
   if (typeof v === "object") return Object.values(v).join(", ");
@@ -192,7 +192,7 @@ export function answerSearchable(f: FieldDef, dbValue: string | null): string {
 }
 
 /** DynamicFormEntryAnswer::getSearchKeys(): valore scritto nella tabella *__cdata. */
-export function answerSearchKeys(f: FieldDef, dbValue: string | null): string {
+function answerSearchKeys(f: FieldDef, dbValue: string | null): string {
   const v = toPhp(f, dbValue);
   if (f.type === "choices") return v && typeof v === "object" ? Object.keys(v).join(", ") : String(v ?? "");
   const db = toDatabase(f, v);
@@ -222,7 +222,7 @@ async function columnsOf(executor: DbOrTx, name: string): Promise<Set<string>> {
  * DynamicForm::updateDynamicDataView: INSERT … ON DUPLICATE KEY UPDATE della colonna del campo nella
  * tabella *__cdata (solo se la colonna esiste, come la query del PHP che altrimenti fallisce in silenzio).
  */
-export async function updateCdata(executor: DbOrTx, formType: string, objectId: number, f: FieldDef, dbValue: string | null): Promise<void> {
+async function updateCdata(executor: DbOrTx, formType: string, objectId: number, f: FieldDef, dbValue: string | null): Promise<void> {
   const c = CDATA[formType];
   if (!c) return;
   const col = f.name || `field_${f.id}`;

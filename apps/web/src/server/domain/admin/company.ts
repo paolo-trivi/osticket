@@ -21,7 +21,7 @@ import type { PhpVars } from "./php";
  * istanzia una nuova; updatePagesSettings la valida con il POST e la salva (saveAnswers: aggiorna
  * solo le risposte cambiate, senza toccare form_entry.updated). Nessuna tabella *__cdata.
  */
-export interface CompanyForm {
+interface CompanyForm {
   formId: number;
   fields: FieldDef[];
   entry: FormEntry | null;
@@ -29,7 +29,7 @@ export interface CompanyForm {
   errors: Record<string, string>;
 }
 
-export async function loadCompanyForm(executor: DbOrTx): Promise<Omit<CompanyForm, "input" | "errors"> | null> {
+async function loadCompanyForm(executor: DbOrTx): Promise<Omit<CompanyForm, "input" | "errors"> | null> {
   const row = await executor
     .selectFrom("form_entry as e")
     .innerJoin("form as f", "f.id", "e.form_id")

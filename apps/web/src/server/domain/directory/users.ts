@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "kysely";
 
-import { NOW, table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
 import { deleteSearchRow, replaceSearchRow } from "../search/index-writer";
@@ -47,7 +47,7 @@ export type DirResult<T = object> =
 
 export const UserStatus = { PRIMARY_ORG_CONTACT: 0x0001 } as const;
 
-export interface UserCore {
+interface UserCore {
   id: number;
   org_id: number;
   default_email_id: number;
@@ -438,8 +438,3 @@ async function doImport(ctx: WriteContext, stream: string, extra: { orgId?: numb
   return imported;
 }
 
-/** Numero di ticket di un utente (User::tickets->count()) */
-export async function userTicketCount(executor: DbOrTx, userId: number): Promise<number> {
-  const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("ticket")} WHERE user_id = ${userId}`.execute(executor);
-  return Number(rows[0]?.n ?? 0);
-}

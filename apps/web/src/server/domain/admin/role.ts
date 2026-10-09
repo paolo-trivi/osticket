@@ -15,7 +15,7 @@ import { inArray, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars }
  */
 export const RoleFlag = { ENABLED: 0x0001 } as const;
 
-export interface PermissionDef {
+interface PermissionDef {
   group: string;
   key: string;
   title: string;
@@ -118,7 +118,7 @@ export async function saveRole(executor: DbOrTx, roleId: number | null, vars: Ph
 }
 
 /** Role::isDeleteable(): nessun accesso esteso e nessun agente con il ruolo. */
-export async function roleInUse(executor: DbOrTx, roleId: number): Promise<boolean> {
+async function roleInUse(executor: DbOrTx, roleId: number): Promise<boolean> {
   const a = await executor.selectFrom("staff_dept_access").select("staff_id").where("role_id", "=", roleId).executeTakeFirst();
   const s = await executor.selectFrom("staff").select("staff_id").where("role_id", "=", roleId).executeTakeFirst();
   return !!(a || s);

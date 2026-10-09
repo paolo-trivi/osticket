@@ -167,7 +167,7 @@ export async function onActivity(
   }
 }
 
-export interface PostNoteInput {
+interface PostNoteInput {
   ticketId: number;
   note: string;
   title?: string;
@@ -215,7 +215,7 @@ export async function logNote(ctx: WriteContext, ticketId: number, title: string
   await postNote(ctx, { ticketId, note, title, format: "html", alert });
 }
 
-export interface PostReplyInput {
+interface PostReplyInput {
   ticketId: number;
   response: string;
   format?: "html" | "text";

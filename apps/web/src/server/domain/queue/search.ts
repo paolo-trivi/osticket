@@ -15,7 +15,7 @@ const BOOLEAN_TERM = String.raw`(?:[<>~+-]?\((?:(?:[<>~+-]?[\w][\w-]*[*]?|"[^"]+
 const BOOLEAN_RE = new RegExp(`^${BOOLEAN_TERM}(?:\\s+${BOOLEAN_TERM})*$`, "u");
 
 /** Format::searchable: normalizzazione NFC e spazi. */
-export function searchable(text: string): string {
+function searchable(text: string): string {
   return text.normalize("NFC").replace(/(\s)\s+/gu, "$1").trim();
 }
 

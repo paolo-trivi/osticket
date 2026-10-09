@@ -21,7 +21,7 @@ export const TopicFlag = { CUSTOM_NUMBERS: 0x0001, ACTIVE: 0x0002, ARCHIVED: 0x0
 
 const TOPIC_OPTS = { touchUpdated: true };
 
-export interface TopicInfo {
+interface TopicInfo {
   id: number;
   pid: number;
   public: boolean;
@@ -224,7 +224,7 @@ async function updateForms(executor: DbOrTx, topicId: number, vars: PhpVars): Pr
  * Topic::delete(): non il topic predefinito; i figli tornano al primo livello, si eliminano le
  * associazioni con le FAQ, i ticket perdono il topic. Le righe help_topic_form restano (come nel PHP).
  */
-export async function deleteTopic(executor: DbOrTx, topicId: number): Promise<{ ok: boolean; error?: string }> {
+async function deleteTopic(executor: DbOrTx, topicId: number): Promise<{ ok: boolean; error?: string }> {
   const { topicId: def } = await adminDefaults(executor);
   if (topicId === def) return { ok: false, error: "default" };
   if (await filterActionsReferencing(executor, FILTER_REFS.topic, topicId)) return { ok: false, error: "filter" };

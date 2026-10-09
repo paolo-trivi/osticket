@@ -10,7 +10,7 @@ import { phpJsonDecode } from "../../format/php-json";
  * descrizioni degli eventi "edited" registrati dopo la creazione.
  */
 
-export interface FilterRule {
+interface FilterRule {
   what: string;
   how: string;
   val: string;
@@ -22,7 +22,7 @@ export interface FilterAction {
   config: Record<string, unknown>;
 }
 
-export interface TicketFilterRow {
+interface TicketFilterRow {
   id: number;
   name: string;
   target: string;
@@ -126,7 +126,7 @@ function ruleMatches(how: string, value: string, val: string): boolean | null {
 }
 
 /** Filter::matches($what) */
-export function filterMatches(filter: TicketFilterRow, what: TicketVars): boolean {
+function filterMatches(filter: TicketFilterRow, what: TicketVars): boolean {
   if (filter.emailId && filter.target.toLowerCase() === "email" && filter.emailId !== Number(what.emailId ?? 0)) return false;
   let match = false;
   for (const rule of filter.rules) {
@@ -156,7 +156,7 @@ export function filterInput(vars: TicketVars): TicketVars {
   return out;
 }
 
-export interface ActiveDept {
+interface ActiveDept {
   isActive: (id: number) => Promise<boolean>;
   topicIsActive: (id: number) => Promise<boolean>;
 }

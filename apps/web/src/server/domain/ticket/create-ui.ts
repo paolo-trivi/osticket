@@ -108,7 +108,7 @@ export async function topicFormsView(executor: DbOrTx, cfg: ConfigNamespace, top
   return { forms: out, disabled };
 }
 
-export interface OpenTicketOptions {
+interface OpenTicketOptions {
   topics: { id: number; name: string }[];
   depts: { id: number; name: string }[];
   slas: { id: number; name: string }[];

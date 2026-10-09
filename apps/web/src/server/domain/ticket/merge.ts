@@ -40,7 +40,7 @@ import { checkStaffPerm, loadTicket } from "./ticket";
  * collegamento è stato salvato; qui l'esito è positivo.
  */
 
-export interface MergeInput {
+interface MergeInput {
   /** "merge" o "link" (campo nascosto `title` del dialogo) */
   title: "merge" | "link";
   /** numeri dei ticket (`tids[]`), il primo è il padre */
@@ -80,7 +80,7 @@ async function unlinkChild(ctx: WriteContext, child: TicketRecord, parent: Ticke
  * Ticket::unlink(): un padre scollega tutti i figli (e perde FLAG_PARENT/FLAG_LINKED); un figlio si
  * scollega dal padre, che resta padre anche senza altri figli (comportamento PHP).
  */
-export async function unlinkTicket(ctx: WriteContext, rec: TicketRecord): Promise<void> {
+async function unlinkTicket(ctx: WriteContext, rec: TicketRecord): Promise<void> {
   const { tx } = ctx;
   const isChild = !!rec.get("ticket_pid");
   const isParent = isParentFlags(rec.get("flags"));

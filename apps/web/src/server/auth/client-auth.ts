@@ -82,7 +82,7 @@ export async function touchClientSession(): Promise<void> {
 }
 
 /** Chiave della sessione per le bozze `ticket.client.<ultimi 12 caratteri>` (anche per i visitatori) */
-export async function clientSessionKey(): Promise<string> {
+async function clientSessionKey(): Promise<string> {
   return (await readClientSession())?.csk ?? "";
 }
 

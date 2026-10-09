@@ -10,7 +10,7 @@ import EditDialog from "../EditDialog";
 import { Check, Field, Select, TextInput } from "../inputs";
 import type { RelatedItem } from "../types";
 
-export interface MergeDialogProps {
+interface MergeDialogProps {
   ticketId: number;
   number: string;
   /** "merge" o "link" */

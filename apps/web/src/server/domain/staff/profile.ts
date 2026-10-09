@@ -22,7 +22,7 @@ import { loadAgent, type Agent } from "./staff";
  * configure2FA, scp/pwreset.php → Staff::sendResetEmail e PasswordResetTokenBackend).
  */
 
-export interface ProfileVars {
+interface ProfileVars {
   firstname: string;
   lastname: string;
   email: string;
@@ -48,7 +48,7 @@ export interface ProfileVars {
   editor_spacing?: string;
 }
 
-export type ProfileResult = { ok: true } | { ok: false; error: "forbidden" | "invalid" | "not_found"; fields?: Record<string, string> };
+type ProfileResult = { ok: true } | { ok: false; error: "forbidden" | "invalid" | "not_found"; fields?: Record<string, string> };
 
 /** Validator::is_phone */
 export function isPhone(phone: string): boolean {
@@ -58,7 +58,7 @@ export function isPhone(phone: string): boolean {
 }
 
 /** Config::updateAll sul namespace "staff.<id>": INSERT delle chiavi nuove, UPDATE di quelle cambiate. */
-export async function updateStaffConfig(executor: DbOrTx, staffId: number, values: Record<string, string>): Promise<void> {
+async function updateStaffConfig(executor: DbOrTx, staffId: number, values: Record<string, string>): Promise<void> {
   const ns = `staff.${staffId}`;
   const rows = await executor.selectFrom("config").select(["id", "key", "value"]).where("namespace", "=", ns).execute();
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -136,7 +136,7 @@ export async function updateStaffProfile(ctx: WriteContext, vars: ProfileVars): 
 
 /* ------------------------------------------------------------------ password */
 
-export type ChangePasswordResult =
+type ChangePasswordResult =
   | { ok: true; passwdreset: string }
   | { ok: false; error: "forbidden" | "invalid" | "token"; fields?: Record<string, PasswordError | "required" | "incorrect" | "mismatch"> };
 

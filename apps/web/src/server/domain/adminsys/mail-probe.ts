@@ -12,7 +12,7 @@ import nodemailer from "nodemailer";
  * prima di salvare (MailBoxAccount::setInfo, SmtpAccount::setInfo, updateBasicAuthCredentials).
  * Il recupero delle email resta al cron PHP.
  */
-export { connectionOf, type Connection } from "../../mail/connection";
+export { connectionOf,  } from "../../mail/connection";
 import type { Connection } from "../../mail/connection";
 
 /** AccountSetting::isValid: host, porta e protocollo obbligatori ("HOST Required", …). */
@@ -141,7 +141,7 @@ async function imapCmd(s: LineSession, tag: string, cmd: string): Promise<{ ok: 
   }
 }
 
-export interface MailboxProbe {
+interface MailboxProbe {
   /** cartelle esistenti richieste (hasFolder) */
   folders?: string[];
   /** cartella d'archivio da creare se manca (solo IMAP) */

@@ -3,7 +3,7 @@
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 
-export type ThemeMode = "light" | "dark" | "auto";
+type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 
 type ThemeContextType = {

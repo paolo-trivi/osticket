@@ -7,8 +7,8 @@ import { DateTime } from "luxon";
  *  - "last monday" da un lunedì torna al lunedì precedente (7 giorni prima);
  *  - "next sunday" da una domenica va alla domenica successiva.
  * I confini sono nel fuso dell'utente; il chiamante li converte nel fuso del DB.
+ * Periodi: td, yd, tw, tm, tq, ty, lw, lm, lq, ly.
  */
-export type PeriodCode = "td" | "yd" | "tw" | "tm" | "tq" | "ty" | "lw" | "lm" | "lq" | "ly";
 
 /** Somma mesi come PHP: stesso giorno del mese, con overflow sui mesi più corti. */
 function phpAddMonths(dt: DateTime, months: number): DateTime {

@@ -11,7 +11,7 @@ import { useRouter } from "@/i18n/navigation";
 import { FormAlert } from "./FormControls";
 import type { PeopleAction, PeopleActionState } from "./types";
 
-export interface PeopleDialogProps {
+interface PeopleDialogProps {
   title: string;
   action: PeopleAction;
   submitLabel: string;

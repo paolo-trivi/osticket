@@ -46,7 +46,7 @@ export async function userEmail(executor: DbOrTx, user: UserRow): Promise<string
   return e?.address ?? "";
 }
 
-export interface OrgRow {
+interface OrgRow {
   id: number;
   name: string;
   manager: string;

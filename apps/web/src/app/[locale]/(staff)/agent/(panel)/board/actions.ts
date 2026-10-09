@@ -15,7 +15,7 @@ import type { BoardCard, MoveErrorCode } from "@/server/domain/board/types";
 import { changeTicketStatus, closeBlocker } from "@/server/domain/ticket/ticket-state";
 import { runWrite } from "@/server/domain/write";
 
-export type MoveResult = { ok: true; ticketId: number; statusId: number } | { ok: false; error: MoveErrorCode };
+type MoveResult = { ok: true; ticketId: number; statusId: number } | { ok: false; error: MoveErrorCode };
 
 const MoveInput = z.object({
   ticketId: z.number().int().positive(),
@@ -78,7 +78,7 @@ const MoreInput = z.object({
   offset: z.number().int().min(0).max(100000),
 });
 
-export type LoadMoreResult = { ok: true; cards: BoardCard[]; total: number } | { ok: false; error: "session" | "invalid" | "load" };
+type LoadMoreResult = { ok: true; cards: BoardCard[]; total: number } | { ok: false; error: "session" | "invalid" | "load" };
 
 /** "Carica altri" di una cella della board. */
 export async function loadMoreCardsAction(input: { query: string; lane: string; col: string; offset: number }): Promise<LoadMoreResult> {
@@ -100,7 +100,7 @@ export async function loadMoreCardsAction(input: { query: string; lane: string; 
   }
 }
 
-export type PreviewResult = { ok: true; preview: BoardPreview } | { ok: false; error: "session" | "invalid" | "not_found" };
+type PreviewResult = { ok: true; preview: BoardPreview } | { ok: false; error: "session" | "invalid" | "not_found" };
 
 /** Ultime voci del thread per il pannello di anteprima. */
 export async function ticketPreviewAction(ticketId: number): Promise<PreviewResult> {

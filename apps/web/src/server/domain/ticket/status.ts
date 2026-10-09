@@ -21,7 +21,7 @@ export const DeptFlag = {
   DISABLE_REOPEN_AUTO_ASSIGN: 0x0020,
 } as const;
 /** Topic::FLAG_* (include/class.topic.php: CUSTOM_NUMBERS 0x1, ACTIVE 0x2, ARCHIVED 0x4) */
-export const TopicFlag = { ACTIVE: 0x0002, ARCHIVED: 0x0004 } as const;
+const TopicFlag = { ACTIVE: 0x0002, ARCHIVED: 0x0004 } as const;
 
 export interface StatusRow {
   id: number;
@@ -56,7 +56,7 @@ export async function stateOf(executor: DbOrTx, row: TicketColumns): Promise<str
 }
 
 /** Ticket::isAssigned($staff) su una riga ticket */
-export function isAssignedRow(row: TicketColumns, state: string, agent: Agent): boolean {
+function isAssignedRow(row: TicketColumns, state: string, agent: Agent): boolean {
   if (state !== "open") return false;
   return row.staff_id === agent.id || agent.isTeamMember(row.team_id);
 }
@@ -86,14 +86,14 @@ export async function ticketIsReopenable(executor: DbOrTx, row: TicketColumns, s
 }
 
 /** Data DB nel passato? (Misc::db2gmtime($d) <= Misc::gmtime()) */
-export function dbDateIsPast(value: string | null, dbZone: string): boolean {
+function dbDateIsPast(value: string | null, dbZone: string): boolean {
   if (!value || value.startsWith("0000")) return false;
   const dt = DateTime.fromSQL(value, { zone: dbZone });
   return dt.isValid && dt.toMillis() <= Date.now();
 }
 
 /** Ticket::clearOverdue($save=false) */
-export function clearOverdue(rec: TicketRecord, dbZone: string): void {
+function clearOverdue(rec: TicketRecord, dbZone: string): void {
   if (rec.get("isoverdue")) rec.set("isoverdue", 0);
   if (rec.get("duedate") && dbDateIsPast(rec.get("duedate"), dbZone)) rec.set("duedate", null);
   // getSLADueDate() senza ricalcolo: se est_duedate è vuota il PHP la calcola ma assegnare null non cambia nulla
@@ -157,7 +157,7 @@ export async function deleteTicketDrafts(executor: DbOrTx, ticketId: number): Pr
 }
 
 /** Thread::refer($staff): referral all'agente se non già presente (controllo stretto). */
-export async function referThreadToStaff(executor: DbOrTx, threadId: number, staffId: number): Promise<boolean> {
+async function referThreadToStaff(executor: DbOrTx, threadId: number, staffId: number): Promise<boolean> {
   const exists = await executor
     .selectFrom("thread_referral")
     .select("id")
@@ -180,12 +180,12 @@ export async function lastRespondentId(executor: DbOrTx, threadId: number): Prom
 }
 
 /** Ticket::setStaffId: assegnazione diretta, salvataggio immediato. */
-export async function setStaffId(rec: TicketRecord, staffId: number): Promise<void> {
+async function setStaffId(rec: TicketRecord, staffId: number): Promise<void> {
   rec.set("staff_id", staffId);
   await rec.save();
 }
 
-export interface SetStatusOptions {
+interface SetStatusOptions {
   comments?: string;
   setClosingAgent?: boolean;
   forceClose?: boolean;

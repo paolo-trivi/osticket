@@ -35,7 +35,7 @@ async function loadDeptRow(executor: DbOrTx, id: number): Promise<OrmRow | null>
 }
 
 /** Dept::getFullPath(): percorso degli id antenati ("/1/4/"), calcolato risalendo i pid. */
-export async function deptFullPath(executor: DbOrTx, pid: unknown, selfId: number | null): Promise<string> {
+async function deptFullPath(executor: DbOrTx, pid: unknown, selfId: number | null): Promise<string> {
   let path = "/";
   const parentId = idOf(pid as PhpVal);
   if (parentId) {
@@ -233,7 +233,7 @@ export async function saveDept(executor: DbOrTx, deptId: number | null, vars: Ph
  * e agenti passano al reparto predefinito, help topic ed email perdono il reparto, si eliminano gli
  * accessi estesi. Restituisce false se l'eliminazione è rifiutata.
  */
-export async function deleteDept(executor: DbOrTx, deptId: number): Promise<{ ok: boolean; error?: string }> {
+async function deleteDept(executor: DbOrTx, deptId: number): Promise<{ ok: boolean; error?: string }> {
   const { deptId: def } = await adminDefaults(executor);
   if (deptId === def) return { ok: false, error: "default" };
   const members = await executor.selectFrom("staff").select("staff_id").where("dept_id", "=", deptId).execute();

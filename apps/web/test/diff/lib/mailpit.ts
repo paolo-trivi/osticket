@@ -8,7 +8,7 @@ import { maskAlertTime } from "./alert-time";
  */
 const API = process.env.MAILPIT_API ?? `http://127.0.0.1:${process.env.MAILPIT_HTTP_PORT ?? "8025"}/api/v1`;
 
-export interface CapturedMail {
+interface CapturedMail {
   headers: Record<string, string[]>;
   subject: string;
   from: string;
@@ -19,7 +19,7 @@ export interface CapturedMail {
   messageId: string;
 }
 
-export async function clearMailpit(): Promise<void> {
+async function clearMailpit(): Promise<void> {
   await fetch(`${API}/messages`, { method: "DELETE" });
 }
 
@@ -31,7 +31,7 @@ interface MailpitAddress {
 const fmt = (a: MailpitAddress) => `${a.Name} <${a.Address}>`;
 
 /** Messaggi catturati (dal più vecchio), attendendo fino a `expected` messaggi. */
-export async function fetchMails(expected = 0, timeoutMs = 5000): Promise<CapturedMail[]> {
+async function fetchMails(expected = 0, timeoutMs = 5000): Promise<CapturedMail[]> {
   const until = Date.now() + timeoutMs;
   let list: { ID: string }[] = [];
   for (;;) {
@@ -67,7 +67,7 @@ export async function fetchMails(expected = 0, timeoutMs = 5000): Promise<Captur
 }
 
 /** Email normalizzata: Message-ID ridotto ai campi firmati, testo alternativo escluso (impaginazione diversa). */
-export function normalizeMail(m: CapturedMail) {
+function normalizeMail(m: CapturedMail) {
   const { secretSalt } = installConfig();
   const mid = m.messageId.replace(/^<|>$/g, "");
   const d = decodeMessageId(mid, secretSalt);

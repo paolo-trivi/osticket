@@ -81,7 +81,7 @@ async function updateMembers(executor: DbOrTx, teamId: number, access: [PhpVal, 
 }
 
 /** Team::delete(): membri eliminati, ticket del team senza team. */
-export async function deleteTeam(executor: DbOrTx, teamId: number): Promise<{ ok: boolean; error?: string }> {
+async function deleteTeam(executor: DbOrTx, teamId: number): Promise<{ ok: boolean; error?: string }> {
   if (await filterActionsReferencing(executor, FILTER_REFS.team, teamId)) return { ok: false, error: "filter" };
   const res = await executor.deleteFrom("team").where("team_id", "=", teamId).executeTakeFirst();
   if (!Number(res.numDeletedRows)) return { ok: false };

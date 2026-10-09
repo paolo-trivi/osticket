@@ -13,7 +13,7 @@ import type { BoardCard } from "@/server/domain/board/types";
  * La logica imperativa sta in DragController (fuori dal ciclo di render); React riceve solo lo stato da mostrare.
  */
 
-export interface DragInfo {
+interface DragInfo {
   card: BoardCard;
   /** posizione della card all'inizio (coordinate del viewport) e spostamento iniziale del puntatore */
   left: number;

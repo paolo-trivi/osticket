@@ -48,7 +48,7 @@ src/
 - **New reusable component** → `components/<feature>/` if domain-specific, else `components/common/` or `components/ui/`.
 - **New icon** → drop the `.svg` in `icons/`, export it from the `index.tsx` barrel with a PascalCase name. Never inline SVG markup in components.
 - Route groups: `(staff)` contiene pannello agenti e area admin; il guscio con sidebar è `components/shell/AppShell`.
-- Component files are **PascalCase** (`MonthlySalesChart.tsx`) with a **default export**; route files stay lowercase (`page.tsx`, `layout.tsx`); hooks are camelCase (`useModal.ts`).
+- Component files are **PascalCase** (`TicketCell.tsx`) with a **default export**; route files stay lowercase (`page.tsx`, `layout.tsx`); hooks are camelCase (`useBoardDrag.ts`).
 - Root `app/[locale]/layout.tsx` is a Server Component setting up `NextIntlClientProvider`, fonts, direction (`dir="ltr"|"rtl"`), and providers. The `(admin)` shell layout and interactive UI are Client Components — add `"use client"` whenever using hooks, event handlers, or browser APIs.
 - Import via the alias (`@/context/...`, `@/icons/...`, `@/i18n/...`) for cross-folder imports; relative imports are fine within a feature folder.
 
@@ -59,7 +59,7 @@ src/
 - **Translations**:
   - In Client Components: use `useTranslations("namespace")`.
   - In Server Components: use `getTranslations("namespace")` from `next-intl/server`.
-  - Organize translation keys by nested feature namespaces (e.g. `t("customers")` under `ecommerce.metrics`).
+  - Organize translation keys by nested feature namespaces (e.g. `t("sources.Phone")` under `ticketEdit`).
 - **Translation Messages**: All translation dictionaries live in `src/messages/<locale>.json`. When adding or updating user-facing copy, maintain corresponding keys across all supported language files.
 - **Static Rendering & Server Components**: Server layouts/pages inside `[locale]` must call `setRequestLocale(locale)` to enable static rendering with `generateStaticParams()`.
 - **RTL Support**: Arabic (`ar`) uses RTL direction (`dir="rtl"`) via `isRtl(locale)` in `src/i18n/languages.ts`. Ensure UI components handle RTL layouts gracefully using CSS logical properties and `rtl:` variants.
@@ -86,20 +86,20 @@ src/
     - Directional glyphs (e.g. back/forward arrows, breadcrumb chevrons, next/prev icons) must flip in RTL with `rtl:rotate-180` or `rtl:-scale-x-100`.
     - Off-canvas drawers and sliding elements must mirror their translation (e.g., `-translate-x-full rtl:translate-x-full`).
     - Use `ltr:*` and `rtl:*` modifiers when explicit directional overrides or third-party integration styles are required.
-- Reusable `@utility` classes already exist in `globals.css` (`menu-item-*`, `menu-dropdown-*`, `custom-scrollbar`, `no-scrollbar`, `docs-menu-item-*`, `nav-icon-item-*`, …) — reuse them before inventing new ones.
-- All third-party CSS overrides (ApexCharts, FullCalendar, Swiper, flatpickr, jvectormap, simplebar, Prism) live at the bottom of `globals.css`. Add overrides there, matching the existing `@apply` style.
+- Reusable `@utility` classes already exist in `globals.css` (`menu-item-*`, `menu-dropdown-*`, `custom-scrollbar`, `no-scrollbar`, …) — reuse them before inventing new ones.
+- Third-party CSS overrides (ApexCharts, flatpickr) live at the bottom of `globals.css`. Add overrides there, matching the existing `@apply` style.
 - Never hardcode hex colors in `className`. (Chart option objects like `ApexOptions.colors` are the established exception — copy hex values from the `@theme` palette, e.g. `#465fff` = brand-500.)
 
 ## Component rules
 
-- **One feature, one folder**: new page UI goes in `src/components/<feature>/`, split into focused single-responsibility sub-components (e.g. `EcommerceMetrics.tsx`, `RecentOrders.tsx`) — never one monolithic file.
+- **One feature, one folder**: new page UI goes in `src/components/<feature>/`, split into focused single-responsibility sub-components (e.g. `board/BoardToolbar.tsx`, `board/BoardCardItem.tsx`) — never one monolithic file.
 - **Composition over prop drilling**: pass `children`, keep container/state logic separate from presentational components, extract section-level JSX into its own file, and define explicit typed prop interfaces per sub-component.
 - Prefer primitives from `src/components/ui/` and `src/components/form/` over raw HTML or new third-party equivalents.
 - Wrap page sections in `ComponentCard`.
 - I colori del marchio (`brand-*`) sono configurabili dall'admin: usare sempre i token `brand-*`, mai colori fissi.
 - **Charts**: `react-apexcharts` must be dynamically imported — `const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false })`.
-- **Calendar & carousels**: `FullCalendar` and `Swiper` are also client-only libraries — dynamically import them the same way (`dynamic(() => import(...), { ssr: false })`) rather than importing directly, unless they're already isolated inside a component that's rendered client-side only (verify before assuming).- **Icons**: import from `@/icons` (SVGs are compiled to React components via `@svgr/webpack`, configured for both webpack and Turbopack).
-- Modals use the `useModal` hook (`isOpen`, `openModal`, `closeModal`, `toggleModal`).
+- **Icons**: import from `@/icons` (SVGs are compiled to React components via `@svgr/webpack`, configured for both webpack and Turbopack).
+- Modals use `@/components/ui/modal` with local `useState` for open/close.
 - Global state goes through the existing contexts (`useSidebar`, `useTheme`) — don't add new providers without need.
 
 ## Don'ts
@@ -110,7 +110,7 @@ src/
 - Don't use physical directional utilities (`ml-*`, `mr-*`, `pl-*`, `pr-*`, `left-*`, `right-*`, `border-l-*`, `border-r-*`, `rounded-l-*`, `rounded-r-*`, `text-left`, `text-right`) — always use CSS logical equivalents (`ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `border-s-*`, `border-e-*`, `rounded-s-*`, `rounded-e-*`, `text-start`, `text-end`).
 - Don't hardcode hex colors or pixel values in `className` — use the `@theme` tokens.
 - Don't create a `tailwind.config` — Tailwind v4 is configured through `globals.css`.
-- Don't import `react-apexcharts`, `FullCalendar`, or `Swiper` statically — always use `next/dynamic` with `ssr: false` (unless already wrapped in a client-only boundary — confirm the existing pattern in that feature folder first).
+- Don't import `react-apexcharts` statically — always use `next/dynamic` with `ssr: false`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

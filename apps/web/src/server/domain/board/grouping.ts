@@ -18,7 +18,7 @@ export interface AgentLike {
   ): { perms: { has(perm: string): boolean } };
 }
 
-export interface CardAccessInfo {
+interface CardAccessInfo {
   deptId: number;
   staffId: number;
   teamId: number;
@@ -83,18 +83,6 @@ export function compareCards(
   if (ua !== ub) return ua - ub;
   if (a.updatedMs !== b.updatedMs) return b.updatedMs - a.updatedMs;
   return b.id - a.id;
-}
-
-/** Chiave dell'assegnatario: `s<id>` agente, `t<id>` team, `u` non assegnato (prevale l'agente, come la colonna Assegnatario). */
-export function assigneeKey(
-  staffId: number,
-  teamId: number,
-  staffExists = true,
-  teamExists = true,
-): string {
-  if (staffId > 0 && staffExists) return `s${staffId}`;
-  if (teamId > 0 && teamExists) return `t${teamId}`;
-  return "u";
 }
 
 const collator = new Intl.Collator("it", {

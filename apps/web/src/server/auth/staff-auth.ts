@@ -21,7 +21,7 @@ export type StaffLoginError = "invalid" | "locked_out" | "too_many" | "inactive"
 export type StaffLoginResult = { ok: true; mustChangePassword: boolean; mfa?: boolean } | { ok: false; error: StaffLoginError };
 
 /** Esito della parte di dominio del login (senza cookie/sessione HTTP): usata anche dall'harness. */
-export type StaffAuthOutcome =
+type StaffAuthOutcome =
   | { ok: true; staffId: number; passwdVersion: string; mustChangePassword: boolean; mfaKey?: string }
   | { ok: false; error: StaffLoginError };
 

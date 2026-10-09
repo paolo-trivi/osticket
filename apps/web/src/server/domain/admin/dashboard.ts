@@ -5,7 +5,7 @@ import { sql } from "kysely";
 import { db, table } from "../../db";
 
 /** Sintesi per la home dell'area admin: versioni e conteggi degli oggetti gestiti. */
-export interface AdminSummary {
+interface AdminSummary {
   schema: string;
   mysql: string;
   node: string;

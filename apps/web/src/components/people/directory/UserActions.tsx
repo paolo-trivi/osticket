@@ -18,7 +18,7 @@ import { CheckField, DynamicField, SelectField, TextField } from "../FormControl
 import PeopleDialog from "../PeopleDialog";
 import type { Choice, DynField } from "../types";
 
-export interface UserActionsData {
+interface UserActionsData {
   userId: number;
   name: string;
   orgId: number;

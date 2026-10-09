@@ -17,7 +17,7 @@ import { PhpDateTime, strtotimeDateUtc, strtotimeUtc, timeOfDaySeconds } from ".
  */
 
 /** Schedule::FLAG_BIZHRS: orario lavorativo; senza il flag è un calendario di festività. */
-export const ScheduleFlag = { BIZHRS: 0x0001 } as const;
+const ScheduleFlag = { BIZHRS: 0x0001 } as const;
 
 /** Riga di ost_schedule_entry (solo le colonne usate dal calcolo). */
 export interface ScheduleEntryData {
@@ -82,7 +82,7 @@ function entryDatetime(date: string | null, time: string | null, zone: string): 
 }
 
 /** ScheduleEntry (con lo stato interno _current/_starts/_ends/_stops del PHP). */
-export class ScheduleEntry {
+class ScheduleEntry {
   private starts?: PhpDateTime;
   private ends?: PhpDateTime;
   private stops?: PhpDateTime | null;
@@ -274,7 +274,7 @@ function ksort<V>(map: Map<string, V>): Map<string, V> {
 }
 
 /** BusinessHours (include/class.businesshours.php). */
-export class BusinessHours {
+class BusinessHours {
   private workhours = new Map<string, ScheduleEntry>();
   private holidays = new Map<string, ScheduleEntry>();
   private readonly entries: ScheduleEntry[];
@@ -405,7 +405,7 @@ export interface ScheduleLoadOptions {
 }
 
 /** $cfg->getTimezone() senza utente: core.default_timezone (poi ini date.timezone, qui UTC). */
-export async function resolveFallbackTimezone(
+async function resolveFallbackTimezone(
   userTimezone: string | null | undefined,
   executor: DbOrTx = db(),
 ): Promise<string> {

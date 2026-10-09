@@ -23,13 +23,13 @@ import { reopenTicket, type ActionResult } from "./ticket-state";
  */
 
 /** ObjectModel::OBJECT_TYPE_* usati da thread_referral */
-export type ReferralType = "S" | "E" | "D";
+type ReferralType = "S" | "E" | "D";
 
 const TeamFlag = { ENABLED: 0x1, NOALERTS: 0x2 } as const;
 
 // --- Referral (Thread::refer / getReferral) ---------------------------------------------
 
-export async function findReferral(executor: DbOrTx, threadId: number, type: ReferralType, objectId: number) {
+async function findReferral(executor: DbOrTx, threadId: number, type: ReferralType, objectId: number) {
   return executor
     .selectFrom("thread_referral")
     .select("id")
@@ -172,7 +172,7 @@ async function onAssign(ctx: WriteContext, rec: TicketRecord, threadId: number, 
 
 // --- Assegnazione -------------------------------------------------------------------------
 
-export interface AssignInput {
+interface AssignInput {
   ticketId: number;
   /** "s<id>" agente, "t<id>" team (valori del campo AssigneeField) */
   assignee: string;
@@ -275,24 +275,6 @@ export async function assignToStaff(ctx: WriteContext, rec: TicketRecord, thread
   const data = agent && staff.staff_id === agent.id ? { claim: true } : { staff: staff.staff_id };
   await logTicketEvent(tx, rec.row, threadId, ctx.actor, "assigned", data);
   await deleteReferralOf(tx, threadId, "S", staff.staff_id);
-  return true;
-}
-
-/** Ticket::assignToTeam($team, $note, $alert) */
-export async function assignToTeam(ctx: WriteContext, rec: TicketRecord, threadId: number, teamId: number, note: string, alert = true): Promise<boolean> {
-  const { tx } = ctx;
-  const team = await tx.selectFrom("team").select(["team_id", "name", "flags", "lead_id"]).where("team_id", "=", teamId).executeTakeFirst();
-  if (!team || !(team.flags & TeamFlag.ENABLED)) return false;
-  rec.set("team_id", team.team_id);
-  await rec.save();
-  // staff_id è sovraccarico (assegnatario e chi ha chiuso): azzerato sui ticket chiusi
-  if ((await stateOf(tx, rec.row)) === "closed") {
-    rec.set("staff_id", 0);
-    await rec.save();
-  }
-  await onAssign(ctx, rec, threadId, { kind: "team", id: team.team_id, name: team.name, flags: team.flags, leadId: team.lead_id }, note, alert);
-  await logTicketEvent(tx, rec.row, threadId, ctx.actor, "assigned", { team: team.team_id });
-  await deleteReferralOf(tx, threadId, "E", team.team_id);
   return true;
 }
 
@@ -457,7 +439,6 @@ export async function referTicket(
 export async function listReferrals(executor: DbOrTx, threadId: number) {
   return executor.selectFrom("thread_referral").select(["id", "object_type", "object_id"]).where("thread_id", "=", threadId).orderBy("id").execute();
 }
-
 
 /**
  * ajax.tickets.php:refer (do=manage): rimozione dei referral selezionati nella scheda "Referral" del

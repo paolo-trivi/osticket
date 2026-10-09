@@ -58,7 +58,7 @@ export interface FieldDef {
 export function hasFlag(f: Pick<FieldDef, "flags">, flag: number): boolean {
   return (f.flags & flag) !== 0;
 }
-export function isEnabled(f: FieldDef): boolean {
+function isEnabled(f: FieldDef): boolean {
   return !f.disabled && hasFlag(f, FieldFlag.ENABLED);
 }
 export function isVisibleTo(f: FieldDef, who: FormAudience): boolean {
@@ -84,7 +84,7 @@ export function isPresentationOnly(f: FieldDef): boolean {
 }
 
 /** Default di getConfigurationOptions() per tipo. */
-export function typeDefaults(type: string, cfg: ConfigNamespace): Record<string, unknown> {
+function typeDefaults(type: string, cfg: ConfigNamespace): Record<string, unknown> {
   switch (type) {
     case "text":
       return { size: 16, length: 30, validator: "", regex: undefined, "validator-error": "", placeholder: "" };
@@ -200,7 +200,7 @@ export function phpParseDateTime(value: string): DateTime | null {
 }
 
 /** DateTime::format('T') del PHP: abbreviazione del fuso (CEST, EST…) o offset "+03" / "+0530". */
-export function phpTzAbbr(dt: DateTime): string {
+function phpTzAbbr(dt: DateTime): string {
   if (dt.zoneName === "UTC" || dt.zoneName === "Etc/UTC") return "UTC";
   const name = (locale: string) =>
     new Intl.DateTimeFormat(locale, { timeZone: dt.zoneName ?? "UTC", timeZoneName: "short" }).formatToParts(dt.toJSDate()).find((p) => p.type === "timeZoneName")?.value ?? "";
@@ -222,7 +222,7 @@ export interface DateFormatOptions {
 }
 
 /** Format::date / Format::datetime: pattern personalizzato (date_formats = custom) o formato breve ICU della lingua */
-export function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = false): string {
+function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = false): string {
   const z = dt.setZone(o.timezone || "UTC");
   if (o.cfg.str("date_formats") === "custom") return z.setLocale("en-US").toFormat(o.cfg.str(withTime ? "datetime_format" : "date_format") || "MM/dd/y");
   const locale = (o.cfg.str("system_language") || "en_US").replace("_", "-");
@@ -235,7 +235,7 @@ export function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = fal
 /** Sorgente dei valori (POST/vars): per nome del campo o per id, come Widget::getValue. */
 export type FormSource = Record<string, unknown>;
 
-export function rawValue(f: FieldDef, source: FormSource): unknown {
+function rawValue(f: FieldDef, source: FormSource): unknown {
   if (f.name && source[f.name] !== undefined) return source[f.name];
   if (source[String(f.id)] !== undefined) return source[String(f.id)];
   return undefined;
@@ -332,7 +332,7 @@ export function isEmail(email: string): boolean {
 }
 
 /** Validator::is_valid_email con verify_email_addrs: record MX, altrimenti A/AAAA del dominio. */
-export async function isValidEmail(email: string, cfg: ConfigNamespace): Promise<boolean> {
+async function isValidEmail(email: string, cfg: ConfigNamespace): Promise<boolean> {
   if (!isEmail(email)) return false;
   if (!cfg.bool("verify_email_addrs")) return true;
   const host = email.trim().split("@").pop()!.replace(/^\[|\]$/g, "");
@@ -361,11 +361,6 @@ function phpIsNumeric(v: string): boolean {
 function isPhone(v: string): boolean {
   const stripped = v.replace(/\(|\)|-|\.|\+|[  ]+/g, "");
   return phpIsNumeric(stripped) && stripped.length >= 7 && stripped.length <= 16;
-}
-
-export interface FieldError {
-  fieldId: number;
-  message: string;
 }
 
 /** Messaggi di errore dei validatori (testo inglese del PHP, tradotto dalla UI tramite il codice). */

@@ -7,7 +7,7 @@ import type { DbDateTime } from "../../db/schema.gen";
 
 /** Utenti finali e organizzazioni (scp/users.php, scp/orgs.php) in sola lettura. */
 
-export interface UserListRow {
+interface UserListRow {
   id: number;
   name: string;
   email: string | null;
@@ -19,7 +19,7 @@ export interface UserListRow {
   tickets: number;
 }
 
-export interface Paged<T> {
+interface Paged<T> {
   rows: T[];
   total: number;
 }
@@ -58,7 +58,7 @@ export async function listUsers(
   return { rows: rows.map((r) => ({ ...r, tickets: Number(r.tickets) })), total: Number(count[0]?.n ?? 0) };
 }
 
-export interface UserDetail extends UserListRow {
+interface UserDetail extends UserListRow {
   emails: string[];
   username: string | null;
   timezone: string | null;
@@ -95,7 +95,7 @@ async function listUsersById(ids: number[], executor: DbOrTx) {
 }
 
 /** Valori dei form dinamici di un oggetto (U utente, O organizzazione), esclusi i campi base. */
-export async function formAnswers(objectType: "U" | "O", objectId: number, executor: DbOrTx = db()) {
+async function formAnswers(objectType: "U" | "O", objectId: number, executor: DbOrTx = db()) {
   const { rows } = await sql<{ label: string; value: string | null }>`
     SELECT FF.label, V.value FROM ${table("form_entry")} FE
     JOIN ${table("form_entry_values")} V ON (V.entry_id = FE.id)
@@ -106,7 +106,7 @@ export async function formAnswers(objectType: "U" | "O", objectId: number, execu
   return rows;
 }
 
-export interface OrgListRow {
+interface OrgListRow {
   id: number;
   name: string;
   domain: string;

@@ -1,7 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/utils";
 
-export interface FormatOption {
+interface FormatOption {
   key: string;
   label: string;
   href: string;

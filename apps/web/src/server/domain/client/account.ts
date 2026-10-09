@@ -39,16 +39,16 @@ export type AccountFieldError =
   | FieldErrorCode
   | "in_use";
 
-export interface AccountErrors {
+interface AccountErrors {
   err?: "incomplete" | "unable" | "disabled" | "profile" | "internal";
   /** errori per campo: passwd1, passwd2, cpasswd, email, name, … o id del campo dinamico */
   fields?: Record<string, AccountFieldError>;
 }
 
-export type AccountResult<T = object> = ({ ok: true } & T) | ({ ok: false } & AccountErrors);
+type AccountResult<T = object> = ({ ok: true } & T) | ({ ok: false } & AccountErrors);
 
 /** Variabili del form account/profilo (POST di account.php e profile.php) */
-export interface ClientAccountVars {
+interface ClientAccountVars {
   timezone?: string;
   lang?: string;
   passwd1?: string;
@@ -154,7 +154,7 @@ async function userEntries(tx: DbOrTx, userId: number): Promise<FormEntry[]> {
  * modificabili dai clienti, email non assegnata ad altri, nome ed email predefinita, risposte del
  * form, poi User::save (nome normalizzato, updated, indice).
  */
-export async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId: number, input: Record<string, unknown>): Promise<AccountResult> {
+async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId: number, input: Record<string, unknown>): Promise<AccountResult> {
   const user = await tx.selectFrom("user").select(["id", "name", "default_email_id"]).where("id", "=", userId).forUpdate().executeTakeFirst();
   if (!user) return { ok: false, err: "unable" };
   const entries = await userEntries(tx, userId);
@@ -212,7 +212,7 @@ export async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, 
 }
 
 /** Esito del profilo: nuova versione della password per aggiornare la sessione corrente */
-export type ProfileResult = AccountResult<{ pwv: string; passwordChanged: boolean }>;
+type ProfileResult = AccountResult<{ pwv: string; passwordChanged: boolean }>;
 
 /**
  * profile.php POST: ClientAccount::update (preferenze e password) e, senza errori, User::updateInfo.
@@ -311,7 +311,7 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
   return res;
 }
 
-export type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unavailable" | "failed" };
+type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unavailable" | "failed" };
 
 /**
  * pwreset.php POST do=sendmail: nessuna informazione sull'esistenza dell'account (stessa risposta),

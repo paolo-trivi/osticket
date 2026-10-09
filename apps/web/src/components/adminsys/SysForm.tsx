@@ -13,7 +13,7 @@ export interface SysFormState {
   nonce?: number;
 }
 
-export const SYS_IDLE: SysFormState = { status: "idle" };
+const SYS_IDLE: SysFormState = { status: "idle" };
 
 /**
  * Form generico delle pagine admin di sistema: i campi sono passati come children (anche server

@@ -19,7 +19,7 @@ import { agentDisplayName, type WriteContext } from "./context";
  * (onOpenLimit). Le email partono dopo il commit (ctx.after).
  */
 
-export interface DeptInfo {
+interface DeptInfo {
   id: number;
   name: string;
   email_id: number;
@@ -58,7 +58,7 @@ function staffOrder(cfg: WriteContext["cfg"]) {
 }
 
 /** Dept::getMembersForAlerts: membri disponibili primari, o estesi con flag ALERTS se il reparto lo consente */
-export async function deptMembersForAlerts(ctx: WriteContext, dept: DeptInfo): Promise<number[]> {
+async function deptMembersForAlerts(ctx: WriteContext, dept: DeptInfo): Promise<number[]> {
   if (dept.group_membership === 2) return [];
   const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
     LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${dept.id})
@@ -329,7 +329,7 @@ export async function onOpenLimit(
 }
 
 /** Mail_Parse::parseAddressList semplificato: indirizzi separati da virgole, "Nome" <box@host> o box@host */
-export function parseAddressList(list: string): { personal: string; mailbox: string; host: string }[] | null {
+function parseAddressList(list: string): { personal: string; mailbox: string; host: string }[] | null {
   const out: { personal: string; mailbox: string; host: string }[] = [];
   const parts: string[] = [];
   let cur = "";

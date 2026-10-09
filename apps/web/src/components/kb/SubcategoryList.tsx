@@ -3,7 +3,7 @@ import { FolderIcon } from "@/icons";
 
 import VisibilityBadge, { type VisibilityLabels } from "./VisibilityBadge";
 
-export interface SubcategoryEntry {
+interface SubcategoryEntry {
   id: number;
   name: string;
   visibility: 0 | 1 | 2;

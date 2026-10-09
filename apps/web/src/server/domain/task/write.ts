@@ -55,7 +55,7 @@ function bodyFormat(ctx: WriteContext): "html" | "text" {
 /* ------------------------------------------------------------------ numerazione */
 
 /** Sequence::format */
-export function formatSequence(format: string, number: number, padding: string): string {
+function formatSequence(format: string, number: number, padding: string): string {
   const groups = [...format.matchAll(/(?<!\\)#+/g)];
   const total = groups.reduce((n, g) => n + g[0].length, 0);
   let num = String(number);
@@ -76,7 +76,7 @@ export function formatSequence(format: string, number: number, padding: string):
 }
 
 /** $cfg->getNewTaskNumber(): Sequence::next con controllo di unicità (RandomSequence se non configurata). */
-export async function nextTaskNumber(ctx: WriteContext): Promise<string> {
+async function nextTaskNumber(ctx: WriteContext): Promise<string> {
   const { tx, cfg } = ctx;
   const format = cfg.str("task_number_format");
   const seqId = cfg.int("task_sequence_id");
@@ -240,7 +240,7 @@ async function onNewTask(ctx: WriteContext, task: TaskDbRow): Promise<void> {
 
 /* ------------------------------------------------------------------ note e risposte */
 
-export interface TaskNoteInput {
+interface TaskNoteInput {
   note: string;
   title?: string;
   /** cambio di stato insieme alla nota (task:status) */
@@ -494,7 +494,7 @@ export async function transferTask(ctx: WriteContext, task: TaskDbRow, deptId: n
 
 /* ------------------------------------------------------------------ creazione */
 
-export interface NewTaskInput {
+interface NewTaskInput {
   title: string;
   description: string;
   deptId: number;

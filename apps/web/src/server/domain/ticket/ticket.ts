@@ -54,13 +54,13 @@ async function referralsOf(threadId: number | null, executor: DbOrTx) {
 }
 
 /** Ticket::isAssigned($staff): solo se aperto; agente assegnato o membro del team assegnato. */
-export function isAssignedTo(t: TicketDetail, agent: Agent): boolean {
+function isAssignedTo(t: TicketDetail, agent: Agent): boolean {
   if (t.status_state !== "open") return false;
   return t.staff_id === agent.id || agent.isTeamMember(t.team_id);
 }
 
 /** Thread::isReferred($staff): referral all'agente, a un suo reparto o a un suo team. */
-export async function isReferredTo(t: TicketDetail, agent: Agent, executor: DbOrTx = db()): Promise<boolean> {
+async function isReferredTo(t: TicketDetail, agent: Agent, executor: DbOrTx = db()): Promise<boolean> {
   const refs = await referralsOf(t.thread_id, executor);
   return refs.some(
     (r) =>
@@ -231,7 +231,7 @@ export async function loadThreadEvents(threadId: number, executor: DbOrTx = db()
   return rows.map((r) => ({ kind: "event" as const, ...r, data: phpJsonDecode(r.data, {}) ?? {} }));
 }
 
-export interface FormAnswer {
+interface FormAnswer {
   form_title: string;
   label: string;
   name: string;
@@ -253,7 +253,7 @@ export async function loadTicketAnswers(ticketId: number, executor: DbOrTx = db(
   return rows;
 }
 
-export interface Collaborator {
+interface Collaborator {
   id: number;
   user_id: number;
   name: string;

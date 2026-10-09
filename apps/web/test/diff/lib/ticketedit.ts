@@ -9,21 +9,21 @@ import { compareWorkingDatabases, runPhp, type TableDiff } from "./harness";
 import { mailsOf } from "./mailpit";
 
 /** Helper comuni dei test differenziali dell'area "ticketedit". */
-export const IP = "127.0.0.1";
+const IP = "127.0.0.1";
 
-export async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
+async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
   return runWrite({ agent, ip: IP }, fn);
 }
 
-export type PhpResult = { ok?: boolean; error?: string | number; errors?: Record<string, unknown>; [k: string]: unknown };
+type PhpResult = { ok?: boolean; error?: string | number; errors?: Record<string, unknown>; [k: string]: unknown };
 
 /**
  * Datetime calcolati "adesso + ore SLA" (ticket.est_duedate): PHP e TS girano in istanti diversi e
  * possono cadere a cavallo di un secondo. Si tollera uno scarto fino a 2 s su quella sola colonna.
  */
-export function withoutDueDateDrift(diffs: TableDiff[]): TableDiff[] {
+function withoutDueDateDrift(diffs: TableDiff[]): TableDiff[] {
   const toMs = (v: unknown) => (typeof v === "string" ? Date.parse(v.replace(" ", "T") + "Z") : NaN);
   return diffs.filter((d) => {
     if (d.table !== "ticket" || d.onlyInPhp.length !== d.onlyInTs.length) return true;

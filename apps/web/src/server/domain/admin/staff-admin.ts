@@ -38,13 +38,13 @@ import { MEMBER_ALERTS } from "./team";
  */
 const STAFF_OPTS = { touchUpdated: true };
 
-export interface StaffSaveOptions {
+interface StaffSaveOptions {
   /** id dell'amministratore che opera (thisstaff) */
   actorId: number;
   ip: string;
 }
 
-export interface StaffSaveResult extends SaveResult {
+interface StaffSaveResult extends SaveResult {
   /** invio dell'email di benvenuto/reset da eseguire dopo il commit */
   send?: () => Promise<void>;
 }
@@ -260,7 +260,7 @@ async function updateTeams(executor: DbOrTx, staffId: number, membership: [PhpVa
  * pwreset-staff per il reset), token in config "pwreset", syslog "Agent Password Reset" se $log.
  * Restituisce l'invio da eseguire dopo il commit.
  */
-export async function sendAgentResetEmail(
+async function sendAgentResetEmail(
   executor: DbOrTx,
   cfg: ConfigNamespace,
   staffId: number,
@@ -336,7 +336,7 @@ export async function setAgentPassword(
  * Staff::delete(): non se stessi; ticket non più assegnati, voci del thread con il nome dell'agente
  * come poster, iscrizioni ai team e accessi estesi eliminati. I task assegnati restano (come nel PHP).
  */
-export async function deleteStaff(executor: DbOrTx, staffId: number, actorId: number): Promise<{ ok: boolean; error?: string }> {
+async function deleteStaff(executor: DbOrTx, staffId: number, actorId: number): Promise<{ ok: boolean; error?: string }> {
   if (staffId === actorId) return { ok: false, error: "self" };
   const s = await executor.selectFrom("staff").select(["staff_id", "firstname", "lastname"]).where("staff_id", "=", staffId).executeTakeFirst();
   if (!s) return { ok: false };

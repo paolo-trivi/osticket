@@ -7,7 +7,6 @@ import type { SysFormState } from "@/components/adminsys/SysForm";
 import { redirect } from "@/i18n/navigation";
 import type { MassResult, SaveResult } from "@/server/domain/admin/common";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import type { PhpVars } from "@/server/domain/admin/php";
 import type { DbDateTime } from "@/server/db/schema.gen";
 import type { Agent } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate, type DateStyle } from "@/server/format/datetime";
@@ -20,10 +19,9 @@ import { adminWrite, requireAdminAction } from "../_shared/server";
  * (requireAdminAction), scrittura in transazione, errori del dominio tradotti (asys.errors).
  */
 export { adminWrite, parsePhpForm, requireAdminAction, selectedIds };
-export type { PhpVars };
 
 /** Traduzione dei codici d'errore del dominio (i messaggi non codificati restano invariati). */
-export async function translateErrors(errors: Record<string, string>): Promise<Record<string, string>> {
+async function translateErrors(errors: Record<string, string>): Promise<Record<string, string>> {
   const e = await getTranslations("asys.errors");
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(errors)) out[k] = e.has(v) ? e(v) : v;

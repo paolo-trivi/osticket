@@ -41,7 +41,7 @@ export async function reopenTicket(ctx: WriteContext, rec: TicketRecord, threadI
   return setTicketStatus(ctx, rec, threadId, target, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
 }
 
-export interface StatusChoice {
+interface StatusChoice {
   id: number;
   name: string;
   state: string;
@@ -77,13 +77,8 @@ export async function ticketStatusChoices(executor: DbOrTx): Promise<StatusChoic
   return rows.map((r) => ({ id: r.id, name: r.name, state: r.state ?? "" }));
 }
 
-/** Stati proposti dal menu "Cambia stato" (status-options.tmpl.php): abilitati, open/closed, diversi dall'attuale. */
-export async function menuStatuses(ctx: Pick<WriteContext, "tx">, currentStatusId: number): Promise<StatusChoice[]> {
-  return (await ticketStatusChoices(ctx.tx)).filter((s) => s.id !== currentStatusId);
-}
-
 /** Motivo per cui il ticket non è chiudibile (Ticket::isCloseable), per l'avviso del modale di chiusura. */
-export type CloseBlocker = { reason: "fields" } | { reason: "tasks"; count: number } | { reason: "topic" };
+type CloseBlocker = { reason: "fields" } | { reason: "tasks"; count: number } | { reason: "topic" };
 
 /**
  * ajax.tickets.php:changeTicketStatus('close'): se Ticket::isCloseable() restituisce una stringa, il

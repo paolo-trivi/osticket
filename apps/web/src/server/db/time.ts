@@ -62,6 +62,3 @@ export function toDb(dt: DateTime): DbDateTime {
   return dt.setZone(dbTimezone()).toFormat(DB_FORMAT);
 }
 
-export function nowInDb(): DateTime {
-  return DateTime.now().setZone(dbTimezone());
-}

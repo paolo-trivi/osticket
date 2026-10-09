@@ -11,7 +11,7 @@ import { useRouter } from "@/i18n/navigation";
 import { CheckField, FormAlert, SelectField, TextAreaField, TextField } from "../FormControls";
 import type { Choice, PeopleActionState } from "../types";
 
-export interface ProfileFormData {
+interface ProfileFormData {
   firstname: string;
   lastname: string;
   email: string;

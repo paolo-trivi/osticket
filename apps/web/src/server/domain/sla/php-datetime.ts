@@ -22,7 +22,7 @@ import { IANAZone } from "luxon";
  * solo per fusi con DST negativo come Europe/Dublin, e solo nelle ore ambigue).
  */
 
-export interface LocalFields {
+interface LocalFields {
   y: number;
   m: number;
   d: number;
@@ -117,19 +117,8 @@ function rules(zone: string): ZoneRules {
   return r;
 }
 
-/** Il fuso è utilizzabile (equivalente di `new DateTimeZone($tz)` che non lancia eccezioni). */
-export function isValidZone(zone: string | null | undefined): zone is string {
-  if (!zone) return false;
-  try {
-    rules(zone);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Campi "da parete" interpretati come UTC (timelib: `sse` prima dell'aggiustamento del fuso). */
-export function fieldsToSse(f: LocalFields): number {
+function fieldsToSse(f: LocalFields): number {
   // setUTCFullYear/setUTCHours normalizzano l'overflow (31 febbraio → 3 marzo) come timelib
   // e, a differenza di Date.UTC, non trattano gli anni 0-99 come 1900+
   const d = new Date(0);
