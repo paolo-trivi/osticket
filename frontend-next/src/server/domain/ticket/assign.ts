@@ -458,3 +458,21 @@ export async function listReferrals(executor: DbOrTx, threadId: number) {
   return executor.selectFrom("thread_referral").select(["id", "object_type", "object_id"]).where("thread_id", "=", threadId).orderBy("id").execute();
 }
 
+
+/**
+ * ajax.tickets.php:refer (do=manage): rimozione dei referral selezionati nella scheda "Referral" del
+ * modale. Il PHP esegue `$thread->referrals->filter(['id__in' => $remove])->delete()`: DELETE in blocco
+ * limitato al thread del ticket, senza eventi né note (TODO "log removal" nel PHP) e senza toccare il
+ * ticket. Permessi come il referral: PERM_ASSIGN (endpoint) e PERM_REFER (voce di menu).
+ * Restituisce il numero di referral rimossi in `removed`.
+ */
+export async function removeReferrals(ctx: WriteContext, input: { ticketId: number; ids: number[] }): Promise<ActionResult & { removed?: number }> {
+  const loaded = await loadForAction(ctx, input.ticketId, TicketPerm.ASSIGN);
+  if (!("agent" in loaded)) return { error: loaded.error };
+  const { agent, t, threadId } = loaded;
+  if (!(await checkStaffPerm(t, agent, TicketPerm.REFER, ctx.tx))) return { error: "denied" };
+  const ids = [...new Set(input.ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length || !threadId) return { ok: true, removed: 0 };
+  const r = await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("id", "in", ids).executeTakeFirst();
+  return { ok: true, removed: Number(r.numDeletedRows) };
+}

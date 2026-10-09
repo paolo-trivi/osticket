@@ -1,11 +1,15 @@
 import "server-only";
 
+import { sql } from "kysely";
+
+import type { ConfigNamespace } from "../../config/config";
+import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
 import { createThreadEntry } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { logNote, postNote, ticketThreadId } from "./post";
 import { TicketRecord } from "./record";
-import { loadStatus, roleOnRow, setTicketStatus, statusIsReopenable, stateOf, type StatusRow } from "./status";
+import { isCloseable, loadStatus, roleOnRow, setTicketStatus, statusIsReopenable, stateOf, type StatusRow } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { TicketPerm } from "../staff/staff";
 
@@ -37,27 +41,85 @@ export async function reopenTicket(ctx: WriteContext, rec: TicketRecord, threadI
   return setTicketStatus(ctx, rec, threadId, target, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
 }
 
-/** Stati proposti dal menu "Cambia stato" (status-options.tmpl.php): abilitati, open/closed, diversi dall'attuale. */
-export async function menuStatuses(ctx: Pick<WriteContext, "tx">, currentStatusId: number): Promise<{ id: number; name: string; state: string }[]> {
-  const rows = await ctx.tx
+export interface StatusChoice {
+  id: number;
+  name: string;
+  state: string;
+}
+
+/**
+ * Stati "open" e "closed" abilitati (TicketStatusList::getStatuses con states open/closed), nell'ordine
+ * della lista (sort_mode: SortCol → sort, Alpha → nome, -Alpha → nome decrescente). Il menu
+ * (status-options.tmpl.php) esclude lo stato attuale; il modale (ticket-status.tmpl.php) propone tutti
+ * gli stati dello stesso "state", attuale compreso. "closed" è sempre incluso: Ticket::isCloseable()
+ * restituisce true oppure una stringa (sempre "vera").
+ */
+export async function ticketStatusChoices(executor: DbOrTx): Promise<StatusChoice[]> {
+  const list = await executor.selectFrom("list").select("sort_mode").where("type", "=", "ticket-status").executeTakeFirst();
+  let q = executor
     .selectFrom("ticket_status")
     .select(["id", "name", "state", "mode"])
     .where("state", "in", ["open", "closed"])
-    .orderBy("sort")
-    .orderBy("name")
-    .execute();
-  // TicketStatus::ENABLED = 1 (mode); isCloseable() restituisce true o una stringa: "closed" è sempre incluso
-  return rows.filter((r) => r.mode & 1 && r.id !== currentStatusId).map((r) => ({ id: r.id, name: r.name, state: r.state ?? "" }));
+    // TicketStatus::ENABLED = 1 (mode__hasbit)
+    .where(sql<boolean>`(mode & 1) != 0`);
+  switch (list?.sort_mode) {
+    case "SortCol":
+      q = q.orderBy("sort");
+      break;
+    case "Alpha":
+      q = q.orderBy("name");
+      break;
+    case "-Alpha":
+      q = q.orderBy("name", "desc");
+      break;
+  }
+  const rows = await q.execute();
+  return rows.map((r) => ({ id: r.id, name: r.name, state: r.state ?? "" }));
 }
+
+/** Stati proposti dal menu "Cambia stato" (status-options.tmpl.php): abilitati, open/closed, diversi dall'attuale. */
+export async function menuStatuses(ctx: Pick<WriteContext, "tx">, currentStatusId: number): Promise<StatusChoice[]> {
+  return (await ticketStatusChoices(ctx.tx)).filter((s) => s.id !== currentStatusId);
+}
+
+/** Motivo per cui il ticket non è chiudibile (Ticket::isCloseable), per l'avviso del modale di chiusura. */
+export type CloseBlocker = { reason: "fields" } | { reason: "tasks"; count: number } | { reason: "topic" };
+
+/**
+ * ajax.tickets.php:changeTicketStatus('close'): se Ticket::isCloseable() restituisce una stringa, il
+ * modale la mostra come avviso (la chiusura poi fallisce in Ticket::setStatus). Sola lettura.
+ */
+export async function closeBlocker(executor: DbOrTx, cfg: ConfigNamespace, ticketId: number): Promise<CloseBlocker | null> {
+  const rec = await TicketRecord.load(executor, ticketId);
+  if (!rec) return null;
+  // isCloseable usa solo tx e cfg del contesto
+  const ro = { tx: executor, cfg } as Pick<WriteContext, "tx" | "cfg"> as WriteContext;
+  const r = await isCloseable(ro, rec, await stateOf(executor, rec.row));
+  if (r === true) return null;
+  const tasks = /has (\d+) open tasks/.exec(r);
+  if (tasks) return { reason: "tasks", count: Number(tasks[1]) };
+  return /Help Topic/.test(r) ? { reason: "topic" } : { reason: "fields" };
+}
+
+/**
+ * Aggancio per lo stato "deleted" (Ticket::setStatus → Ticket::delete($comments)): l'eliminazione
+ * definitiva appartiene all'area "ticketedit", che fornisce questa funzione a changeTicketStatus.
+ * Restituisce true se il ticket è stato eliminato.
+ */
+export type TicketHardDelete = (ctx: WriteContext, rec: TicketRecord, comments: string) => Promise<boolean>;
 
 /**
  * ajax.tickets.php:setTicketStatus: controlli di permesso per stato, Ticket::setStatus con commenti
  * (nota "Status Changed" con avvisi), poi eventualmente lo stesso stato ai ticket figli.
- * Lo stato "deleted" (eliminazione definitiva) non è gestito qui.
+ * Lo stato "deleted" richiede PERM_DELETE e l'aggancio opts.hardDelete (area "ticketedit"): senza,
+ * l'operazione è rifiutata con "not_supported".
+ * Il PHP, con figli non aggiornabili, prepara l'avviso in $info['warn'] ma risponde comunque 201 e
+ * l'avviso va perso: qui i numeri dei figli sono restituiti in `warn` e mostrati dalla UI.
  */
 export async function changeTicketStatus(
   ctx: WriteContext,
   input: { ticketId: number; statusId: number; comments?: string; children?: boolean },
+  opts: { hardDelete?: TicketHardDelete } = {},
 ): Promise<ActionResult> {
   const { tx, agent } = ctx;
   if (!agent) return { error: "denied" };
@@ -77,18 +139,26 @@ export async function changeTicketStatus(
       if (!role.perms.has(TicketPerm.CLOSE)) return { error: "denied" };
       break;
     case "deleted":
-      // Eliminazione definitiva: area "ticketedit"
-      return { error: "not_supported" };
+      if (!role.perms.has(TicketPerm.DELETE)) return { error: "denied" };
+      // Eliminazione definitiva: Ticket::delete è dell'area "ticketedit" (opts.hardDelete)
+      if (!opts.hardDelete) return { error: "not_supported" };
+      break;
     default:
       return { error: "invalid_status" };
   }
 
   const threadId = await ticketThreadId(tx, rec.id);
+  const hardDelete = opts.hardDelete;
   const r = await setTicketStatus(ctx, rec, threadId, status.id, {
     comments: input.comments ?? "",
     logNote: (title, body) => logNote(ctx, rec.id, title, body),
+    hardDelete: hardDelete ? () => hardDelete(ctx, rec, input.comments ?? "") : undefined,
   });
-  if (r !== true) return { error: "status_failed", detail: typeof r === "string" ? r : undefined };
+  if (r !== true) {
+    // Ticket::isCloseable(): "... cannot be closed" (l'avviso tradotto è già nel modale)
+    if (typeof r === "string" && / cannot be closed$/.test(r)) return { error: "not_closeable", detail: r };
+    return { error: "status_failed", detail: typeof r === "string" ? r : undefined };
+  }
 
   const failures: string[] = [];
   // Ticket::getChildren(): solo per i ticket padre (FLAG_PARENT), figli con ticket_pid = id ordinati per sort
@@ -104,7 +174,11 @@ export async function changeTicketStatus(
       const child = await TicketRecord.load(tx, c.ticket_id, true);
       if (!child) continue;
       const childThread = await ticketThreadId(tx, child.id);
-      const cr = await setTicketStatus(ctx, child, childThread, status.id, { logNote: (title, body) => logNote(ctx, child.id, title, body) });
+      // $child->setStatus($status, '', $errors): nessun commento ai figli
+      const cr = await setTicketStatus(ctx, child, childThread, status.id, {
+        logNote: (title, body) => logNote(ctx, child.id, title, body),
+        hardDelete: hardDelete ? () => hardDelete(ctx, child, "") : undefined,
+      });
       if (cr !== true) failures.push(c.number ?? String(c.ticket_id));
     }
   }

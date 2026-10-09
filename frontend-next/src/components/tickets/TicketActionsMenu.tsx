@@ -4,7 +4,7 @@ import { TicketPerm, type Agent } from "@/server/domain/staff/staff";
 import { deptIsMember, loadDept } from "@/server/domain/ticket/alerts";
 import { activeTeams, assignableAgents, listReferrals, referralChoices, selectableDepts } from "@/server/domain/ticket/assign";
 import { DeptFlag } from "@/server/domain/ticket/status";
-import { menuStatuses } from "@/server/domain/ticket/ticket-state";
+import { closeBlocker, ticketStatusChoices } from "@/server/domain/ticket/ticket-state";
 import { roleOn, type TicketDetail } from "@/server/domain/ticket/ticket";
 import { PersonsName } from "@/server/format/persons-name";
 
@@ -29,6 +29,7 @@ export default async function TicketActionsMenu({ ticket, agent }: { ticket: Tic
     ? await executor.selectFrom("staff").select(["staff_id", "firstname", "lastname"]).where("staff_id", "=", ticket.staff_id).executeTakeFirst()
     : undefined;
   const team = ticket.team_id ? await executor.selectFrom("team").select(["team_id", "name"]).where("team_id", "=", ticket.team_id).executeTakeFirst() : undefined;
+  // Ticket::isAssigned(): solo ticket aperti
   const isAssigned = isOpen && !!(ticket.staff_id || ticket.team_id);
 
   const canAssign = isOpen && role.perms.has(TicketPerm.ASSIGN);
@@ -39,16 +40,20 @@ export default async function TicketActionsMenu({ ticket, agent }: { ticket: Tic
   const canMark = isOpen && (isManager || role.perms.has(TicketPerm.MARKANSWERED));
   // La voce "Referral" richiede PERM_REFER; l'endpoint PHP controlla PERM_ASSIGN: servono entrambi
   const canRefer = role.perms.has(TicketPerm.REFER) && role.perms.has(TicketPerm.ASSIGN);
+  // status-options.tmpl.php: menu stati solo con PERM_CLOSE. "Segna come scaduto" (manager) e
+  // "Elimina" (PERM_DELETE) non sono di quest'area.
   const canStatus = role.perms.has(TicketPerm.CLOSE);
 
-  const [agents, teams, depts, referral, statuses, children, referrals] = await Promise.all([
+  const [agents, teams, depts, referral, statuses, children, referrals, blocker] = await Promise.all([
     canAssign ? assignableAgents(executor, ticket.dept_id, agent, nameFormat) : Promise.resolve([]),
     canAssign ? activeTeams(executor) : Promise.resolve([]),
     canTransfer ? selectableDepts(executor, agent, ticket.dept_id) : Promise.resolve([]),
     canRefer ? referralChoices(executor, ticket.dept_id, agent, nameFormat) : Promise.resolve(null),
-    canStatus ? menuStatuses({ tx: executor }, ticket.status_id) : Promise.resolve([]),
+    canStatus ? ticketStatusChoices(executor) : Promise.resolve([]),
     executor.selectFrom("ticket").select("ticket_id").where("ticket_pid", "=", ticket.ticket_id).execute(),
     canRefer && ticket.thread_id ? listReferrals(executor, ticket.thread_id) : Promise.resolve([]),
+    // ajax changeTicketStatus('close'): avviso di Ticket::isCloseable() nel modale
+    canStatus && isOpen ? closeBlocker(executor, cfg, ticket.ticket_id) : Promise.resolve(null),
   ]);
 
   // Nomi dei referral esistenti
@@ -80,6 +85,8 @@ export default async function TicketActionsMenu({ ticket, agent }: { ticket: Tic
     referral: referral ?? { agents: [], teams: [], depts: [] },
     referrals: referrals.map((r) => ({ id: r.id, type: r.object_type as "S" | "E" | "D", name: names.get(`${r.object_type}${r.object_id}`) ?? `#${r.object_id}` })),
     statuses,
+    currentStatusId: ticket.status_id,
+    closeBlocker: blocker,
     hasChildren: !!(ticket.flags & 0x10) && children.length > 0,
   };
 

@@ -179,7 +179,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
     replyPlaceholder: tc("replyPlaceholder"),
     notePlaceholder: tc("notePlaceholder"),
     posted: tc("posted"),
-    lockedBy: tc("lockedBy"),
+    lockedBy: tc.raw("lockedBy") as string,
     errors: {
       session_expired: tc("errors.session_expired"),
       not_found: tc("errors.not_found"),

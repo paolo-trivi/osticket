@@ -20,7 +20,8 @@ export const DeptFlag = {
   ASSIGN_PRIMARY_ONLY: 0x0010,
   DISABLE_REOPEN_AUTO_ASSIGN: 0x0020,
 } as const;
-export const TopicFlag = { ACTIVE: 0x0001, ARCHIVED: 0x0002 } as const;
+/** Topic::FLAG_* (include/class.topic.php: CUSTOM_NUMBERS 0x1, ACTIVE 0x2, ARCHIVED 0x4) */
+export const TopicFlag = { ACTIVE: 0x0002, ARCHIVED: 0x0004 } as const;
 
 export interface StatusRow {
   id: number;

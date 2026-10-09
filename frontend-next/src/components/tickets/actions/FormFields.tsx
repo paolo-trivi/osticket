@@ -64,14 +64,14 @@ export function FieldSelect({
   );
 }
 
-/** Checkbox nativa con nome e valore "1". */
-export function FieldCheck({ name, label, defaultChecked = false }: { name: string; label: ReactNode; defaultChecked?: boolean }) {
+/** Checkbox nativa con nome e valore (predefinito "1"). */
+export function FieldCheck({ name, label, value = "1", defaultChecked = false }: { name: string; label: ReactNode; value?: string; defaultChecked?: boolean }) {
   return (
     <label className="flex cursor-pointer items-center gap-3 text-theme-sm text-gray-700 dark:text-gray-400">
       <input
         type="checkbox"
         name={name}
-        value="1"
+        value={value}
         defaultChecked={defaultChecked}
         className="size-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900"
       />

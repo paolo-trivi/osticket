@@ -4,6 +4,9 @@ export interface Choice {
   name: string;
 }
 
+/** Motivo per cui il ticket non è chiudibile (Ticket::isCloseable), mostrato nel modale di chiusura. */
+export type CloseBlockerData = { reason: "fields" } | { reason: "tasks"; count: number } | { reason: "topic" } | null;
+
 export interface TicketActionsData {
   ticketId: number;
   number: string;
@@ -21,8 +24,11 @@ export interface TicketActionsData {
   depts: Choice[];
   referral: { agents: Choice[]; teams: Choice[]; depts: Choice[] };
   referrals: { id: number; type: "S" | "E" | "D"; name: string }[];
-  /** stati proposti dal menu (diversi dall'attuale) */
+  /** stati open/closed abilitati nell'ordine della lista, attuale compreso (il menu lo esclude) */
   statuses: (Choice & { state: string })[];
+  currentStatusId: number;
+  /** avviso del modale di chiusura (null = chiudibile) */
+  closeBlocker: CloseBlockerData;
   hasChildren: boolean;
 }
 
@@ -36,3 +42,9 @@ export type ActionKind =
   | "markAnswered"
   | "markUnanswered"
   | { status: number };
+
+/** Esito da mostrare nella vista dopo un'azione riuscita (messaggio di sistema del PHP). */
+export interface ActionNotice {
+  kind: "success";
+  text: string;
+}

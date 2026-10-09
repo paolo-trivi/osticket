@@ -216,3 +216,29 @@ $OPS['actions.mark'] = function (array $op) {
     $ticket->logActivity(sprintf(__('Ticket Marked %s'), ucfirst($action)), $msg);
     return ['ok' => true];
 };
+
+// ajax.tickets.php:refer($tid) con do=manage: rimozione dei referral selezionati ('-<id>')
+$OPS['actions.referrals.remove'] = function (array $op) {
+    $thisstaff = actions_staff($op);
+    $ticket = actions_ticket($op);
+    if (!$ticket->checkStaffPerm($thisstaff, Ticket::PERM_ASSIGN)
+            || !($form = $ticket->getReferralForm(array('do' => 'manage'), array('target' => null))))
+        return ['ok' => false, 'error' => 403];
+    $referrals = array();
+    foreach ($ticket->getThread()->referrals as $r)
+        $referrals[] = in_array($r->getId(), $op['args']['ids']) ? '-'.$r->getId() : (string) $r->getId();
+    // ids non appartenenti al thread: il form le invierebbe comunque se manipolato
+    foreach ($op['args']['ids'] as $id)
+        if (!in_array('-'.$id, $referrals))
+            $referrals[] = '-'.$id;
+    $remove = array();
+    foreach ($referrals as $k => $v)
+        if ($v[0] == '-')
+            $remove[] = substr($v, 1);
+    $num = 0;
+    if (count($remove))
+        $num = $ticket->getThread()->referrals
+            ->filter(array('id__in' => $remove))
+            ->delete();
+    return ['ok' => true, 'removed' => $num];
+};

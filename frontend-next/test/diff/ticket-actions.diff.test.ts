@@ -2,13 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
 import { loadAgent } from "@/server/domain/staff/staff";
-import { assignTicket, claimTicket, referTicket, releaseTicket } from "@/server/domain/ticket/assign";
+import { assignTicket, claimTicket, referTicket, releaseTicket, removeReferrals } from "@/server/domain/ticket/assign";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { changeTicketStatus, markTicketAnswered } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";
 import { runWrite } from "@/server/domain/write";
 
-import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
+import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp, type TableDiff } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
 
 /**
@@ -30,6 +30,26 @@ async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>
 
 type Result = { ok?: boolean; error?: string | number };
 
+/**
+ * ticket.est_duedate alla riapertura è "adesso + ore SLA": PHP e TS girano in istanti diversi e
+ * possono cadere a cavallo di un secondo (l'harness normalizza solo i datetime vicini a NOW).
+ * Si tollera uno scarto fino a 2 s su quella sola colonna; ogni altra differenza resta.
+ */
+function withoutDueDateDrift(diffs: TableDiff[]): TableDiff[] {
+  const toMs = (v: unknown) => (typeof v === "string" ? Date.parse(v.replace(" ", "T") + "Z") : NaN);
+  return diffs.filter((d) => {
+    if (d.table !== "ticket" || d.onlyInPhp.length !== d.onlyInTs.length) return true;
+    const byId = new Map(d.onlyInTs.map((r) => [r.ticket_id, r]));
+    return !d.onlyInPhp.every((p) => {
+      const t = byId.get(p.ticket_id);
+      if (!t) return false;
+      const { est_duedate: pd, ...pr } = p;
+      const { est_duedate: td, ...tr } = t;
+      return JSON.stringify(pr) === JSON.stringify(tr) && Math.abs(toMs(pd) - toMs(td)) <= 2000;
+    });
+  });
+}
+
 /** PHP poi TS; confronto di DB ed email. */
 async function both(op: string, args: Record<string, unknown>, ts: (ctx: WriteContext) => Promise<unknown>, mails = 0) {
   let php: Result = {};
@@ -40,7 +60,7 @@ async function both(op: string, args: Record<string, unknown>, ts: (ctx: WriteCo
   const tsMails = await mailsOf(async () => {
     res = await asAgent(Number(args.agent), ts);
   }, mails);
-  expect(await compareWorkingDatabases()).toEqual([]);
+  expect(withoutDueDateDrift(await compareWorkingDatabases())).toEqual([]);
   expect(tsMails).toEqual(phpMails);
   expect(tsMails.length).toBe(mails);
   return { php, ts: res as Result };
@@ -293,5 +313,124 @@ describe("cambio stato e risposto", () => {
     const r = await both("actions.mark", args, (ctx) => markTicketAnswered(ctx, { ticketId: 3, answered: true }), 0);
     expect(r.php.ok).toBe(false);
     expect(r.ts).toEqual({ error: "already_answered" });
+  });
+});
+
+describe("avvisi, permessi da manager e casi limite", () => {
+  it("assegna a un team: avviso al solo capo team (assigned_alert_team_lead)", async () => {
+    await execBoth(
+      "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key`='assigned_alert_team_lead'",
+      "UPDATE {p}team SET lead_id=3 WHERE team_id=1",
+    );
+    const args = { agent: 2, ticket: 1, assignee: "t1", comments: "<p>Al capo team.</p>" };
+    const r = await both("actions.assign", args, (ctx) => assignTicket(ctx, { ticketId: 1, assignee: "t1", comments: args.comments }), 1);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("assegna a un team con flag NOALERTS: nessun avviso", async () => {
+    await execBoth(
+      "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key` IN ('assigned_alert_team_lead','assigned_alert_team_members')",
+      "UPDATE {p}team SET lead_id=3, flags=3 WHERE team_id=1",
+      "UPDATE {p}team_member SET flags=1 WHERE team_id=1",
+    );
+    const args = { agent: 1, ticket: 1, assignee: "t1" };
+    const r = await both("actions.assign", args, (ctx) => assignTicket(ctx, { ticketId: 1, assignee: "t1" }), 0);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("assegnazione rifiutata: agente in ferie (non tra le scelte)", async () => {
+    await execBoth("UPDATE {p}staff SET onvacation=1 WHERE staff_id=3");
+    const args = { agent: 1, ticket: 1, assignee: "s3" };
+    const r = await both("actions.assign", args, (ctx) => assignTicket(ctx, { ticketId: 1, assignee: "s3" }), 0);
+    expect(r.php.ok).toBe(false);
+    expect(r.ts).toEqual({ error: "unknown_assignee" });
+  });
+
+  it("presa in carico rifiutata: ticket già assegnato a un agente", async () => {
+    const args = { agent: 1, ticket: 3 };
+    const r = await both("actions.claim", args, (ctx) => claimTicket(ctx, { ticketId: 3 }), 0);
+    expect(r.php.ok).toBe(false);
+    expect(r.ts).toEqual({ error: "denied" });
+  });
+
+  it("rilascio da manager del reparto senza PERM_RELEASE", async () => {
+    await execBoth("UPDATE {p}staff SET assigned_only=0 WHERE staff_id=5", "UPDATE {p}department SET manager_id=5 WHERE id=1");
+    const args = { agent: 5, ticket: 3, sid: true, comments: "<p>Rilasciato dal responsabile.</p>" };
+    const r = await both("actions.release", args, (ctx) => releaseTicket(ctx, { ticketId: 3, staff: true, comments: args.comments }), 0);
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("segna come risposto da manager del reparto senza PERM_MARKANSWERED", async () => {
+    await execBoth("UPDATE {p}department SET manager_id=2 WHERE id=1");
+    const args = { agent: 2, ticket: 1, action: "answered" };
+    const r = await both("actions.mark", args, (ctx) => markTicketAnswered(ctx, { ticketId: 1, answered: true }), 0);
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("referral a un reparto con avvisi note.alert", async () => {
+    await execBoth("UPDATE {p}config SET value='1' WHERE namespace='core' AND `key` IN ('note_alert_active','note_alert_dept_manager')", "UPDATE {p}department SET manager_id=4 WHERE id=1");
+    const args = { agent: 1, ticket: 3, target: "dept", id: 2, comments: "<p>Coinvolgo le vendite.</p>" };
+    const r = await both("actions.refer", args, (ctx) => referTicket(ctx, { ticketId: 3, target: "dept", id: 2, comments: args.comments }), 2);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("referral rifiutato: agente già assegnatario", async () => {
+    await execBoth("UPDATE {p}ticket SET staff_id=4 WHERE ticket_id=3");
+    const args = { agent: 1, ticket: 3, target: "agent", id: 4 };
+    const r = await both("actions.refer", args, (ctx) => referTicket(ctx, { ticketId: 3, target: "agent", id: 4 }), 0);
+    expect(r.php.ok).toBe(false);
+    expect(r.ts).toEqual({ error: "already_assigned_agent" });
+  });
+
+  it("rimozione di referral (gestione referral), id estranei ignorati", async () => {
+    await execBoth(
+      "INSERT INTO {p}thread_referral (id, thread_id, object_id, object_type, created) SELECT 901, id, 3, 'D', NOW() FROM {p}thread WHERE object_type='T' AND object_id=2",
+      "INSERT INTO {p}thread_referral (id, thread_id, object_id, object_type, created) SELECT 902, id, 4, 'S', NOW() FROM {p}thread WHERE object_type='T' AND object_id=2",
+      "INSERT INTO {p}thread_referral (id, thread_id, object_id, object_type, created) SELECT 903, id, 4, 'S', NOW() FROM {p}thread WHERE object_type='T' AND object_id=3",
+    );
+    const args = { agent: 2, ticket: 2, ids: [901, 903] };
+    const r = await both("actions.referrals.remove", args, (ctx) => removeReferrals(ctx, { ticketId: 2, ids: [901, 903] }), 0);
+    expect(r.php).toMatchObject({ ok: true, removed: 1 });
+    expect(r.ts).toEqual({ ok: true, removed: 1 });
+  });
+
+  it("chiusura rifiutata: ticket con task aperti", async () => {
+    const args = { agent: 1, ticket: 1, status_id: 3, comments: "<p>Chiudo.</p>" };
+    const r = await both("actions.status", args, (ctx) => changeTicketStatus(ctx, { ticketId: 1, statusId: 3, comments: args.comments }), 0);
+    expect(r.php.ok).toBe(false);
+    expect(r.ts).toEqual({ error: "not_closeable", detail: "This ticket has 1 open tasks and cannot be closed" });
+  });
+
+  it("riapertura con il solo PERM_CREATE (Limited Access)", async () => {
+    await execBoth("UPDATE {p}ticket SET dept_id=2 WHERE ticket_id=37");
+    const args = { agent: 4, ticket: 37, status_id: 1, comments: "<p>Riapro.</p>" };
+    const r = await both("actions.status", args, (ctx) => changeTicketStatus(ctx, { ticketId: 37, statusId: 1, comments: args.comments }), 0);
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("riapertura del padre e dei figli (FLAG_PARENT)", async () => {
+    await execBoth("UPDATE {p}ticket SET ticket_pid=2, flags=flags|8 WHERE ticket_id IN (37, 41)", "UPDATE {p}ticket SET flags=flags|16 WHERE ticket_id=2");
+    const args = { agent: 1, ticket: 2, status_id: 1, children: true, comments: "<p>Riapro tutto.</p>" };
+    const r = await both("actions.status", args, (ctx) => changeTicketStatus(ctx, { ticketId: 2, statusId: 1, children: true, comments: args.comments }), 0);
+    expect(r.php).toMatchObject({ ok: true, failures: [] });
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("figli ignorati senza FLAG_PARENT", async () => {
+    await execBoth("UPDATE {p}ticket SET ticket_pid=6 WHERE ticket_id IN (36)");
+    const args = { agent: 1, ticket: 6, status_id: 2, children: true };
+    const r = await both("actions.status", args, (ctx) => changeTicketStatus(ctx, { ticketId: 6, statusId: 2, children: true }), 0);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("stato deleted senza aggancio di eliminazione: rifiutato senza scritture", async () => {
+    const r = await asAgent(1, (ctx) => changeTicketStatus(ctx, { ticketId: 3, statusId: 5 }));
+    expect(r).toEqual({ error: "not_supported" });
+    const denied = await asAgent(2, (ctx) => changeTicketStatus(ctx, { ticketId: 3, statusId: 5 }, { hardDelete: async () => true }));
+    expect(denied).toEqual({ error: "denied" });
+    expect(await compareWorkingDatabases()).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
-import { assignTicket, claimTicket, referTicket, releaseTicket } from "@/server/domain/ticket/assign";
+import { assignTicket, claimTicket, referTicket, releaseTicket, removeReferrals } from "@/server/domain/ticket/assign";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { changeTicketStatus, markTicketAnswered, type ActionResult } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";
@@ -22,6 +22,8 @@ export interface TicketActionState {
   error?: string;
   detail?: string;
   warn?: string;
+  /** referral rimossi (gestione referral) */
+  removed?: number;
   nonce?: number;
 }
 
@@ -32,14 +34,16 @@ function comments(form: FormData, sanitize = true): string {
   return sanitize ? sanitizeText(raw) : raw;
 }
 
-async function run(ticketId: number, fn: (ctx: WriteContext) => Promise<ActionResult>): Promise<TicketActionState> {
+async function run(ticketId: number, fn: (ctx: WriteContext) => Promise<ActionResult & { removed?: number }>): Promise<TicketActionState> {
   const agent = await currentAgent();
   if (!agent) return { error: "session_expired" };
   if (!ticketId) return { error: "not_found" };
   const r = await runWrite({ agent, ip: await clientIp() }, fn);
   if ("error" in r) return { error: r.error, detail: r.detail, nonce: Date.now() };
-  revalidatePath(`/agent/tickets/${ticketId}`);
-  return { ok: true, warn: r.warn, nonce: Date.now() };
+  // Vista, code e contatori mostrano assegnatario/stato/reparto: si invalida la cache del router per
+  // tutte le pagine (sono dinamiche; il percorso letterale non corrisponderebbe a [locale] e ai gruppi)
+  revalidatePath("/", "layout");
+  return { ok: true, warn: r.warn, removed: r.removed, nonce: Date.now() };
 }
 
 const ticketIdOf = (form: FormData) => Number(form.get("ticketId") ?? 0);
@@ -86,8 +90,22 @@ export async function statusAction(_prev: TicketActionState, form: FormData): Pr
   const ticketId = ticketIdOf(form);
   // ajax setTicketStatus passa $_REQUEST['comments'] così com'è: la pulizia la fa ThreadEntryBody
   return run(ticketId, (ctx) =>
-    changeTicketStatus(ctx, { ticketId, statusId: Number(form.get("statusId") ?? 0), comments: comments(form, false), children: form.get("children") === "1" }),
+    changeTicketStatus(
+      ctx,
+      { ticketId, statusId: Number(form.get("statusId") ?? 0), comments: comments(form, false), children: form.get("children") === "1" },
+      // AGGANCIO "ticketedit": per lo stato "deleted" passare qui { hardDelete } (Ticket::delete);
+      // finché manca, changeTicketStatus risponde "not_supported" senza scrivere nulla.
+      {},
+    ),
   );
+}
+
+/** ajax refer do=manage: rimozione dei referral selezionati (campi "remove" con l'id del referral). */
+export async function removeReferralsAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
+  const ticketId = ticketIdOf(form);
+  const ids = form.getAll("remove").map((v) => Number(v));
+  if (!ids.length) return { error: "referral_required", nonce: Date.now() };
+  return run(ticketId, (ctx) => removeReferrals(ctx, { ticketId, ids }));
 }
 
 export async function markAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
