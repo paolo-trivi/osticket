@@ -6,6 +6,7 @@ import { massUserAction, registerAccount, sendUserConfirmEmail, sendUserResetEma
 import { addOrgUser, createOrg, deleteOrg, removeOrgUsers, updateOrg, updateOrgProfile } from "@/server/domain/directory/orgs";
 import { createUser, deleteUser, importUsers, setUserOrganization, updateUser } from "@/server/domain/directory/users";
 import { loadAgent } from "@/server/domain/staff/staff";
+import { deleteTicketViaDeletedStatus } from "@/server/domain/ticket/delete";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { runWrite } from "@/server/domain/write";
 
@@ -81,6 +82,21 @@ describe("utenti: PHP vs TypeScript", () => {
     expect(await asAgent(1, (ctx) => deleteUser(ctx, 2))).toEqual({ ok: false, error: "has_tickets" });
     expect((await runPhp<{ ok: boolean }>({ op: "user.delete", args: { agent: 1, user: 14 } })).ok).toBe(true);
     expect(await asAgent(1, (ctx) => deleteUser(ctx, 14))).toEqual({ ok: true });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("eliminazione di un utente con i suoi ticket (deletetickets → User::deleteAllTickets)", async () => {
+    const php = await runPhp<{ ok: boolean; error?: string }>({ op: "user.delete", args: { agent: 1, user: 2, deletetickets: 1 } });
+    const ts = await asAgent(1, (ctx) => deleteUser(ctx, 2, { deleteTickets: true, hardDeleteTicket: deleteTicketViaDeletedStatus }));
+    expect(php.ok).toBe(true);
+    expect(ts).toEqual({ ok: true });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("eliminazione con ticket rifiutata senza il permesso ticket.delete", async () => {
+    const php = await runPhp<{ ok: boolean; error?: string }>({ op: "user.delete", args: { agent: 5, user: 2, deletetickets: 1 } });
+    const ts = await asAgent(5, (ctx) => deleteUser(ctx, 2, { deleteTickets: true, hardDeleteTicket: deleteTicketViaDeletedStatus, checkPerm: false }));
+    expect({ php: php.ok, ts: ts.ok }).toEqual({ php: false, ts: false });
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

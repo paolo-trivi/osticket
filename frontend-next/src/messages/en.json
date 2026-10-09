@@ -245,7 +245,8 @@
     "reply": "Reply",
     "message": "Message",
     "editedBy": "edited by",
-    "via": "via"
+    "via": "via",
+    "tasks": "Tasks ({count})"
   },
   "events": {
     "created": "Created by <b>{somebody}</b>",

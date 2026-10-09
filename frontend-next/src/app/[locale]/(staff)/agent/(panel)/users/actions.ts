@@ -15,6 +15,7 @@ import { formSource } from "@/server/domain/directory/ui";
 import { createUser, deleteUser, importUsers, setUserOrganization, updateUser, type DirResult } from "@/server/domain/directory/users";
 import { GlobalPerm, type Agent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
+import { deleteTicketViaDeletedStatus } from "@/server/domain/ticket/delete";
 import { runWrite } from "@/server/domain/write";
 
 /**
@@ -61,10 +62,10 @@ export async function userUpdateAction(_prev: PeopleActionState, form: FormData)
   return run(async (ctx) => state(await updateUser(ctx, id, input)), [`/agent/users/${id}`]);
 }
 
-/** ajax.users.php:delete (con ticket: serve l'eliminazione dei ticket, non ancora disponibile) */
+/** ajax.users.php:delete (con `deletetickets`: User::deleteAllTickets) */
 export async function userDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = userId(form);
-  const r = await run(async (ctx) => state(await deleteUser(ctx, id, { deleteTickets: form.get("deletetickets") === "1" })));
+  const r = await run(async (ctx) => state(await deleteUser(ctx, id, { deleteTickets: form.get("deletetickets") === "1", hardDeleteTicket: deleteTicketViaDeletedStatus })));
   if (r.ok) redirect({ href: "/agent/users", locale: await getLocale() });
   return r;
 }

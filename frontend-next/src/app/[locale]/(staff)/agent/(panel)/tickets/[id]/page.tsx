@@ -60,7 +60,8 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
   const iframeWhitelist = cfg.str("embedded_domain_whitelist").split(/[,\s]+/).filter(Boolean);
 
   const [entries, events, answers, collaborators] = await Promise.all([
-    ticket.thread_id ? loadThreadEntries(ticket.thread_id) : Promise.resolve([] as ThreadEntryView[]),
+    // Thread::getEntries() esclude le voci nascoste (versioni precedenti di una voce modificata)
+    ticket.thread_id ? loadThreadEntries(ticket.thread_id).then((l) => l.filter((e) => !(e.flags & 0x4))) : Promise.resolve([] as ThreadEntryView[]),
     ticket.thread_id ? loadThreadEvents(ticket.thread_id) : Promise.resolve([] as ThreadEventView[]),
     loadTicketAnswers(ticket.ticket_id),
     ticket.thread_id ? loadCollaborators(ticket.thread_id) : Promise.resolve([]),
@@ -150,6 +151,14 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
 
   // Composer: stati ammessi (aperti; chiusi solo con permesso di chiusura), firma, risposte predefinite
   const tc = await getTranslations("composer");
+  // scheda "Task" della vista ticket (ticket-view.inc.php): task collegati al ticket
+  const taskRow = await db()
+    .selectFrom("task")
+    .select((eb) => eb.fn.countAll<number>().as("n"))
+    .where("object_type", "=", "T")
+    .where("object_id", "=", ticket.ticket_id)
+    .executeTakeFirst();
+  const taskCount = Number(taskRow?.n ?? 0);
   const canClose = role.perms.has(TicketPerm.CLOSE);
   const [statusList, cannedList, me, dept] = await Promise.all([
     db().selectFrom("ticket_status").select(["id", "name", "state"]).where("state", "in", canClose ? ["open", "closed"] : ["open"]).orderBy("sort").orderBy("name").execute(),
@@ -229,6 +238,12 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
         <div className="flex flex-wrap items-center gap-2">
           <TicketActionsMenu ticket={ticket} agent={agent} locale={locale} />
           <TicketExtraActions ticket={ticket} agent={agent} locale={locale} />
+          <Link
+            href={`/agent/tasks?ticket=${ticket.ticket_id}`}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-theme-sm text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5"
+          >
+            {t("tasks", { count: taskCount })}
+          </Link>
         </div>
         {legacy && (
           <a

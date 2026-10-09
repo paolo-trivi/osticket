@@ -543,3 +543,35 @@ export async function queueCounts(
   for (const [k, v] of Object.entries(rows[0] ?? {})) result.set(Number(k.slice(1)), Number(v));
   return result;
 }
+
+/**
+ * Id dei ticket di una coda per l'export CSV (CustomQueue::export, area "ticketedit"): stessi criteri,
+ * visibilità e ordinamento della lista, ma senza paginazione e senza il filtro sui figli dei merge
+ * (l'export del PHP non lo applica).
+ */
+export async function exportQueueTicketIds(
+  agent: Agent,
+  queue: TicketQueue,
+  opts: Pick<ListOptions, "sort" | "dir">,
+  ctx: { userTz: string },
+  executor: DbOrTx = db(),
+): Promise<number[]> {
+  const fields = await loadFieldRegistry(executor);
+  const crit = compileCriteria(queue.effectiveCriteria(), fields, { agent, userTz: ctx.userTz });
+  const joins = new Set<JoinKey>(["ST", ...crit.joins]);
+  const ignoreVisibility =
+    !queue.isAQueue && !queue.isASubQueue && queue.row.staff_id === agent.id && agent.hasGlobalPerm("search.all");
+  const conds: RawBuilder<unknown>[] = [...crit.conditions];
+  if (!ignoreVisibility) conds.push(visibilitySql(agent, false));
+  if (crit.keywords !== null) {
+    const ids = await keywordTicketIds(crit.keywords, executor);
+    if (ids !== null) conds.push(ids.length ? sql`T.ticket_id IN (${sql.join(ids)})` : sql`(0)`);
+  }
+  const order = orderSql(await queueOrder(queue, opts, fields, joins, executor));
+  const { rows } = await sql<{ ticket_id: number }>`
+    SELECT T.ticket_id FROM ${table("ticket")} T ${joinsFor(joins)}
+    ${conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``}
+    GROUP BY T.ticket_id
+    ORDER BY ${sql.join(order)}`.execute(executor);
+  return rows.map((r) => Number(r.ticket_id));
+}

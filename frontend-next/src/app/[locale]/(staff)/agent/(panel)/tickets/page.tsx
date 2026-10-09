@@ -1,6 +1,8 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import LinkPager from "@/components/common/LinkPager";
+import MassSelectAll from "@/components/tickets/mass/MassSelectAll";
+import TicketMassBar from "@/components/tickets/mass/TicketMassBar";
 import TicketCell from "@/components/tickets/TicketCell";
 import { Link } from "@/i18n/navigation";
 import { agentQueueNav, defaultQueueId, pageSizeFor } from "@/server/domain/queue/context";
@@ -171,10 +173,16 @@ export default async function TicketsPage({
 
       {searchError && <p className="text-sm text-error-500">{t("tooManyWords")}</p>}
 
+      {/* Area "ticketedit": azioni di massa sui ticket selezionati ed export CSV della coda */}
+      <TicketMassBar agent={agent} queue={queue.id ? queue : null} sort={sp.sort} dir={sp.dir} />
+
       <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-800">
+              <th className="w-10 px-4 py-3">
+                <MassSelectAll />
+              </th>
               {columns.map((c) => {
                 const sorted = sp.sort === String(c.id);
                 const nextDir = sorted && dir === 0 ? 1 : 0;
@@ -202,7 +210,7 @@ export default async function TicketsPage({
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {rows.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={columns.length + 1} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
                   {t("empty")}
                 </td>
               </tr>
@@ -212,6 +220,9 @@ export default async function TicketsPage({
               const assignee = staff || r.team_name || "";
               return (
                 <tr key={r.ticket_id} className="hover:bg-gray-50 dark:hover:bg-white/2">
+                  <td className="px-4 py-3">
+                    <input type="checkbox" data-mass-tid value={r.ticket_id} aria-label={`#${r.number}`} className="size-4 accent-brand-500" />
+                  </td>
                   {columns.map((c) => (
                     <td key={c.id} className="max-w-xs px-4 py-3 text-gray-700 dark:text-gray-300">
                       <TicketCell column={c} row={r} tz={tz} locale={locale} assigneeName={assignee} staffName={staff} />

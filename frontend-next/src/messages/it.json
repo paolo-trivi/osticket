@@ -302,7 +302,8 @@
     "reply": "Risposta",
     "message": "Messaggio",
     "editedBy": "modificato da",
-    "via": "via"
+    "via": "via",
+    "tasks": "Task ({count})"
   },
   "events": {
     "created": "Creato da <b>{somebody}</b>",

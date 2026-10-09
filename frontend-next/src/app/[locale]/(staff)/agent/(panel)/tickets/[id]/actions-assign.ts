@@ -6,6 +6,7 @@ import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { assignTicket, claimTicket, referTicket, releaseTicket, removeReferrals } from "@/server/domain/ticket/assign";
 import type { WriteContext } from "@/server/domain/ticket/context";
+import { ticketHardDelete } from "@/server/domain/ticket/delete";
 import { changeTicketStatus, markTicketAnswered, type ActionResult } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";
 import { runWrite } from "@/server/domain/write";
@@ -93,9 +94,8 @@ export async function statusAction(_prev: TicketActionState, form: FormData): Pr
     changeTicketStatus(
       ctx,
       { ticketId, statusId: Number(form.get("statusId") ?? 0), comments: comments(form, false), children: form.get("children") === "1" },
-      // AGGANCIO "ticketedit": per lo stato "deleted" passare qui { hardDelete } (Ticket::delete);
-      // finché manca, changeTicketStatus risponde "not_supported" senza scrivere nulla.
-      {},
+      // AGGANCIO "ticketedit": stato "deleted" → Ticket::delete (anche dei figli, vedi ticketHardDelete)
+      { hardDelete: ticketHardDelete({ children: form.get("children") === "1" }) },
     ),
   );
 }
