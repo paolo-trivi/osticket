@@ -18,7 +18,7 @@ import { cn } from "@/utils";
 
 import { requireAgent } from "../../guard";
 
-type Search = { queue?: string; sort?: string; dir?: string; p?: string; q?: string };
+type Search = { queue?: string; sort?: string; dir?: string; p?: string; q?: string; user?: string; org?: string };
 
 export async function generateMetadata() {
   const t = await getTranslations("tickets");
@@ -52,6 +52,9 @@ export default async function TicketsPage({
     if (criteria) queue = adhocQueue(agent, criteria, query);
     else searchError = true;
   }
+  // Ticket di un utente o di un'organizzazione (scp/tickets.php?uid= / ?orgid=)
+  if (!queue && sp.user) queue = adhocQueue(agent, [["user_id", "equal", Number(sp.user)]], t("userTickets"));
+  if (!queue && sp.org) queue = adhocQueue(agent, [["user__org_id", "equal", Number(sp.org)]], t("orgTickets"));
   if (!queue) queue = all.get(Number(sp.queue) || (await defaultQueueId(agent))) ?? all.get(1);
   if (!queue) return null;
 
@@ -69,13 +72,15 @@ export default async function TicketsPage({
     if (r.staff_id && !names.has(r.staff_id)) names.set(r.staff_id, await formatAgentName(r.staff_first, r.staff_last));
   }
 
-  const total = query ? null : (counts.get(queue.id) ?? result.total);
+  const total = query ? null : queue.id ? (counts.get(queue.id) ?? result.total) : result.total;
   const totalNum = typeof total === "number" ? total : null;
   const totalPages = totalNum !== null ? Math.max(1, Math.ceil(totalNum / pageSize)) : rows.length < pageSize ? page : null;
 
   const baseParams = (extra: Record<string, string | number | undefined>) => {
     const p = new URLSearchParams();
     if (query) p.set("q", query);
+    else if (sp.user) p.set("user", sp.user);
+    else if (sp.org) p.set("org", sp.org);
     else p.set("queue", String(queue!.id));
     for (const [k, v] of Object.entries({ sort: sp.sort, dir: sp.dir, ...extra })) {
       if (v !== undefined && v !== "") p.set(k, String(v));
@@ -136,7 +141,7 @@ export default async function TicketsPage({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-          {query ? t("searchResults", { query }) : queueName(queue)}
+          {query ? t("searchResults", { query }) : queue.id ? queueName(queue) : queue.title}
           {totalNum !== null && <span className="ms-2 text-base font-normal text-gray-500">({totalNum})</span>}
         </h2>
         {sorts.length > 0 && (

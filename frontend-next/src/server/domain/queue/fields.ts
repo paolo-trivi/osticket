@@ -90,6 +90,7 @@ export function baseFields(nameFormat: string): Record<string, FieldDef> {
     "status__name": { kind: "text", col: "ST.name", joins: ["ST"] },
     "thread__lastmessage": { kind: "datetime", col: "TH.lastmessage", joins: ["TH"] },
     "thread__lastresponse": { kind: "datetime", col: "TH.lastresponse", joins: ["TH"] },
+    user_id: { kind: "text", col: "T.user_id", joins: [] },
     "user__name": { kind: "text", col: "U.name", joins: ["U"] },
     "user__org__name": { kind: "text", col: "ORG.name", joins: ["U", "ORG"] },
     "user__emails__address": { kind: "text", col: "UE.address", joins: ["UE"] },

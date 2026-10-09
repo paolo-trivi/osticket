@@ -171,3 +171,56 @@ for ($i = 0; $i < $howMany; $i++) {
     db_query("UPDATE ".THREAD_EVENT_TABLE." SET timestamp = timestamp - INTERVAL $days DAY WHERE thread_id = $thid");
 }
 out("Ticket creati: $created");
+
+// --- Knowledge base -----------------------------------------------------------
+$kb = [
+    ['Postazioni di lavoro', 1, [
+        ['Come richiedere un nuovo PC', 'Apri un ticket con argomento <b>Report a Problem</b> indicando reparto e numero di inventario.', 1],
+        ['Stampante di rete: cosa controllare', '<ol><li>Verifica che sia accesa</li><li>Controlla la carta</li><li>Riavvia la coda di stampa</li></ol>', 2],
+    ]],
+    ['Applicativi sanitari', 1, [
+        ['Accesso al FSE', 'Per accedere al Fascicolo Sanitario Elettronico serve la smart card abilitata.', 1],
+        ['Referti LIS non visibili', 'Controlla che la richiesta sia stata accettata dal laboratorio.', 0],
+    ]],
+    ['Procedure interne IT', 0, [
+        ['Reset password di dominio', 'Procedura riservata agli agenti: verifica identità, poi reset da console AD.', 0],
+    ]],
+];
+foreach ($kb as [$catName, $public, $faqs]) {
+    if (!($cat = Category::lookup(Category::findIdByName($catName)))) {
+        $cat = Category::create();
+        $e = [];
+        $cat->update(['name' => $catName, 'ispublic' => $public, 'description' => "Articoli: $catName"], $e);
+    }
+    foreach ($faqs as [$q, $a, $pub]) {
+        if (FAQ::findIdByQuestion($q)) continue;
+        $faq = FAQ::create();
+        $e = [];
+        $faq->update(['question' => $q, 'answer' => $a, 'category_id' => $cat->getId(), 'ispublished' => $pub, 'topics' => [10]], $e);
+    }
+}
+out('FAQ: '.FAQ::objects()->count());
+
+// --- Task ---------------------------------------------------------------------
+if (!Task::objects()->count()) {
+    $taskTitles = ['Sostituire toner', 'Verificare cablaggio di rete', 'Aggiornare driver stampante', 'Contattare fornitore', 'Configurare nuovo account'];
+    $admin = Staff::lookup('devadmin');
+    $GLOBALS['thisstaff'] = $admin;
+    $n = 0;
+    foreach (Ticket::objects()->filter(['status__state' => 'open'])->limit(12) as $ticket) {
+        $assignee = pick($staffObjs);
+        $task = Task::create([
+            'object_id' => $ticket->getId(), 'object_type' => 'T',
+            'description' => 'Attività collegata al ticket #'.$ticket->getNumber(),
+            'default_formdata' => ['title' => pick($taskTitles), 'description' => 'Dettagli attività'],
+            'internal_formdata' => ['dept_id' => $ticket->getDeptId(), 'assignee' => $assignee],
+        ]);
+        if ($task && $n % 4 == 3) {
+            $e = [];
+            $task->setStatus('closed', '', $e);
+        }
+        $n++;
+    }
+    $GLOBALS['thisstaff'] = null;
+    out("Task creati: $n");
+}

@@ -75,7 +75,42 @@
     "globalPerms": "Global permissions",
     "rolePerms": "Primary role permissions",
     "lastLogin": "Last login",
-    "limitedAccess": "Sees assigned tickets only"
+    "limitedAccess": "Sees assigned tickets only",
+    "kpi": {
+      "open": "Open tickets",
+      "overdue": "Overdue",
+      "mine": "My tickets",
+      "closedToday": "Closed today"
+    },
+    "activity": "Ticket activity",
+    "activityDesc": "Events per day in the selected period",
+    "from": "From",
+    "period": "Period",
+    "periods": {
+      "now": "Up to today",
+      "7days": "One week",
+      "14days": "Two weeks",
+      "1month": "One month",
+      "3months": "One quarter"
+    },
+    "refresh": "Refresh",
+    "noData": "No data in this period",
+    "groups": {
+      "dept": "Department",
+      "topic": "Help topic",
+      "staff": "Agent"
+    },
+    "cols": {
+      "opened": "Opened",
+      "assigned": "Assigned",
+      "overdue": "Overdue",
+      "closed": "Closed",
+      "reopened": "Reopened",
+      "deleted": "Deleted",
+      "serviceTime": "Service time (h)",
+      "responseTime": "Response time (h)"
+    },
+    "eventNames": {}
   },
   "notFound": {
     "error": "ERROR",
@@ -173,7 +208,9 @@
     "empty": "No tickets in this queue",
     "pageOf": "Page {page} of {pages}",
     "prev": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "userTickets": "User tickets",
+    "orgTickets": "Organization tickets"
   },
   "queues": {},
   "ticket": {
@@ -230,5 +267,105 @@
     "linked": "<b>{somebody}</b> linked tickets",
     "resent": "<b>{somebody}</b> resent a previous response",
     "deleted": "Deleted by <b>{somebody}</b>"
+  },
+  "directory": {
+    "users": "Users",
+    "orgs": "Organizations",
+    "usersCount": "{n} users",
+    "orgsCount": "{n} organizations",
+    "searchUsers": "Search name, email, organization…",
+    "searchOrgs": "Search organization…",
+    "noAccess": "You do not have access to the user directory (user.dir permission).",
+    "empty": "No results",
+    "name": "Name",
+    "email": "Email",
+    "emails": "Email addresses",
+    "organization": "Organization",
+    "tickets": "Tickets",
+    "created": "Created",
+    "updated": "Updated",
+    "profile": "Profile",
+    "fields": "Other fields",
+    "account": "Account",
+    "username": "Username",
+    "noAccount": "No account (email only)",
+    "accountActive": "Active",
+    "accountLocked": "Locked",
+    "accountPending": "Pending confirmation",
+    "viewTickets": "View tickets ({n})",
+    "orgTickets": "Organization tickets",
+    "domain": "Domain",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "kb": {
+    "title": "Knowledgebase",
+    "search": "Search FAQs…",
+    "results": "Results for “{q}”",
+    "empty": "No FAQs",
+    "featured": "Featured",
+    "public": "Public",
+    "internal": "Internal",
+    "faqCount": "{n} FAQs · {published} published",
+    "answer": "Answer",
+    "notes": "Internal notes"
+  },
+  "canned": {
+    "title": "Canned responses",
+    "subtitle": "Responses available for your departments and all departments",
+    "empty": "No canned responses",
+    "name": "Title",
+    "department": "Department",
+    "status": "Status",
+    "updated": "Updated",
+    "allDepts": "All departments",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "response": "Response"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "task": "Task",
+    "search": "Search number or title…",
+    "queues": {
+      "open": "Open",
+      "assigned": "My tasks",
+      "overdue": "Overdue",
+      "closed": "Completed"
+    },
+    "empty": "No tasks",
+    "number": "Number",
+    "ticket": "Ticket",
+    "created": "Created",
+    "titleCol": "Title",
+    "department": "Department",
+    "assignee": "Assigned to",
+    "completed": "Completed",
+    "open": "Open",
+    "due": "Due date",
+    "closedOn": "Completed on",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "profile": {
+    "title": "My profile",
+    "mustChangePassword": "The administrator requires a password change: use the classic panel for now (Profile › Password).",
+    "account": "Account",
+    "name": "Name",
+    "username": "Username",
+    "email": "Email",
+    "phone": "Phone",
+    "mobile": "Mobile",
+    "department": "Primary department",
+    "role": "Role",
+    "lastLogin": "Last login",
+    "preferences": "Preferences",
+    "timezone": "Timezone",
+    "language": "Language",
+    "pageSize": "Rows per page",
+    "signatureType": "Default signature",
+    "threadOrder": "Thread order",
+    "systemDefault": "System default",
+    "permissions": "Permissions"
   }
 }

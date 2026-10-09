@@ -4,7 +4,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // in sviluppo la app viene aperta anche come 127.0.0.1 (HMR e idratazione)
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,
