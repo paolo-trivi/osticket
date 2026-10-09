@@ -36,7 +36,7 @@ const DRAFTS = [
   "INSERT INTO {p}draft (staff_id, namespace, body, created) VALUES (0, 'ticket.client.altrasession', 'altra', NOW())",
 ];
 
-/** est_duedate dipende dall'istante di creazione: si confronta lo scarto rispetto a created */
+/** est_duedate dipende dall'istante di creazione: si confronta lo scarto rispetto a created (± 1 s) */
 async function compareAll(extraIgnore: string[] = []) {
   expect(await compareWorkingDatabases({ ignore: ["ticket.est_duedate", ...extraIgnore] })).toEqual([]);
   const cfg = installConfig();
@@ -49,7 +49,15 @@ async function compareAll(extraIgnore: string[] = []) {
       );
       out.push(rows);
     }
-    expect(out[1]).toEqual(out[0]);
+    // lo scarto può differire di 1 s se le due esecuzioni cadono a cavallo di un secondo
+    // tra NOW() e il calcolo SLA (stessa tolleranza di ticket-create.diff.test.ts)
+    const [php, ts] = out;
+    expect(ts.length).toEqual(php.length);
+    ts.forEach((r, i) => {
+      expect(r.ticket_id).toEqual(php[i].ticket_id);
+      if (r.due === null || php[i].due === null) expect(r.due).toEqual(php[i].due);
+      else expect(Math.abs(Number(r.due) - Number(php[i].due))).toBeLessThanOrEqual(1);
+    });
   } finally {
     await conn.end();
   }
