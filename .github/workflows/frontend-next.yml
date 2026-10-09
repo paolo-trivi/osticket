@@ -1,0 +1,68 @@
+# CI della app Next.js (frontend-next/): qualità del codice e harness differenziale PHP vs TypeScript.
+name: frontend-next
+
+on:
+  push:
+    paths: ["frontend-next/**", "include/**", ".github/workflows/frontend-next.yml"]
+  pull_request:
+    paths: ["frontend-next/**", "include/**", ".github/workflows/frontend-next.yml"]
+
+defaults:
+  run:
+    working-directory: frontend-next
+
+jobs:
+  quality:
+    name: Lint, typecheck, unit, build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-next/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run test/unit
+      - run: npm run build
+        env:
+          # la build non si collega al DB: bastano valori fittizi
+          OST_DB_NAME: osticket
+          OST_DB_USER: osticket
+          OST_DB_PASS: osticket
+          OST_SECRET_SALT: build-only
+          APP_SESSION_SECRET: build-only-build-only-build-only-0123
+
+  differential:
+    name: Harness differenziale PHP vs TypeScript
+    runs-on: ubuntu-24.04
+    env:
+      OST_DEV: /tmp/ost-dev
+      OST_DIR: /tmp/ost-dev/www
+      OST_CONFIG_PATH: /tmp/ost-dev/www/include/ost-config.php
+      OST_SENDMAIL: /tmp/ost-dev/bin/mailpit sendmail -S 127.0.0.1:1025
+      OST_SENDMAIL_PATH: /tmp/ost-dev/bin/mailpit sendmail -S 127.0.0.1:1025
+      OST_DB_TIMEZONE: UTC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mysqli, gd, imap, intl, mbstring, xml, zip, apcu
+      - name: MariaDB
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq mariadb-server
+          sudo service mariadb start
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-next/package-lock.json
+      - run: npm ci
+      - name: osTicket dalla fixture + Mailpit
+        run: bash dev/ci-setup.sh
+      - name: Test differenziali (stesse righe DB ed email del PHP)
+        run: npm run test:diff

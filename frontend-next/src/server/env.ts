@@ -39,7 +39,7 @@ export function installConfig(): OstInstallConfig {
   if (path) php = parseOstConfigPhp(readFileSync(path, "utf8"));
 
   const pick = (env: string, def: string, fallback = ""): string =>
-    process.env[env] ?? php[def] ?? fallback;
+    process.env[env] || php[def] || fallback;
 
   // DBHOST può essere "host:porta" o "host:/path/socket" come in osTicket
   const [host, port] = pick("OST_DB_HOST", "DBHOST", "localhost").split(":");

@@ -4,6 +4,10 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
+  // Docker: server autonomo (NEXT_OUTPUT=standalone); dietro reverse proxy in un sotto-percorso (NEXT_BASE_PATH=/app)
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
+  ...(process.env.NEXT_BASE_PATH ? { basePath: process.env.NEXT_BASE_PATH } : {}),
+  env: { NEXT_PUBLIC_BASE_PATH: process.env.NEXT_BASE_PATH ?? "" },
   // in sviluppo la app viene aperta anche come 127.0.0.1 (HMR e idratazione)
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   webpack(config) {

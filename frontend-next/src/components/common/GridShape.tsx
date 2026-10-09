@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { withBase } from "@/lib/base-path";
 
 export default function GridShape() {
   return (
@@ -7,7 +8,7 @@ export default function GridShape() {
         <Image
           width={540}
           height={254}
-          src="/images/shape/grid-01.svg"
+          src={withBase("/images/shape/grid-01.svg")}
           alt="grid"
         />
       </div>
@@ -15,7 +16,7 @@ export default function GridShape() {
         <Image
           width={540}
           height={254}
-          src="/images/shape/grid-01.svg"
+          src={withBase("/images/shape/grid-01.svg")}
           alt="grid"
         />
       </div>

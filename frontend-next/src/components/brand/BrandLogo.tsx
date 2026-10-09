@@ -3,6 +3,7 @@
 import { useBranding } from "@/context/BrandingContext";
 import { cn } from "@/utils";
 import Image from "next/image";
+import { withBase } from "@/lib/base-path";
 
 /**
  * Marchio dell'helpdesk.
@@ -29,7 +30,7 @@ export default function BrandLogo({
 
   if (variant === "icon") {
     return (
-      <Image src="/images/logo/osticket-icon.png" alt={name} width={height} height={height} priority className={cn("rounded-lg", className)} />
+      <Image src={withBase("/images/logo/osticket-icon.png")} alt={name} width={height} height={height} priority className={cn("rounded-lg", className)} />
     );
   }
 
@@ -37,18 +38,18 @@ export default function BrandLogo({
   if (custom) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- immagine servita dal DB osTicket, dimensioni ignote
-      <img src={`/api/branding/${audience}-logo`} alt={name} style={{ maxHeight: height, width: "auto" }} className={className} />
+      <img src={withBase(`/api/branding/${audience}-logo`)} alt={name} style={{ maxHeight: height, width: "auto" }} className={className} />
     );
   }
 
   const width = Math.round((height * 395) / 132);
   if (forceDark) {
-    return <Image src="/images/logo/osticket-logo-dark.png" alt={name} width={width} height={height} priority className={className} />;
+    return <Image src={withBase("/images/logo/osticket-logo-dark.png")} alt={name} width={width} height={height} priority className={className} />;
   }
   return (
     <>
-      <Image src="/images/logo/osticket-logo.png" alt={name} width={width} height={height} priority className={cn("dark:hidden", className)} />
-      <Image src="/images/logo/osticket-logo-dark.png" alt={name} width={width} height={height} priority className={cn("hidden dark:block", className)} />
+      <Image src={withBase("/images/logo/osticket-logo.png")} alt={name} width={width} height={height} priority className={cn("dark:hidden", className)} />
+      <Image src={withBase("/images/logo/osticket-logo-dark.png")} alt={name} width={width} height={height} priority className={cn("hidden dark:block", className)} />
     </>
   );
 }

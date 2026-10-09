@@ -96,6 +96,8 @@ Lingua: italiano per commenti, documentazione e risposte.
 - Navigazione: il menu admin è già completo (`admin/layout.tsx`, con link a `/admin/settings/*`, `/admin/topics`, …): crea le pagine a quei percorsi.
   - Il menu agenti (`agent/nav.tsx`) è del coordinatore: chiedi nel report se serve una voce nuova.
 
+- URL assoluti scritti a mano (`<img src>`, `next/image`, `href` verso `/api/...`, `fetch`) vanno passati per `withBase()` di `src/lib/base-path.ts` (la app può essere pubblicata sotto `/app`); i `Link`/`redirect` di `@/i18n/navigation` lo fanno da soli.
+
 ## Verifica prima di dichiarare finito
 - Typecheck: `npx tsc --noEmit -p .`. Considera solo gli errori nei tuoi file, gli altri agenti hanno lavori in corso.
 - Lint: `npx eslint <tuoi percorsi>`.

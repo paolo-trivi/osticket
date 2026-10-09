@@ -4,6 +4,7 @@ import GridShape from "@/components/common/GridShape";
 import { Link } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
+import { withBase } from "@/lib/base-path";
 
 export default function NotFound() {
   const t = useTranslations("notFound");
@@ -17,14 +18,14 @@ export default function NotFound() {
         </h1>
 
         <Image
-          src="/images/error/404.svg"
+          src={withBase("/images/error/404.svg")}
           alt="404"
           className="dark:hidden"
           width={472}
           height={152}
         />
         <Image
-          src="/images/error/404-dark.svg"
+          src={withBase("/images/error/404-dark.svg")}
           alt="404"
           className="hidden dark:block"
           width={472}

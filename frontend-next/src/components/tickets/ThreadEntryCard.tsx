@@ -2,6 +2,7 @@ import type { ThreadEntryView } from "@/server/domain/ticket/ticket";
 import { formatDbDate, isoOf } from "@/server/format/datetime";
 import { safeHtml, textToHtml } from "@/server/format/sanitize";
 import { cn } from "@/utils";
+import { withBase } from "@/lib/base-path";
 
 const KIND_STYLE: Record<ThreadEntryView["type"], string> = {
   M: "border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3",
@@ -20,7 +21,7 @@ function renderBody(entry: ThreadEntryView, iframeWhitelist: string[]): string {
   const html = entry.format === "html" ? entry.body : textToHtml(entry.body);
   return safeHtml(html, { iframeWhitelist, decode: false }).replace(
     /src="cid:([A-Za-z0-9_-]+)"/g,
-    (_, key: string) => `src="/api/agent/file/${key}?disposition=inline"`,
+    (_, key: string) => `src="${withBase(`/api/agent/file/${key}`)}?disposition=inline"`,
   );
 }
 
@@ -76,7 +77,7 @@ export default function ThreadEntryCard({
           {files.map((a) => (
             <a
               key={a.id}
-              href={`/api/agent/file/${a.key}`}
+              href={withBase(`/api/agent/file/${a.key}`)}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
             >
               📎 {a.name} <span className="text-gray-400">{humanSize(a.size)}</span>
