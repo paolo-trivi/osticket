@@ -9,7 +9,7 @@ Base attuale: osTicket **v1.18.4**, commit `8d38b06` del branch `develop` upstre
 ```bash
 git remote add upstream https://github.com/osTicket/osTicket.git   # una volta sola
 git fetch upstream
-git checkout -b sync/osticket-<versione>
+git checkout -b sync/osticket-<versione> main
 git merge -X subtree=legacy upstream/develop     # oppure un tag: upstream/v1.18.5
 ```
 
@@ -18,6 +18,8 @@ git merge -X subtree=legacy upstream/develop     # oppure un tag: upstream/v1.18
 - i **file nuovi** di upstream finiscono in `legacy/`.
 
 La procedura è verificata simulando un commit upstream sulla nostra base.
+
+Il branch `sync/osticket-<versione>` si apre come PR verso `main`: la CI esegue i test differenziali sul nuovo codice osTicket prima del merge.
 
 Se ci sono conflitti, riguardano solo `legacy/`: TailTicket non modifica il codice osTicket.
 

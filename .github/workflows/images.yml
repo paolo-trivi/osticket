@@ -1,4 +1,4 @@
-# Immagini Docker di TailTicket: build su ogni PR, pubblicazione su GHCR per develop e per i tag v*.
+# Immagini Docker di TailTicket: build su ogni PR, pubblicazione su GHCR per main e per i tag v*.
 #   ghcr.io/<owner>/tailticket         app Next.js (apps/web)
 #   ghcr.io/<owner>/tailticket-legacy  osTicket classico + cron (legacy/, deploy/osticket)
 name: images
@@ -7,7 +7,7 @@ on:
   pull_request:
     paths: ["apps/web/**", "legacy/**", "deploy/osticket/**", ".github/workflows/images.yml"]
   push:
-    branches: [develop]
+    branches: [main]
     tags: ["v*"]
 
 permissions:

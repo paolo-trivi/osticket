@@ -28,6 +28,7 @@ La CI (`.github/workflows/ci.yml`) esegue gli stessi controlli e i test differen
 Dettagli in [apps/web/AGENTS.md](apps/web/AGENTS.md).
 
 ## Commit e PR
+- Il branch principale è `main`: ogni PR parte da `main` e torna su `main`.
 - Messaggi di commit chiari, in italiano o inglese, che spieghino il **perché**.
 - Una PR per argomento. Descrivi cosa cambia, come l'hai verificato e le eventuali differenze volute rispetto al PHP.
 - Contribuendo accetti che il tuo codice sia distribuito con licenza GPL v2.

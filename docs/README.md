@@ -1,7 +1,7 @@
 # Documentazione di TailTicket
 
 ## Il progetto
-- [Presentazione](index.html): la pagina pubblica del progetto. È statica e si pubblica con GitHub Pages da `docs/` (Settings → Pages → branch `develop`, cartella `/docs`).
+- [Presentazione](index.html): la pagina pubblica del progetto. È statica e si pubblica con GitHub Pages da `docs/` (Settings → Pages → branch `main`, cartella `/docs`): https://paolo-trivi.github.io/tailticket/.
 - [Filosofia](philosophy.md): i principi con cui prendiamo le decisioni.
 - [Scope](scope.md): cosa TailTicket è e non è, funzioni, limiti noti.
 - [Roadmap](roadmap.md): fatto e prossimi passi.

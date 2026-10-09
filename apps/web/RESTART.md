@@ -1,6 +1,6 @@
 # RESTART — come riprendere il lavoro su TailTicket (apps/web)
 
-Aggiornato al 09/10/2026. Branch `claude/nextjs-frontend` → PR https://github.com/paolo-trivi/osticket/pull/1.
+Aggiornato al 09/10/2026. Branch `claude/nextjs-frontend` → PR https://github.com/paolo-trivi/tailticket/pull/1.
 I commit hanno autore **paolo-trivi** (`paolo.trivisonno@gmail.com`), **senza righe Co-Authored-By / Claude-Session** (regola fissa).
 
 Obiettivo: **TailTicket**, nuova app **Next.js** (cartella `apps/web/`, base grafica TailAdmin) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di TailTicket deve produrre **le stesse righe** (e le stesse email) del PHP.
