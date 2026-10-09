@@ -1,6 +1,6 @@
 # Brief per il lavoro in parallelo (agenti)
 
-Progetto: `/home/user/osticket/frontend-next`. È un'app Next.js 16 (App Router), React 19, TypeScript strict, Tailwind v4, stile TailAdmin brandizzato osTicket. Lavora sullo **stesso DB MySQL di osTicket 1.18.4**, il cui codice PHP originale è in `/home/user/osticket` (`include/`, `scp/`, client in root). Il PHP deve continuare a funzionare in parallelo sugli stessi dati.
+Progetto: `/home/user/osticket/apps/web`. È un'app Next.js 16 (App Router), React 19, TypeScript strict, Tailwind v4, stile TailAdmin brandizzato osTicket. Lavora sullo **stesso DB MySQL di osTicket 1.18.4**, il cui codice PHP originale è in `/home/user/osticket/legacy` (`include/`, `scp/`, portale clienti nella radice di `legacy/`). Il PHP deve continuare a funzionare in parallelo sugli stessi dati.
 
 Lingua: italiano per commenti, documentazione e risposte.
 

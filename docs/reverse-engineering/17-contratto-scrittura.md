@@ -1,8 +1,8 @@
 # 17 — Contratto di scrittura (coesistenza PHP ↔ Next.js)
 
-Questo documento elenca, **operazione per operazione**, le righe che osTicket PHP scrive nel database. La nuova app Next.js (`frontend-next/`) deve produrre **le stesse righe**, così il pannello PHP continua a funzionare sugli stessi dati.
+Questo documento elenca, **operazione per operazione**, le righe che osTicket PHP scrive nel database. La nuova app Next.js (`apps/web/`) deve produrre **le stesse righe**, così il pannello PHP continua a funzionare sugli stessi dati.
 
-Ogni voce è verificata dall'**harness differenziale** (`frontend-next/test/diff/`, comando `npm run test:diff`):
+Ogni voce è verificata dall'**harness differenziale** (`apps/web/test/diff/`, comando `npm run test:diff`):
 1. si clona il DB di sviluppo in uno snapshot;
 2. la stessa operazione viene eseguita con il codice PHP originale (`test/diff/php/runner.php`) su una copia e con il servizio TypeScript sull'altra;
 3. si confrontano tutte le tabelle, con i datetime "recenti" normalizzati a `<NOW>`.
@@ -61,7 +61,7 @@ Code dei ticket: per ogni agente e coda la nuova app mostra **gli stessi ticket 
 
 ## 2. Copertura per milestone
 
-Tutte le operazioni del backlog iniziale sono implementate in Next e coperte da scenari differenziali (`frontend-next/test/diff/`, 308 scenari). Il dettaglio delle righe scritte è nella §3, area per area.
+Tutte le operazioni del backlog iniziale sono implementate in Next e coperte da scenari differenziali (`apps/web/test/diff/`, 308 scenari). Il dettaglio delle righe scritte è nella §3, area per area.
 
 | Milestone | Operazioni | Metodi PHP di riferimento | Contratto |
 |---|---|---|---|
@@ -76,14 +76,14 @@ Tutte le operazioni del backlog iniziale sono implementate in Next e coperte da 
 
 Restano al PHP: cron, fetch delle email, API REST, installer/upgrade, plugin (codice), OAuth2 e le modifiche ai form che richiedono DDL.
 
-<!-- BEGIN contratti per area (generato da docs/contract/*.md) -->
-## 3. Contratti per area (Next.js)
+<!-- BEGIN contratti per area (generato da apps/web/docs/contract/*.md) -->
+## 3. Contratti per area (TailTicket)
 
-Sezione generata dai file `frontend-next/docs/contract/*.md`: ogni area documenta le righe scritte e le differenze volute rispetto al PHP. Ogni operazione è coperta da scenari in `frontend-next/test/diff/`.
+Sezione generata dai file `apps/web/docs/contract/*.md` con `npm run docs:contracts`: ogni area documenta le righe scritte e le differenze volute rispetto al PHP. Ogni operazione è coperta da scenari in `apps/web/test/diff/`.
 
 ### 3.1 infrastruttura, nota interna, risposta agente (M2.1–M2.2)
 
-Fonte: `frontend-next/docs/contract/core.md`.
+Fonte: `apps/web/docs/contract/core.md`.
 
 Verificato con `test/diff/ticket-post.diff.test.ts`: 7 scenari, righe DB ed email identiche al PHP.
 
@@ -208,7 +208,7 @@ Invio dall'email di alert (`alert_email_id`) con header `Auto-Submitted: auto-ge
 
 ### 3.2 azioni sul ticket di un agente (M2.3 parte A)
 
-Fonte: `frontend-next/docs/contract/actions.md`.
+Fonte: `apps/web/docs/contract/actions.md`.
 
 Verificato con `test/diff/ticket-actions.diff.test.ts`: **47 scenari**, righe DB ed email identiche al PHP
 (operazioni PHP in `test/diff/php/ops/actions.php`, che ripercorrono `include/ajax.tickets.php`).
@@ -459,7 +459,7 @@ Dopo l'azione:
 
 ### 3.3 modifica del ticket (M2.3 parte B, area "ticketedit")
 
-Fonte: `frontend-next/docs/contract/ticketedit.md`.
+Fonte: `apps/web/docs/contract/ticketedit.md`.
 
 Verificato con 60 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
 `test/diff/php/ops/ticketedit.php`):
@@ -619,7 +619,7 @@ Il PHP prepara il file in background e lo invia per email se non scaricato: qui 
 
 ### 3.4 area "create" (M3 A: creazione ticket e allegati)
 
-Fonte: `frontend-next/docs/contract/create.md`.
+Fonte: `apps/web/docs/contract/create.md`.
 
 Riferimenti PHP: `include/class.ticket.php` (Ticket::create, Ticket::open, filterTicketData, onNewTicket,
 onOpenLimit, postCannedReply, assign/assignToStaff/assignToTeam), `class.filter.php`, `class.filter_action.php`,
@@ -726,7 +726,7 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 
 ### 3.5 task, utenti, organizzazioni, profilo agente, 2FA (M3 parte B, area "people")
 
-Fonte: `frontend-next/docs/contract/people.md`.
+Fonte: `apps/web/docs/contract/people.md`.
 
 Verificato con i test differenziali (righe DB ed email identiche al PHP; operazioni PHP in `test/diff/php/ops/people.php`):
 
@@ -846,7 +846,7 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
 
 ### 3.6 area "portal" (M4: portale clienti)
 
-Fonte: `frontend-next/docs/contract/portal.md`.
+Fonte: `apps/web/docs/contract/portal.md`.
 
 Riferimenti PHP: root `index.php`, `login.php`, `logout.php`, `view.php`, `account.php`, `pwreset.php`,
 `profile.php`, `open.php`, `tickets.php`, `kb/*`; `include/class.auth.php` (UserAuthenticationBackend,
@@ -936,7 +936,7 @@ KB: sola lettura, il PHP non registra visualizzazioni (nessuna colonna `faq.view
 
 ### 3.7 area amministrazione: impostazioni, reparti, help topic, SLA, orari, agenti, team, ruoli (M5 parte A, area "admin")
 
-Fonte: `frontend-next/docs/contract/admin.md`.
+Fonte: `apps/web/docs/contract/admin.md`.
 
 Verificato con i test differenziali (righe DB ed email identiche al PHP; operazioni PHP in `test/diff/php/ops/admin.php`):
 
@@ -1088,7 +1088,7 @@ Il riallineamento dei flag dei filtri al cambio di stato (FilterAction::setFilte
 
 ### 3.8 area "adminsys" (M5 parte B)
 
-Fonte: `frontend-next/docs/contract/adminsys.md`.
+Fonte: `apps/web/docs/contract/adminsys.md`.
 
 Amministrazione di sistema: email, ban list, template, diagnostica, filtri, form, liste, pagine, code,
 API key, log, plugin, informazioni di sistema. Solo amministratori: `requireAdmin(locale)` in ogni

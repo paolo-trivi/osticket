@@ -3,8 +3,8 @@
 > Nuovo frontend Next.js di osTicket sullo **stesso database** del PHP · base grafica TailAdmin · Tailwind CSS v4 · next-intl
 
 ## Regole di progetto (prevalgono su quelle del template)
-- Leggere `README.md` (regole di coesistenza) e `../docs/reverse-engineering/` prima di toccare il dominio.
-- Mai DDL sul DB osTicket. Ogni scrittura deve riprodurre le righe che scrive il PHP: verificare con il codice `../include/class.*.php` e con l'harness differenziale.
+- Leggere `README.md` (regole di coesistenza) e `../../docs/reverse-engineering/` prima di toccare il dominio.
+- Mai DDL sul DB osTicket. Ogni scrittura deve riprodurre le righe che scrive il PHP: verificare con il codice `../../legacy/include/class.*.php` e con l'harness differenziale.
 - Accesso al DB solo da `src/server/**` (file con `import "server-only"`), tramite i servizi in `src/server/domain/`.
 - Nomi tabella senza prefisso in Kysely (`selectFrom("ticket")`); non usare alias uguali a nomi di tabella; nelle query `sql```...``` usare `table("ticket")`.
 - Datetime: stringhe nel fuso del DB, conversioni solo con `src/server/db/time.ts`; `NOW` per created/updated.

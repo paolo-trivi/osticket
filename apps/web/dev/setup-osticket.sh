@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Crea un'istanza osTicket PHP di sviluppo (stesso codice di questo repo) su MariaDB locale.
-# Uso: frontend-next/dev/setup-osticket.sh [--reset]
+# Crea un'istanza osTicket PHP di sviluppo (codice di legacy/ di questo repo) su MariaDB locale.
+# Uso: apps/web/dev/setup-osticket.sh [--reset]
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 OST_DIR="${OST_DIR:-/home/user/ost-dev/www}"
 export OST_DB_NAME="${OST_DB_NAME:-osticket}"
 export OST_DB_USER="${OST_DB_USER:-osticket}"
@@ -28,14 +28,13 @@ SQL
 
 mkdir -p "$OST_DIR"
 rsync -a --delete \
-  --exclude .git --exclude docs --exclude frontend-next \
   --exclude include/ost-config.php \
-  "$REPO_DIR/" "$OST_DIR/"
+  "$REPO_DIR/legacy/" "$OST_DIR/"
 
 if [[ ! -s "$OST_DIR/include/ost-config.php" ]] || ! grep -q "OSTINSTALLED',TRUE" "$OST_DIR/include/ost-config.php"; then
   cp "$OST_DIR/include/ost-sampleconfig.php" "$OST_DIR/include/ost-config.php"
   chmod 0666 "$OST_DIR/include/ost-config.php"
-  php "$REPO_DIR/frontend-next/dev/osticket-install.php" "$OST_DIR"
+  php "$REPO_DIR/apps/web/dev/osticket-install.php" "$OST_DIR"
 fi
 
 echo "osTicket PHP pronto in $OST_DIR (DB $OST_DB_NAME, prefisso $OST_PREFIX)."

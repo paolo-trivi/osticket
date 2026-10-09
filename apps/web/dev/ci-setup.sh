@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Ambiente per i test differenziali in CI (o su una macchina nuova) SENZA reinstallare osTicket:
-#  - copia il codice PHP di questo repo in $OST_DIR e scrive include/ost-config.php
+#  - copia il codice PHP di questo repo (legacy/) in $OST_DIR e scrive include/ost-config.php
 #  - crea DB e utente su MariaDB locale e carica la fixture dev/fixtures/osticket-dev.sql.gz
 #    (stessi dati del seed usato per scrivere i test)
 #  - scarica e avvia Mailpit (SMTP 1025, API 8025)
 # Variabili: OST_DEV (default /tmp/ost-dev), OST_DB_NAME/USER/PASS, OST_SECRET_SALT.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 OST_DEV="${OST_DEV:-/tmp/ost-dev}"
 OST_DIR="${OST_DIR:-$OST_DEV/www}"
 DB_NAME="${OST_DB_NAME:-osticket}"
@@ -27,10 +27,10 @@ GRANT ALL ON \`$DB_NAME\`.* TO '$DB_USER'@'127.0.0.1';
 GRANT ALL ON \`${DB_NAME}_diff%\`.* TO '$DB_USER'@'localhost';
 GRANT ALL ON \`${DB_NAME}_diff%\`.* TO '$DB_USER'@'127.0.0.1';
 SQL
-gunzip -c "$REPO_DIR/frontend-next/dev/fixtures/osticket-dev.sql.gz" | $SUDO mariadb "$DB_NAME"
+gunzip -c "$REPO_DIR/apps/web/dev/fixtures/osticket-dev.sql.gz" | $SUDO mariadb "$DB_NAME"
 
 mkdir -p "$OST_DIR"
-rsync -a --delete --exclude .git --exclude docs --exclude frontend-next --exclude include/ost-config.php "$REPO_DIR/" "$OST_DIR/"
+rsync -a --delete --exclude include/ost-config.php "$REPO_DIR/legacy/" "$OST_DIR/"
 sed -e "s/define('OSTINSTALLED',FALSE);/define('OSTINSTALLED',TRUE);/" \
     -e "s/%CONFIG-SIRI/$SALT/" \
     -e "s/%ADMIN-EMAIL/admin@example.com/" \

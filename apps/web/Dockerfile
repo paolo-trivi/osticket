@@ -1,5 +1,5 @@
 # Immagine della app Next.js che affianca osTicket PHP sullo stesso database.
-# Build: docker build -t osticket-next frontend-next
+# Build: docker build -t tailticket apps/web
 #        (opzionale: --build-arg NEXT_BASE_PATH=/app per servirla in un sotto-percorso)
 FROM node:22-alpine AS deps
 WORKDIR /app

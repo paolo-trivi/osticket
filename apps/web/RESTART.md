@@ -3,16 +3,16 @@
 Aggiornato al 09/10/2026. Branch `claude/nextjs-frontend` → PR https://github.com/paolo-trivi/osticket/pull/1.
 I commit hanno autore **paolo-trivi** (`paolo.trivisonno@gmail.com`), **senza righe Co-Authored-By / Claude-Session** (regola fissa).
 
-Obiettivo: nuova app **Next.js** (cartella `frontend-next/`, stile TailAdmin brandizzato osTicket) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di Next deve produrre **le stesse righe** (e le stesse email) del PHP.
+Obiettivo: nuova app **Next.js** (cartella `apps/web/`, stile TailAdmin brandizzato osTicket) sullo **stesso DB MySQL di osTicket 1.18.4**. Il pannello PHP deve continuare a funzionare in parallelo, e ogni scrittura di Next deve produrre **le stesse righe** (e le stesse email) del PHP.
 
 **Stato: milestone M0–M6 completate.** Restano solo i limiti noti (§5) e le rifiniture elencate in §4.
 
 Documenti da leggere prima di toccare codice:
-1. `frontend-next/README.md`: funzioni, deploy, CI, limiti noti.
-2. `frontend-next/AGENTS.md`: regole del progetto.
-3. `frontend-next/docs/parallel-brief.md`: convenzioni, API già pronte, come testare (brief per gli agenti).
+1. `apps/web/README.md`: funzioni, deploy, CI, limiti noti.
+2. `apps/web/AGENTS.md`: regole del progetto.
+3. `apps/web/docs/parallel-brief.md`: convenzioni, API già pronte, come testare (brief per gli agenti).
 4. `docs/reverse-engineering/00-INDICE.md`: knowledge base di osTicket (doc 00–17).
-5. `docs/reverse-engineering/17-contratto-scrittura.md`: contratto di scrittura. La §3 è generata da `frontend-next/docs/contract/*.md` (un file per area: core, actions, ticketedit, create, people, portal, admin, adminsys).
+5. `docs/reverse-engineering/17-contratto-scrittura.md`: contratto di scrittura. La §3 è generata da `apps/web/docs/contract/*.md` (un file per area: core, actions, ticketedit, create, people, portal, admin, adminsys).
 
 ---
 
@@ -24,7 +24,7 @@ apt-get install -y mariadb-server php8.3-apcu
 echo "apc.enable_cli=1" > /etc/php/8.3/cli/conf.d/99-apcu-cli.ini   # come in CI (vedi §2)
 service mariadb start
 
-cd frontend-next
+cd apps/web
 npm ci
 OST_DEV=/home/user/ost-dev bash dev/ci-setup.sh   # DB "osticket" dalla fixture, ost-config.php, Mailpit
 npm run dev:services                               # MariaDB, Mailpit (SMTP 1025 / UI 8025), osTicket PHP su :8080
@@ -69,7 +69,7 @@ I test differenziali confrontano **tutte le tabelle** del DB e le email via Mail
 
 Tempi e confronti: le date calcolate da `NOW()` (scadenze SLA, `est_duedate`) possono cadere a cavallo di un secondo tra PHP e TS. Alcuni test confrontano quelle colonne con tolleranza di 1–2 s, mai nell'harness condiviso.
 
-CI GitHub Actions (`.github/workflows/frontend-next.yml`):
+CI GitHub Actions (`.github/workflows/ci.yml`):
 - job `quality`: lint, typecheck, unit, build;
 - job `differential`: MariaDB e PHP 8.3, osTicket dalla fixture con `dev/ci-setup.sh`, poi `npm run test:diff`.
 - In CI l'estensione **APCu** è caricata: serve `apc.enable_cli=1` (impostato nel workflow), altrimenti `SavedQueue::clearCounts` del PHP va in errore fatale.

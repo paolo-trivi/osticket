@@ -1,15 +1,15 @@
-# CI della app Next.js (frontend-next/): qualità del codice e harness differenziale PHP vs TypeScript.
-name: frontend-next
+# CI di TailTicket (apps/web): qualità del codice e harness differenziale PHP (legacy/) vs TypeScript.
+name: ci
 
 on:
   push:
-    paths: ["frontend-next/**", "include/**", ".github/workflows/frontend-next.yml"]
+    paths: ["apps/web/**", "legacy/**", ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["frontend-next/**", "include/**", ".github/workflows/frontend-next.yml"]
+    paths: ["apps/web/**", "legacy/**", ".github/workflows/ci.yml"]
 
 defaults:
   run:
-    working-directory: frontend-next
+    working-directory: apps/web
 
 jobs:
   quality:
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend-next/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend-next/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - name: osTicket dalla fixture + Mailpit
         run: bash dev/ci-setup.sh

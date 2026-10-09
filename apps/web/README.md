@@ -89,8 +89,8 @@ I test differenziali clonano il DB di sviluppo, eseguono la stessa operazione co
 
 ### Docker
 ```bash
-docker build -t osticket-next frontend-next                       # app alla radice di un host dedicato
-docker build -t osticket-next --build-arg NEXT_BASE_PATH=/app frontend-next   # app sotto /app
+docker build -t tailticket apps/web                       # app alla radice di un host dedicato
+docker build -t tailticket --build-arg NEXT_BASE_PATH=/app apps/web   # app sotto /app
 ```
 Variabili d'ambiente principali:
 | Variabile | Uso |
@@ -116,7 +116,7 @@ OST_CONFIG_FILE=/var/www/osticket/include/ost-config.php APP_SESSION_SECRET=… 
 - Le email continuano a puntare agli URL del PHP (`scp/tickets.php`, `view.php`, `pwreset.php`…). Per far servire il portale clienti a Next, `deploy/nginx.conf` contiene i redirect (commentati) da attivare.
 
 ## CI
-Workflow GitHub Actions `.github/workflows/frontend-next.yml`:
+Workflow GitHub Actions `.github/workflows/ci.yml`:
 - job **quality**: lint, typecheck, unit test, `next build`;
 - job **differential**: installa MariaDB e PHP 8.3, ricrea osTicket dalla fixture (`dev/ci-setup.sh`, `dev/fixtures/osticket-dev.sql.gz`) con Mailpit ed esegue `npm run test:diff`.
 
