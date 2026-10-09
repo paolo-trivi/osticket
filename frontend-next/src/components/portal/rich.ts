@@ -1,0 +1,3 @@
+/** Stile per l'HTML dei contenuti (pagine, FAQ, voci del thread) senza plugin typography. */
+export const RICH_CLASS =
+  "text-theme-sm text-gray-700 dark:text-gray-300 break-words [&_a]:text-brand-600 [&_a]:underline dark:[&_a]:text-brand-400 [&_h1]:mb-3 [&_h1]:text-title-sm [&_h1]:font-semibold [&_h1]:text-gray-800 dark:[&_h1]:text-white/90 [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:font-semibold [&_p]:mb-3 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:ps-6 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:ps-6 [&_blockquote]:border-s-4 [&_blockquote]:border-gray-200 [&_blockquote]:ps-3 [&_img]:max-w-full [&_table]:w-full [&_td]:p-1";
