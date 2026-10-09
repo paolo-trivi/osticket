@@ -1136,3 +1136,13 @@ pre[class*="language-"].line-numbers {
     min-width: 580px;
   }
 }
+
+/* Corpo dei messaggi di thread (HTML proveniente da osTicket) */
+.thread-body p { margin: 0 0 0.75em; }
+.thread-body ul { list-style: disc; padding-inline-start: 1.5em; margin-bottom: 0.75em; }
+.thread-body ol { list-style: decimal; padding-inline-start: 1.5em; margin-bottom: 0.75em; }
+.thread-body blockquote { border-inline-start: 3px solid var(--color-gray-300); padding-inline-start: 0.75em; color: var(--color-gray-500); margin: 0.5em 0; }
+.thread-body a { color: var(--color-brand-600); text-decoration: underline; }
+.thread-body table { border-collapse: collapse; margin-bottom: 0.75em; }
+.thread-body td, .thread-body th { border: 1px solid var(--color-gray-200); padding: 0.25em 0.5em; }
+.thread-body img { max-width: 100%; height: auto; }

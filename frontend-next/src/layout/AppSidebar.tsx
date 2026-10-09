@@ -5,6 +5,7 @@ import { ChevronDownIcon, HorizontaLDots } from "@/icons";
 import { cn } from "@/utils";
 import BrandLogo from "@/components/brand/BrandLogo";
 import { useBranding } from "@/context/BrandingContext";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useSidebar } from "../context/SidebarContext";
@@ -15,24 +16,35 @@ interface Props {
   homeHref: string;
 }
 
-/** Voce attiva: percorso identico oppure sottopercorso (es. /agent/tickets/12 attiva "Ticket"). */
-function matches(pathname: string, href: string, exact?: boolean): boolean {
-  if (exact) return pathname === href;
-  return pathname === href || pathname.startsWith(href + "/");
+/**
+ * Voce attiva: percorso identico oppure sottopercorso (es. /agent/tickets/12 attiva "Ticket").
+ * Se il link ha parametri (es. ?queue=2) devono coincidere con quelli della pagina corrente.
+ */
+function matches(pathname: string, href: string, exact?: boolean, search?: URLSearchParams): boolean {
+  const [path, query] = href.split("?");
+  if (query) {
+    if (pathname !== path) return false;
+    const want = new URLSearchParams(query);
+    for (const [k, v] of want) if (search?.get(k) !== v) return false;
+    return true;
+  }
+  if (exact) return pathname === path;
+  return pathname === path || pathname.startsWith(path + "/");
 }
 
 export default function AppSidebar({ sections, homeHref }: Props) {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const { sidebarStyle } = useBranding();
   const pathname = usePathname();
+  const search = useSearchParams();
   const open = isExpanded || isHovered || isMobileOpen;
   // Sottomenu aperto: quello che contiene la pagina corrente, finché l'utente non ne apre/chiude uno
   const routeKey = useMemo(() => {
     for (const section of sections)
       for (const item of section.items)
-        if (item.children?.some((c) => matches(pathname, c.href, c.exact))) return item.key;
+        if (item.children?.some((c) => matches(pathname, c.href, c.exact, search))) return item.key;
     return null;
-  }, [pathname, sections]);
+  }, [pathname, sections, search]);
   const [userKey, setUserKey] = useState<string | null | undefined>(undefined);
   const [prevPath, setPrevPath] = useState(pathname);
   if (prevPath !== pathname) {
@@ -82,7 +94,7 @@ export default function AppSidebar({ sections, homeHref }: Props) {
             >
               <ul className="ms-9 mt-2 space-y-1">
                 {item.children.map((child) => {
-                  const active = matches(pathname, child.href, child.exact);
+                  const active = matches(pathname, child.href, child.exact, search);
                   return (
                     <li key={child.href}>
                       <Link
@@ -114,7 +126,7 @@ export default function AppSidebar({ sections, homeHref }: Props) {
       );
     }
 
-    const active = item.href ? matches(pathname, item.href, item.exact) : false;
+    const active = item.href ? matches(pathname, item.href, item.exact, search) : false;
     const className = cn(
       "group menu-item",
       active ? "menu-item-active" : "menu-item-inactive",

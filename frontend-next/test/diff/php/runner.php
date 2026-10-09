@@ -94,6 +94,21 @@ case 'queue.list':
     $result = ['ok' => true, 'ids' => $ids, 'count' => $counts['q'.$queue->getId()] ?? null];
     break;
 
+case 'ticket.access':
+    // Ticket::checkStaffPerm per ogni ticket: accesso e permessi del ruolo effettivo
+    $thisstaff = Staff::lookup($op['args']['agent']);
+    $GLOBALS['thisstaff'] = $thisstaff;
+    $perms = $op['args']['perms'];
+    $out = array();
+    foreach (Ticket::objects() as $T) {
+        $row = array('view' => (bool) $T->checkStaffPerm($thisstaff));
+        foreach ($perms as $p)
+            $row[$p] = (bool) $T->checkStaffPerm($thisstaff, $p);
+        $out[$T->getId()] = $row;
+    }
+    $result = ['ok' => true, 'access' => $out];
+    break;
+
 case 'queue.counts':
     $thisstaff = Staff::lookup($op['args']['agent']);
     $GLOBALS['thisstaff'] = $thisstaff;

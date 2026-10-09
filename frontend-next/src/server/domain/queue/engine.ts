@@ -139,6 +139,38 @@ export async function loadQueues(executor: DbOrTx = db()): Promise<Map<number, T
   return all;
 }
 
+/** Ricerca temporanea (AdhocSearch): non è una coda, appartiene all'agente. */
+export function adhocQueue(agent: Agent, criteria: Criterion[], title: string): TicketQueue {
+  const row: QueueRow = {
+    id: 0,
+    parent_id: 0,
+    columns_id: null,
+    sort_id: null,
+    flags: 0,
+    staff_id: agent.id,
+    sort: 0,
+    title,
+    config: JSON.stringify({ criteria, conditions: [] }),
+    filter: null,
+  };
+  return new TicketQueue(row, null, new Map());
+}
+
+/**
+ * Ricerca rapida di scp/tickets.php (a=search): email → user__emails__address, numero → number,
+ * altrimenti full-text. Massimo 3 parole.
+ */
+export function quickSearchCriteria(query: string): Criterion[] | null {
+  const q = query.trim();
+  if (!q || q.split(/\s+/u).length >= 4) return null;
+  if (/(.*@.{2,})|(.{2,}@.*)/.test(q)) {
+    const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q);
+    return [["user__emails__address", valid ? "equal" : "contains", q]];
+  }
+  if (/^\d+(\.\d+)?$/.test(q)) return [["number", "contains", q]];
+  return [[":keywords", null, q]];
+}
+
 /** Code visibili nella navigazione dell'agente: di sistema o personali, non disattivate. */
 export function navigableQueues(all: Map<number, TicketQueue>, agent: Agent): TicketQueue[] {
   return [...all.values()].filter(
@@ -172,7 +204,7 @@ export async function loadFieldRegistry(executor: DbOrTx = db()): Promise<FieldR
 
 // --- SQL di base ---------------------------------------------------------------
 
-const JOIN_ORDER: JoinKey[] = ["ST", "CD", "PR", "TH", "U", "ORG", "D", "S", "TM", "HT", "SL"];
+const JOIN_ORDER: JoinKey[] = ["ST", "CD", "PR", "TH", "U", "UE", "ORG", "D", "S", "TM", "HT", "SL"];
 
 function joinSql(key: JoinKey): RawBuilder<unknown> {
   switch (key) {
@@ -186,6 +218,8 @@ function joinSql(key: JoinKey): RawBuilder<unknown> {
       return sql`LEFT JOIN ${table("thread")} TH ON (TH.object_id = T.ticket_id AND TH.object_type = 'T')`;
     case "U":
       return sql`LEFT JOIN ${table("user")} U ON (U.id = T.user_id)`;
+    case "UE":
+      return sql`LEFT JOIN ${table("user_email")} UE ON (UE.user_id = T.user_id)`;
     case "ORG":
       return sql`LEFT JOIN ${table("organization")} ORG ON (ORG.id = U.org_id)`;
     case "D":
@@ -434,7 +468,11 @@ export async function listQueueTickets(
   const fields = await loadFieldRegistry(executor);
   const crit = compileCriteria([...queue.effectiveCriteria(), ...(opts.extraCriteria ?? [])], fields, { agent, userTz: ctx.userTz });
   const joins = new Set<JoinKey>(["ST", ...crit.joins]);
-  const conds: RawBuilder<unknown>[] = [...crit.conditions, visibilitySql(agent, false)];
+  // AdhocSearch/ricerche personali: chi ha "search.all" vede tutti i ticket (ignoreVisibilityConstraints)
+  const ignoreVisibility =
+    !queue.isAQueue && !queue.isASubQueue && queue.row.staff_id === agent.id && agent.hasGlobalPerm("search.all");
+  const conds: RawBuilder<unknown>[] = [...crit.conditions];
+  if (!ignoreVisibility) conds.push(visibilitySql(agent, false));
   if (queue.isAQueue || queue.isASubQueue) {
     // le code non mostrano i ticket figli di un merge (salvo collegati)
     conds.push(sql`(T.ticket_pid IS NULL OR (T.flags & 8) != 0)`);

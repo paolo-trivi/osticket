@@ -14,7 +14,7 @@ import { dateRange } from "./period";
  * Alias usati nella query: T ticket, ST stato, CD ticket__cdata, TH thread, U utente, ORG organizzazione,
  * D reparto, S agente, TM team, HT help topic, SL sla, PR priorità (via CD.priority).
  */
-export type JoinKey = "ST" | "CD" | "TH" | "U" | "ORG" | "D" | "S" | "TM" | "HT" | "SL" | "PR";
+export type JoinKey = "ST" | "CD" | "TH" | "U" | "UE" | "ORG" | "D" | "S" | "TM" | "HT" | "SL" | "PR";
 
 export type FieldKind =
   | "text" // FormField / TextboxField
@@ -92,6 +92,7 @@ export function baseFields(nameFormat: string): Record<string, FieldDef> {
     "thread__lastresponse": { kind: "datetime", col: "TH.lastresponse", joins: ["TH"] },
     "user__name": { kind: "text", col: "U.name", joins: ["U"] },
     "user__org__name": { kind: "text", col: "ORG.name", joins: ["U", "ORG"] },
+    "user__emails__address": { kind: "text", col: "UE.address", joins: ["UE"] },
     "user__org_id": { kind: "selection", col: "U.org_id", joins: ["U"] },
     "dept__name": { kind: "text", col: "D.name", joins: ["D"] },
     "topic__topic": { kind: "text", col: "HT.topic", joins: ["HT"] },

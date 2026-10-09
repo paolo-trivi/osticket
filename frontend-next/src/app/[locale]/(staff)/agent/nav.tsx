@@ -2,11 +2,14 @@ import { getTranslations } from "next-intl/server";
 
 import { DocsIcon, FolderIcon, GridIcon, GroupIcon, ListIcon, PlugInIcon, TaskIcon, UserCircleIcon } from "@/icons";
 import type { NavSection, ShellUser } from "@/layout/nav-types";
+import { agentQueueNav } from "@/server/domain/queue/context";
 import { GlobalPerm, TicketPerm, type Agent } from "@/server/domain/staff/staff";
 
 /** Menu del pannello agenti: stesse condizioni di visibilità della barra di navigazione di scp/. */
 export async function agentNav(agent: Agent): Promise<NavSection[]> {
   const t = await getTranslations("nav");
+  const tq = await getTranslations("queues");
+  const { top, counts } = await agentQueueNav(agent);
   const items: NavSection["items"] = [
     { key: "dashboard", label: t("items.dashboard"), icon: <GridIcon />, href: "/agent", exact: true },
     {
@@ -14,7 +17,15 @@ export async function agentNav(agent: Agent): Promise<NavSection[]> {
       label: t("items.tickets"),
       icon: <ListIcon />,
       children: [
-        { label: t("items.tickets"), href: "/agent/tickets" },
+        ...top.map((q) => {
+          const c = counts.get(q.id);
+          return {
+            label: tq.has(q.title) ? tq(q.title) : q.title,
+            href: `/agent/tickets?queue=${q.id}`,
+            exact: true,
+            badge: typeof c === "number" ? c : undefined,
+          };
+        }),
         ...(agent.hasPermInAnyRole(TicketPerm.CREATE)
           ? [{ label: t("items.newTicket"), href: "/agent/tickets/new", exact: true }]
           : []),
