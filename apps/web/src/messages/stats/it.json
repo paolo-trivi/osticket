@@ -1,0 +1,9 @@
+{
+  "stats": {
+    "range": "Dal {start} al {stop} incluso (fuso {tz})",
+    "datePlaceholder": "gg/mm/aaaa",
+    "rows": "{count, plural, one {# riga} other {# righe}}",
+    "export": "Esporta CSV",
+    "exportTitle": "Scarica la scheda «{tab}» in CSV con il periodo selezionato"
+  }
+}

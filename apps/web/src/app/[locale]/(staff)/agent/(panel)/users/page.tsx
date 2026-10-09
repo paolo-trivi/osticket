@@ -2,6 +2,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import DataTable, { Forbidden, PageHeader, SearchBox } from "@/components/common/DataTable";
 import LinkPager from "@/components/common/LinkPager";
+import AccountStatusBadge from "@/components/people/AccountStatusBadge";
 import { ImportUsersButton, NewRecordButton, RowSelect, UserMassBar } from "@/components/people/directory/DirectoryButtons";
 import { Link } from "@/i18n/navigation";
 import { db } from "@/server/db";
@@ -72,6 +73,7 @@ export default async function UsersPage({
           { key: "name", label: t("name"), ...sortCol("name") },
           { key: "email", label: t("email"), ...sortCol("email") },
           { key: "org", label: t("organization"), ...sortCol("org") },
+          { key: "status", label: t("status") },
           { key: "tickets", label: t("tickets") },
           { key: "updated", label: t("updated"), ...sortCol("updated") },
         ]}
@@ -86,6 +88,7 @@ export default async function UsersPage({
             ),
             email: u.email,
             org: u.org_id ? <Link href={`/agent/orgs/${u.org_id}`}>{u.org_name}</Link> : "—",
+            status: <AccountStatusBadge status={u.account_status} />,
             tickets: u.tickets ? <Link href={`/agent/tickets?user=${u.id}`}>{u.tickets}</Link> : 0,
             updated: formatDbDate(u.updated, tz, locale, "date"),
           },

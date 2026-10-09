@@ -56,6 +56,28 @@ const SELECT = sql`SELECT K.id, K.number, KC.title, K.created, K.updated, K.clos
   K.dept_id, D.name AS dept_name, K.staff_id, NULLIF(CONCAT_WS(' ', S.firstname, S.lastname), '') AS staff_name,
   K.team_id, TM.name AS team_name, TK.ticket_id, TK.number AS ticket_number, TH.id AS thread_id`;
 
+/** Condizione di una coda di task (tasks.inc.php), condivisa da lista e contatori. */
+function queueCondition(agent: Agent, queue: TaskQueueName): RawBuilder<unknown> {
+  const open = sql`(K.flags & ${TaskFlag.ISOPEN}) != 0`;
+  switch (queue) {
+    case "closed":
+      return sql`(K.flags & ${TaskFlag.ISOPEN}) = 0`;
+    case "overdue":
+      return sql`${open} AND (K.flags & ${TaskFlag.ISOVERDUE}) != 0`;
+    case "assigned":
+      return sql`${open} AND K.staff_id = ${agent.id}`;
+    default:
+      return open;
+  }
+}
+
+/** Numero di task visibili per ogni coda (contatori delle schede). */
+export async function countTaskQueues(agent: Agent, queues: readonly TaskQueueName[], executor: DbOrTx = db()): Promise<Record<TaskQueueName, number>> {
+  const cols = queues.map((q) => sql`SUM(CASE WHEN ${queueCondition(agent, q)} THEN 1 ELSE 0 END) AS ${sql.ref(q)}`);
+  const { rows } = await sql<Record<string, number | null>>`SELECT ${sql.join(cols)} ${FROM()} WHERE ${taskVisibility(agent)}`.execute(executor);
+  return Object.fromEntries(queues.map((q) => [q, Number(rows[0]?.[q] ?? 0)])) as Record<TaskQueueName, number>;
+}
+
 export async function listTasks(
   agent: Agent,
   opts: { queue: TaskQueueName; q?: string; ticketId?: number; page: number; pageSize: number },
@@ -65,12 +87,7 @@ export async function listTasks(
   if (opts.ticketId) conds.push(sql`K.object_type = 'T' AND K.object_id = ${opts.ticketId}`);
   else if (opts.q) {
     conds.push(sql`(K.number LIKE ${opts.q + "%"} OR KC.title LIKE ${"%" + opts.q + "%"})`);
-  } else {
-    if (opts.queue === "closed") conds.push(sql`(K.flags & ${TaskFlag.ISOPEN}) = 0`);
-    else conds.push(sql`(K.flags & ${TaskFlag.ISOPEN}) != 0`);
-    if (opts.queue === "overdue") conds.push(sql`(K.flags & ${TaskFlag.ISOVERDUE}) != 0`);
-    if (opts.queue === "assigned") conds.push(sql`K.staff_id = ${agent.id}`);
-  }
+  } else conds.push(queueCondition(agent, opts.queue));
   const where = sql.join(conds, sql` AND `);
   const order = opts.queue === "closed" ? sql`K.closed DESC` : opts.queue === "open" ? sql`K.created DESC` : sql`K.updated DESC`;
   const [{ rows }, { rows: count }] = await Promise.all([

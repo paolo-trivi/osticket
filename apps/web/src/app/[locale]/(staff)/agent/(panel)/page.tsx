@@ -3,9 +3,21 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import ComponentCard from "@/components/common/ComponentCard";
 import DataTable from "@/components/common/DataTable";
 import EventsChart from "@/components/dashboard/EventsChart";
+import StatsFilter from "@/components/dashboard/StatsFilter";
+import StatsTabs from "@/components/dashboard/StatsTabs";
 import { Link } from "@/i18n/navigation";
 import { agentQueueNav } from "@/server/domain/queue/context";
-import { PERIOD_CHOICES, plotData, reportRange, tabularData, type PeriodEnd } from "@/server/domain/stats/report";
+import {
+  PERIOD_CHOICES,
+  parseGroup,
+  parsePeriod,
+  plotData,
+  reportRange,
+  tabularData,
+  TABULAR_GROUPS,
+  type TabularGroup,
+  type TabularRow,
+} from "@/server/domain/stats/report";
 import { agentTimeZone } from "@/server/format/datetime";
 import { cn } from "@/utils";
 
@@ -26,13 +38,21 @@ export default async function AgentDashboardPage({
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("dashboard");
+  const ts = await getTranslations("stats");
   const sp = await searchParams;
   const tz = await agentTimeZone(agent);
-  const period = (PERIOD_CHOICES as readonly string[]).includes(sp.period ?? "") ? (sp.period as PeriodEnd) : "now";
-  const group = sp.group === "topic" || sp.group === "staff" ? sp.group : "dept";
+  const period = parsePeriod(sp.period);
+  const group = parseGroup(sp.group);
   const range = reportRange(sp.start, period, tz);
 
-  const [{ top, counts, all }, plot, table] = await Promise.all([agentQueueNav(agent), plotData(range, agent), tabularData(group, agent, range)]);
+  // Tutte e tre le schede: servono i conteggi delle righe; la tabella mostra quella attiva
+  const [{ top, counts, all }, plot, tables] = await Promise.all([
+    agentQueueNav(agent),
+    plotData(range, agent),
+    Promise.all(TABULAR_GROUPS.map((g) => tabularData(g, agent, range))),
+  ]);
+  const rowsOf = Object.fromEntries(TABULAR_GROUPS.map((g, i) => [g, tables[i]])) as Record<TabularGroup, TabularRow[]>;
+  const table = rowsOf[group];
   const kpi = (id: number) => (typeof counts.get(id) === "number" ? (counts.get(id) as number) : 0);
   const cards = [
     { label: t("kpi.open"), value: kpi(1), href: "/agent/tickets?queue=1" },
@@ -42,8 +62,16 @@ export default async function AgentDashboardPage({
   ].filter((c, i) => all.has([1, 4, 5, 9][i]));
   void top;
 
-  const groupHref = (g: string) => `/agent?group=${g}${sp.start ? `&start=${sp.start}` : ""}&period=${period}`;
-  const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(1));
+  // Stessi filtri per schede ed export (l'export rifà la stessa tabularData con questi parametri)
+  const filters: Record<string, string> = { start: sp.start ? range.startDay : "", period };
+  const query = (extra: Record<string, string>) =>
+    new URLSearchParams(Object.entries({ ...extra, ...filters }).filter(([, v]) => v !== "")).toString();
+  const hours = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const fmt = (n: number | null) => (n === null ? "—" : hours.format(n));
+  // Giorni (yyyy-mm-dd, già nel fuso dell'agente) formattati senza ulteriori conversioni di fuso
+  const dayFmt = new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone: "UTC" });
+  const day = (iso: string) => dayFmt.format(Date.parse(`${iso}T00:00:00Z`));
+  const rangeText = ts("range", { start: day(range.startDay), stop: day(range.lastDay), tz: range.zone });
 
   return (
     <div className="space-y-6">
@@ -59,44 +87,27 @@ export default async function AgentDashboardPage({
       </div>
 
       <ComponentCard title={t("activity")} desc={t("activityDesc")}>
-        <form action="/agent" className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-gray-500">{t("from")}</span>
-            <input type="date" name="start" defaultValue={sp.start} className="h-10 rounded-lg border border-gray-200 bg-transparent px-3 dark:border-gray-800 dark:text-white/90" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-gray-500">{t("period")}</span>
-            <select name="period" defaultValue={period} className="h-10 rounded-lg border border-gray-200 bg-transparent px-3 dark:border-gray-800 dark:bg-gray-900 dark:text-white/90">
-              {PERIOD_CHOICES.map((p) => (
-                <option key={p} value={p}>
-                  {t(`periods.${p.replace(/[+ ]/g, "")}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <input type="hidden" name="group" value={group} />
-          <button type="submit" className="h-10 rounded-lg bg-brand-500 px-4 text-white hover:bg-brand-600">
-            {t("refresh")}
-          </button>
-        </form>
-        {plot.days.length ? <EventsChart days={plot.days} series={plot.series.map((s) => ({ ...s, name: t.has(`eventNames.${s.name}`) ? t(`eventNames.${s.name}`) : s.name }))} /> : <p className="text-sm text-gray-500">{t("noData")}</p>}
+        <StatsFilter start={range.startDay} period={period} periods={PERIOD_CHOICES} group={group} rangeText={rangeText} />
+        {plot.days.length ? (
+          <EventsChart days={plot.days} series={plot.series.map((s) => ({ ...s, name: t.has(`eventNames.${s.name}`) ? t(`eventNames.${s.name}`) : s.name }))} />
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t("noData")}</p>
+        )}
       </ComponentCard>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {(["dept", "topic", "staff"] as const).map((g) => (
-            <Link
-              key={g}
-              href={groupHref(g)}
-              className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium",
-                g === group ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5",
-              )}
-            >
-              {t(`groups.${g}`)}
-            </Link>
-          ))}
-        </div>
+      <StatsTabs
+        active={group}
+        tabs={TABULAR_GROUPS.map((g) => ({
+          key: g,
+          label: t(`groups.${g}`),
+          count: rowsOf[g].length,
+          countLabel: ts("rows", { count: rowsOf[g].length }),
+          href: `/agent?${query({ group: g })}`,
+        }))}
+        exportHref={`/api/agent/stats/export?${query({ group, locale })}`}
+        exportLabel={ts("export")}
+        exportTitle={ts("exportTitle", { tab: t(`groups.${group}`) })}
+      >
         <DataTable
           empty={t("noData")}
           columns={[
@@ -125,7 +136,7 @@ export default async function AgentDashboardPage({
             },
           }))}
         />
-      </div>
+      </StatsTabs>
     </div>
   );
 }

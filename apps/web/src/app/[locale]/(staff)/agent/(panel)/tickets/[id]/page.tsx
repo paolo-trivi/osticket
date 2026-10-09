@@ -12,6 +12,8 @@ import { Link } from "@/i18n/navigation";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { listCanned } from "@/server/domain/kb/kb";
+import { listTasks, TaskFlag } from "@/server/domain/task/tasks";
+import { STATUS_ENABLED } from "@/server/domain/ticket/status";
 import { TicketPerm } from "@/server/domain/staff/staff";
 import { formatAgentName } from "@/server/domain/ticket/rows";
 import {
@@ -159,9 +161,22 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
     .where("object_id", "=", ticket.ticket_id)
     .executeTakeFirst();
   const taskCount = Number(taskRow?.n ?? 0);
+  const [{ rows: ticketTasks }, tTask, tSource] = await Promise.all([
+    taskCount ? listTasks(agent, { queue: "open", ticketId: ticket.ticket_id, page: 1, pageSize: 50 }) : Promise.resolve({ rows: [], total: 0 }),
+    getTranslations("tasks"),
+    getTranslations("ticketEdit.sources"),
+  ]);
   const canClose = role.perms.has(TicketPerm.CLOSE);
   const [statusList, cannedList, me, dept] = await Promise.all([
-    db().selectFrom("ticket_status").select(["id", "name", "state"]).where("state", "in", canClose ? ["open", "closed"] : ["open"]).orderBy("sort").orderBy("name").execute(),
+    db()
+      .selectFrom("ticket_status")
+      .select(["id", "name", "state"])
+      .where("state", "in", canClose ? ["open", "closed"] : ["open"])
+      // solo stati abilitati, come la select del PHP (isEnabled) e isSelectableStatus lato server
+      .where((eb) => eb(eb("mode", "&", STATUS_ENABLED), "!=", 0))
+      .orderBy("sort")
+      .orderBy("name")
+      .execute(),
     listCanned(agent),
     db().selectFrom("staff").select(["signature", "default_signature_type"]).where("staff_id", "=", agent.id).executeTakeFirst(),
     db().selectFrom("department").select(["signature", "ispublic"]).where("id", "=", ticket.dept_id).executeTakeFirst(),
@@ -291,7 +306,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
               <Info label={t("department")}>{ticket.dept_name}</Info>
               <Info label={t("helpTopic")}>{ticket.topic_name}</Info>
               <Info label={t("sla")}>{ticket.sla_name}</Info>
-              <Info label={t("source")}>{ticket.source}</Info>
+              <Info label={t("source")}>{tSource.has(ticket.source) ? tSource(ticket.source) : ticket.source}</Info>
               <Info label={t("created")}>{formatDbDate(ticket.created, tz, locale)}</Info>
               <Info label={t("dueDate")}>{formatDbDate(ticket.duedate ?? ticket.est_duedate, tz, locale)}</Info>
               <Info label={t("lastMessage")}>{formatDbDate(ticket.lastmessage, tz, locale)}</Info>
@@ -316,6 +331,31 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
               <Info label={t("yourRole")}>{role.name || t("viewOnly")}</Info>
             </dl>
           </ComponentCard>
+
+          {ticketTasks.length > 0 && (
+            <ComponentCard title={t("tasks", { count: ticketTasks.length })}>
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {ticketTasks.map((k) => {
+                  const open = (k.flags & TaskFlag.ISOPEN) !== 0;
+                  return (
+                    <li key={k.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <Link href={`/agent/tasks/${k.id}`} className="block truncate text-theme-sm font-medium text-gray-800 hover:text-brand-600 dark:text-white/90 dark:hover:text-brand-400">
+                          #{k.number} · {k.title || tTask("task")}
+                        </Link>
+                        <p className="truncate text-theme-xs text-gray-500 dark:text-gray-400">
+                          {[k.staff_name || k.team_name, k.duedate ? `${tTask("due")} ${formatDbDate(k.duedate, tz, locale, "short")}` : null].filter(Boolean).join(" · ") || k.dept_name}
+                        </p>
+                      </div>
+                      <Badge size="sm" color={open ? "success" : "light"}>
+                        {open ? tTask("open") : tTask("completed")}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            </ComponentCard>
+          )}
 
           {collaborators.length > 0 && (
             <ComponentCard title={t("collaborators")}>

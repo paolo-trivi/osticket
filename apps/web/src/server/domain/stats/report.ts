@@ -17,6 +17,12 @@ export type PeriodEnd = (typeof PERIOD_CHOICES)[number];
 export interface ReportRange {
   start: string;
   stop: string;
+  /** primo giorno dell'intervallo (yyyy-mm-dd) nel fuso dell'agente */
+  startDay: string;
+  /** ultimo giorno incluso (yyyy-mm-dd) nel fuso dell'agente: se la fine cade a mezzanotte, il giorno prima */
+  lastDay: string;
+  /** fuso dell'agente in cui è calcolato l'intervallo */
+  zone: string;
 }
 
 /** getDateRange(): inizio scelto dall'utente (default: un mese fa), fine "oggi" o inizio + intervallo. */
@@ -27,7 +33,27 @@ export function reportRange(startDate: string | undefined, end: PeriodEnd, userT
   let stop = now;
   const m = /^\+(\d+) (days|month|months)$/.exec(end);
   if (m) stop = m[2] === "days" ? valid.plus({ days: Number(m[1]) }) : valid.plus({ months: Number(m[1]) });
-  return { start: toDb(valid), stop: toDb(stop) };
+  // Solo per le etichette (testo dell'intervallo, nome del file CSV): le query usano start/stop
+  const atMidnight = +stop === +stop.startOf("day") && stop > valid;
+  return {
+    start: toDb(valid),
+    stop: toDb(stop),
+    startDay: valid.toISODate() ?? "",
+    lastDay: (atMidnight ? stop.minus({ days: 1 }) : stop).toISODate() ?? "",
+    zone: userTz,
+  };
+}
+
+/** Normalizza i parametri della dashboard (?start=&period=&group=) come la pagina. */
+export function parsePeriod(period: string | null | undefined): PeriodEnd {
+  return (PERIOD_CHOICES as readonly string[]).includes(period ?? "") ? (period as PeriodEnd) : "now";
+}
+
+export const TABULAR_GROUPS = ["dept", "topic", "staff"] as const;
+export type TabularGroup = (typeof TABULAR_GROUPS)[number];
+
+export function parseGroup(group: string | null | undefined): TabularGroup {
+  return group === "topic" || group === "staff" ? group : "dept";
 }
 
 async function eventIds(executor: DbOrTx): Promise<Record<string, number>> {
@@ -77,7 +103,7 @@ export interface TabularRow {
 
 /** getTabularData($group): righe per reparto, help topic o agente, con le stesse restrizioni del PHP. */
 export async function tabularData(
-  group: "dept" | "topic" | "staff",
+  group: TabularGroup,
   agent: Agent,
   range: ReportRange,
   executor: DbOrTx = db(),

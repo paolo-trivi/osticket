@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { currentAgent } from "@/server/auth/staff-auth";
-import { db } from "@/server/db";
+import { agentFileRef } from "@/server/domain/file/agent-access";
 import { readStoredFile } from "@/server/domain/file/storage";
-import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 
 /**
- * Download di un allegato di thread per agenti (equivalente di file.php con sessione staff).
- * Il file è identificato dalla sua chiave (file.key, usata anche nei riferimenti cid: del corpo);
- * l'agente deve poter vedere il ticket a cui appartiene l'entry.
+ * Download di un file per agenti (equivalente di file.php con sessione staff).
+ * Il file è identificato dalla sua chiave (file.key, usata anche nei riferimenti cid: del corpo) e
+ * l'agente deve poter vedere almeno un oggetto a cui è allegato: voce di thread di un ticket o di un
+ * task, FAQ, risposta predefinita (controlli in agentFileRef). Altrimenti 404, senza rivelare se il
+ * file esiste.
  * Inline solo per immagini non SVG, come AttachmentFile::display (patch di sicurezza "Inline SVGs").
  */
 export async function GET(request: Request, { params }: { params: Promise<{ key: string }> }) {
@@ -16,20 +17,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   if (!agent) return new NextResponse(null, { status: 403 });
   const { key } = await params;
 
-  const ref = await db()
-    .selectFrom("file as f")
-    .innerJoin("attachment as a", "a.file_id", "f.id")
-    .innerJoin("thread_entry as e", (j) => j.onRef("e.id", "=", "a.object_id").on("a.type", "=", "H"))
-    .innerJoin("thread as th", "th.id", "e.thread_id")
-    .select(["f.id as file_id", "a.name", "th.object_id", "th.object_type"])
-    .where("f.key", "=", key)
-    .executeTakeFirst();
-  if (!ref || !["T", "C"].includes(ref.object_type)) return new NextResponse(null, { status: 404 });
+  const ref = await agentFileRef(agent, key);
+  if (!ref) return new NextResponse(null, { status: 404 });
 
-  const ticket = await loadTicket(ref.object_id, agent.id);
-  if (!ticket || !(await checkStaffPerm(ticket, agent))) return new NextResponse(null, { status: 404 });
-
-  const file = await readStoredFile(ref.file_id);
+  const file = await readStoredFile(ref.fileId);
   if (!file) return new NextResponse(null, { status: 404 });
 
   const name = ref.name || file.name;

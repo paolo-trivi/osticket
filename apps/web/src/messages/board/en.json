@@ -1,0 +1,134 @@
+{
+  "board": {
+    "pageTitle": "Board",
+    "subtitle": "Kanban view of tickets",
+    "count": "{total, plural, =0 {no tickets} one {# ticket} other {# tickets}}",
+    "toolbar": {
+      "source": "Source",
+      "allVisible": "All my visible tickets",
+      "queues": "Queues",
+      "groupBy": "Columns",
+      "swimlanes": "Swimlanes",
+      "search": "Search the board",
+      "searchPlaceholder": "Number, email or text",
+      "filters": "Quick filters",
+      "mine": "Only mine",
+      "unassigned": "Unassigned",
+      "overdue": "Overdue",
+      "priority": "Priority",
+      "clear": "Clear filters",
+      "settings": "View options",
+      "loading": "Updating…"
+    },
+    "group": {
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "dept": "Department"
+    },
+    "lane": {
+      "none": "None",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "dept": "Department"
+    },
+    "special": {
+      "unassigned": "Unassigned",
+      "noPriority": "No priority",
+      "noDept": "No department",
+      "all": "All"
+    },
+    "column": {
+      "count": "{count, plural, one {# ticket} other {# tickets}}",
+      "empty": "No tickets",
+      "dropHere": "Drop here",
+      "notAllowed": "Not allowed",
+      "loadMore": "Load more ({remaining})",
+      "loadingMore": "Loading…",
+      "recentOnly": "Closed in the last {days} days",
+      "olderHidden": "{count, plural, one {# older closed ticket hidden} other {# older closed tickets hidden}}",
+      "showOlder": "Show older ones too",
+      "showRecentOnly": "Recent only",
+      "sourceNoClosed": "The source queue has no closed tickets: tickets moved here leave it.",
+      "me": "Me",
+      "team": "Team",
+      "collapse": "Collapse",
+      "expand": "Expand"
+    },
+    "lanesHeader": {
+      "count": "{count, plural, one {# ticket} other {# tickets}}"
+    },
+    "card": {
+      "open": "Open ticket {number}",
+      "priority": "Priority: {name}",
+      "assignee": "Assigned to {name}",
+      "team": "Assigned to team {name}",
+      "unassigned": "Unassigned",
+      "overdue": "Overdue",
+      "dueSoon": "Due soon",
+      "due": "Due: {date}",
+      "updated": "Updated {when}",
+      "thread": "{count, plural, one {# thread entry} other {# thread entries}}",
+      "attachments": "{count, plural, one {# attachment} other {# attachments}}",
+      "locked": "Locked by {name}",
+      "actions": "Actions for ticket {number}",
+      "moveTo": "Move to…",
+      "current": "current status",
+      "noMoves": "No moves allowed",
+      "preview": "Preview",
+      "openTicket": "Open ticket",
+      "dragHint": "Drag to change status"
+    },
+    "drag": {
+      "disabledGroup": "Drag and drop is coming soon for this grouping (assignment and transfer arrive with the next release).",
+      "statusOnly": "Group by status to move tickets by dragging them",
+      "reasonSame": "Current status",
+      "reasonForbidden": "You are not allowed to set this status",
+      "reasonLane": "Move within the same swimlane only",
+      "moving": "Moving {number} to “{status}”…",
+      "moved": "Ticket {number} moved to “{status}”",
+      "undoHint": "Undo",
+      "keyboardHelp": "Use the card menu (Move to…) to move it with the keyboard"
+    },
+    "errors": {
+      "title": "Could not move ticket {number}",
+      "not_found": "Ticket not found or no longer accessible.",
+      "forbidden": "You are not allowed to set this status.",
+      "invalid_status": "Invalid status.",
+      "same_status": "The ticket already has this status.",
+      "not_closeable": "The ticket cannot be closed.",
+      "open_tasks": "The ticket has open tasks: close them before closing the ticket.",
+      "missing_fields": "Fill in the ticket's required fields before closing it.",
+      "topic_required": "Set a help topic before closing the ticket.",
+      "internal": "Unexpected error while changing the status.",
+      "session": "Session expired: please sign in again.",
+      "invalid": "Invalid request.",
+      "loadMore": "Could not load more tickets."
+    },
+    "state": {
+      "notFound": "Queue not found or not accessible.",
+      "tooShort": "The search text must be at least 3 characters long.",
+      "noStatuses": "No statuses available for the columns.",
+      "empty": "No tickets match the filters.",
+      "readOnly": "Read only: you are not allowed to change the status of these tickets.",
+      "tooManyWords": "Search for at most 3 words."
+    },
+    "preview": {
+      "title": "Ticket preview",
+      "close": "Close preview",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "dept": "Department",
+      "topic": "Help topic",
+      "user": "User",
+      "due": "Due",
+      "updated": "Last update",
+      "lastMessages": "Latest messages",
+      "noMessages": "No messages",
+      "loading": "Loading…",
+      "error": "Could not load the preview.",
+      "open": "Open ticket"
+    }
+  }
+}

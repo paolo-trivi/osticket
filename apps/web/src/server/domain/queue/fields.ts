@@ -257,6 +257,10 @@ export function criterionSql(
   const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value as object) : [];
 
   switch (field.kind) {
+    // TextboxField / FormField::getSearchQ: set, nset, equal, nequal, contains, match
+    case "text":
+      return genericQ(col, method, value);
+
     case "bool":
       if (method === "set") return sql`(${col} = '1')`;
       if (method === "nset") return sql`(${col} = '0')`;

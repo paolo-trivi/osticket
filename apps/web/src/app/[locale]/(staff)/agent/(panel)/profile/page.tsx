@@ -5,12 +5,14 @@ import ComponentCard from "@/components/common/ComponentCard";
 import { PageHeader } from "@/components/common/DataTable";
 import InfoRow from "@/components/common/InfoRow";
 import ProfileForm from "@/components/people/profile/ProfileForm";
+import PermissionList from "@/components/people/profile/PermissionList";
 import { PasswordCard, TwoFactorCard } from "@/components/people/profile/SecurityCards";
 import Badge from "@/components/ui/badge/Badge";
 import { staff2faConfig } from "@/server/auth/mfa";
 import { sessionResetToken } from "@/server/auth/staff-recovery";
 import { coreConfig } from "@/server/config/config";
 import { db, table } from "@/server/db";
+import { loadAgentAccess } from "@/server/domain/staff/access";
 import { GlobalPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
@@ -49,6 +51,7 @@ export default async function ProfilePage({ params, searchParams }: { params: Pr
   const resetToken = await sessionResetToken();
   const forced = !!sp.pwchange || agent.mustChangePassword;
   const r = agent.row;
+  const access = await loadAgentAccess(agent);
 
   return (
     <div className="space-y-6">
@@ -103,14 +106,41 @@ export default async function ProfilePage({ params, searchParams }: { params: Pr
               <InfoRow label={t("lastLogin")} value={formatDbDate(r.lastlogin, tz, locale)} />
             </dl>
           </ComponentCard>
+          <ComponentCard title={t("access")}>
+            <dl>
+              <InfoRow label={t("primaryDept")} value={`${access.primary.dept} · ${access.primary.role}`} />
+              <InfoRow label={t("teams")} value={access.teams.length ? access.teams.join(", ") : t("noTeams")} />
+            </dl>
+            <h4 className="mt-4 mb-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">{t("extendedAccess")}</h4>
+            {access.extended.length ? (
+              <ul className="divide-y divide-gray-100 text-theme-sm dark:divide-gray-800">
+                {access.extended.map((a) => (
+                  <li key={a.dept} className="flex items-center justify-between gap-3 py-2">
+                    <span className="min-w-0 truncate text-gray-800 dark:text-white/90">
+                      {a.dept} <span className="text-gray-500 dark:text-gray-400">· {a.role}</span>
+                    </span>
+                    <Badge size="sm" color={a.alerts ? "success" : "light"}>
+                      {t("alerts")}: {a.alerts ? t("alertsOn") : t("alertsOff")}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">{t("noExtended")}</p>
+            )}
+          </ComponentCard>
           <ComponentCard title={t("permissions")}>
-            <div className="flex flex-wrap gap-2">
-              {globalPerms.map((p) => (
-                <Badge key={p} size="sm" color="info">{p}</Badge>
-              ))}
-              {agent.primaryRole.perms.keys().map((p) => (
-                <Badge key={p} size="sm" color="success">{p}</Badge>
-              ))}
+            <div className="space-y-4">
+              <div>
+                <h4 className="mb-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">{t("rolePerms", { role: agent.primaryRole.name })}</h4>
+                <PermissionList perms={[...agent.primaryRole.perms.keys()]} color="success" />
+              </div>
+              {globalPerms.length > 0 && (
+                <div>
+                  <h4 className="mb-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">{t("agentPerms")}</h4>
+                  <PermissionList perms={globalPerms} color="info" />
+                </div>
+              )}
             </div>
           </ComponentCard>
         </div>
