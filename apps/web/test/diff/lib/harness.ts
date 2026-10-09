@@ -5,6 +5,8 @@ import { createConnection, type Connection, type RowDataPacket } from "mysql2/pr
 
 import { installConfig } from "@/server/env";
 
+import { maskAlertTime } from "./alert-time";
+
 /**
  * Harness differenziale: la stessa operazione viene eseguita
  *  (a) dal codice PHP originale di osTicket sul DB `<base>_diff_php`
@@ -121,6 +123,8 @@ export async function dumpDatabase(dbName: string, opts: NormalizeOptions = {}):
             if (typeof value === "string" && DATETIME_RE.test(value)) {
               const ms = Date.parse(value.replace(" ", "T") + "Z");
               row[col] = Math.abs(ms - nowMs) <= window * 1000 ? "<NOW>" : value;
+            } else if (name === "syslog" && col === "log" && typeof value === "string") {
+              row[col] = maskAlertTime(value);
             } else if (Buffer.isBuffer(value)) {
               row[col] = `<bin:${value.toString("hex").slice(0, 64)}>`;
             } else {

@@ -1,6 +1,8 @@
 import { installConfig } from "@/server/env";
 import { decodeMessageId } from "@/server/mail/message-id";
 
+import { maskAlertTime } from "./alert-time";
+
 /**
  * Accesso a Mailpit (SMTP finto dell'ambiente di sviluppo) per confrontare le email inviate da PHP e TS.
  */
@@ -56,8 +58,8 @@ export async function fetchMails(expected = 0, timeoutMs = 5000): Promise<Captur
       from: fmt(msg.From),
       to: (msg.To ?? []).map(fmt),
       cc: (msg.Cc ?? []).map(fmt),
-      html: msg.HTML,
-      text: msg.Text,
+      html: maskAlertTime(msg.HTML),
+      text: maskAlertTime(msg.Text),
       messageId: msg.MessageID,
     });
   }
