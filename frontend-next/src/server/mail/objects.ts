@@ -41,31 +41,52 @@ export async function formAnswerMap(executor: DbOrTx, objectType: string, object
   return out;
 }
 
-/** FormattedDate: formati ICU della configurazione core nel fuso di sistema. */
+/**
+ * FormattedDate (include/class.format.php): Format::date/datetime/time/daydatetime nel fuso di sistema.
+ * Con `date_formats = custom` si usano i pattern della configurazione; altrimenti i formati ICU della
+ * lingua di sistema (date SHORT, ora SHORT, "long" = pattern data + " " + pattern ora, "full" = FULL + SHORT).
+ */
 export class FormattedDate implements TemplateVariable {
   constructor(
     private readonly value: string,
     private readonly cfg: ConfigNamespace,
     private readonly dbZone: string,
   ) {}
-  private fmt(key: string): string {
+  private fmt(kind: "short" | "long" | "time" | "full"): string {
     const dt = DateTime.fromSQL(this.value, { zone: this.dbZone }).setZone(this.cfg.str("default_timezone") || this.dbZone);
     if (!dt.isValid) return "";
-    return dt.setLocale("en-US").toFormat(this.cfg.str(key) || "MM/dd/y h:mm a");
+    if (this.cfg.str("date_formats") === "custom") {
+      const key = { short: "date_format", long: "datetime_format", time: "time_format", full: "daydatetime_format" }[kind];
+      return dt.setLocale("en-US").toFormat(this.cfg.str(key) || "MM/dd/y h:mm a");
+    }
+    const locale = (this.cfg.str("system_language") || "en_US").replace("_", "-");
+    const tz = dt.zoneName ?? "UTC";
+    // ICU >= 72 (PHP intl) separa l'ora da AM/PM con U+202F; V8 lo riporta a uno spazio normale
+    const icu = (o: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat(locale, { ...o, timeZone: tz })
+        .formatToParts(dt.toJSDate())
+        .map((p, i, all) => (p.type === "literal" && p.value === " " && all[i + 1]?.type === "dayPeriod" ? "\u202f" : p.value))
+        .join("");
+    switch (kind) {
+      case "short": return icu({ dateStyle: "short" });
+      case "time": return icu({ timeStyle: "short" });
+      case "full": return icu({ dateStyle: "full", timeStyle: "short" });
+      default: return `${icu({ dateStyle: "short" })} ${icu({ timeStyle: "short" })}`;
+    }
   }
   getVar(tag: string): unknown {
     switch (tag) {
-      case "short": return this.fmt("date_format");
-      case "long": return this.fmt("datetime_format");
-      case "time": return this.fmt("time_format");
-      case "full": return this.fmt("daydatetime_format");
+      case "short":
+      case "long":
+      case "time":
+      case "full": return this.fmt(tag);
       case "system":
-      case "user": return this.fmt("datetime_format");
+      case "user": return this.fmt("long");
     }
     return undefined;
   }
   asVar(): string {
-    return this.fmt("datetime_format");
+    return this.fmt("long");
   }
 }
 

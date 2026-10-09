@@ -88,9 +88,16 @@ async function queryBoth(query: string): Promise<[RowDataPacket[], RowDataPacket
 async function compareAll(extraIgnore: string[] = []) {
   expect(await compareWorkingDatabases({ ignore: ["ticket.est_duedate", ...extraIgnore] })).toEqual([]);
   const [php, ts] = await queryBoth(
-    "SELECT ticket_id, TIMESTAMPDIFF(SECOND, created, est_duedate) AS due, TIMESTAMPDIFF(SECOND, created, duedate) AS duedate FROM `{db}`.{p}ticket ORDER BY ticket_id",
+    "SELECT ticket_id, TIMESTAMPDIFF(SECOND, created, est_duedate) AS due FROM `{db}`.{p}ticket ORDER BY ticket_id",
   );
-  expect(ts).toEqual(php);
+  // `duedate` (scelta dall'agente) è già confrontata in assoluto; per `est_duedate` lo scarto può
+  // differire di 1 s se le due esecuzioni cadono a cavallo di un secondo tra NOW() e il calcolo SLA
+  expect(ts.length).toEqual(php.length);
+  ts.forEach((r, i) => {
+    expect(r.ticket_id).toEqual(php[i].ticket_id);
+    if (r.due === null || php[i].due === null) expect(r.due).toEqual(php[i].due);
+    else expect(Math.abs(Number(r.due) - Number(php[i].due))).toBeLessThanOrEqual(1);
+  });
 }
 
 function expectSameResult(php: PhpResult, ts: CreateResult) {
