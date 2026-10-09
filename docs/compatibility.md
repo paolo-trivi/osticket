@@ -12,7 +12,7 @@ La promessa di TailTicket è semplice: **un database osTicket resta un database 
 3. **Stesse email.** Template, variabili `%{…}`, destinatari, header e Message-ID firmati con `SECRET_SALT`, così il threading delle risposte via email continua a funzionare.
 4. **Coesistenza.** Il pannello classico e TailTicket possono lavorare insieme sugli stessi dati in qualsiasi momento.
 
-Le uniche differenze volute riguardano i **difetti di sicurezza o permessi** di osTicket, che TailTicket non replica: applica la regola più stretta. Sono tutte elencate per area nel doc 17 §3 e nel doc 14 della knowledge base.
+Le differenze volute riguardano i **difetti di sicurezza o permessi** di osTicket, che TailTicket non replica (applica la regola più stretta), e pochi difetti funzionali evidenti che impedirebbero di lavorare: per esempio un campo disabilitato che blocca per sempre la chiusura, o una ricerca che perde risultati. Ogni differenza ha un test e un perché, ed è elencata per area nel doc 17 §3 e nel doc 14 della knowledge base.
 
 ## Come lo verifichiamo: i test differenziali
 

@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
@@ -8,7 +9,7 @@ import { changeTicketStatus, markTicketAnswered } from "@/server/domain/ticket/t
 import { transferTicket } from "@/server/domain/ticket/transfer";
 import { runWrite } from "@/server/domain/write";
 
-import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp, type TableDiff } from "./lib/harness";
+import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB, type TableDiff } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
 
 /**
@@ -432,5 +433,40 @@ describe("avvisi, permessi da manager e casi limite", () => {
     const denied = await asAgent(2, (ctx) => changeTicketStatus(ctx, { ticketId: 3, statusId: 5 }, { hardDelete: async () => true }));
     expect(denied).toEqual({ error: "denied" });
     expect(await compareWorkingDatabases()).toEqual([]);
+  });
+});
+
+/** status_id di un ticket in uno dei due DB di lavoro */
+async function statusIn(dbName: string, ticketId: number): Promise<number | undefined> {
+  const { rows } = await sql<{ s: number }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
+  return rows[0]?.s;
+}
+
+describe("stati non selezionabili (differenza voluta: solo stati abilitati open/closed)", () => {
+  it("stato disabilitato dal menu Cambia stato: il PHP lo applica, TailTicket lo rifiuta", async () => {
+    await execBoth("UPDATE {p}ticket_status SET mode = mode & ~1 WHERE id = 2");
+    const before = await statusIn(TS_DB, 21);
+    const php = await runPhp<Result>({ op: "actions.status", args: { agent: 2, ticket: 21, status_id: 2 } });
+    const ts = await asAgent(2, (ctx) => changeTicketStatus(ctx, { ticketId: 21, statusId: 2 }));
+    expect(php.ok).toBe(true);
+    expect(await statusIn(PHP_DB, 21)).toBe(2);
+    expect(ts).toEqual({ error: "invalid_status" });
+    expect(await statusIn(TS_DB, 21)).toBe(before);
+  });
+});
+
+describe("chiusura con campo obbligatorio disabilitato (differenza voluta)", () => {
+  it("campo 'obbligatorio in chiusura' ma disabilitato e vuoto: il PHP rifiuta la chiusura, TailTicket chiude", async () => {
+    // priorità del form ticket: obbligatoria in chiusura (0x4) ma disabilitata (senza 0x1), valore vuoto sul ticket 21
+    await execBoth(
+      "UPDATE {p}form_field SET flags = (flags | 4) & ~1 WHERE id = 22",
+      "UPDATE {p}form_entry_values SET value = NULL, value_id = NULL WHERE entry_id = 41 AND field_id = 22",
+    );
+    const php = await runPhp<Result>({ op: "actions.status", args: { agent: 2, ticket: 21, status_id: 2 } });
+    const ts = await asAgent(2, (ctx) => changeTicketStatus(ctx, { ticketId: 21, statusId: 2 }));
+    expect(php.ok).toBe(false);
+    expect(await statusIn(PHP_DB, 21)).not.toBe(2);
+    expect(ts).toEqual({ ok: true });
+    expect(await statusIn(TS_DB, 21)).toBe(2);
   });
 });

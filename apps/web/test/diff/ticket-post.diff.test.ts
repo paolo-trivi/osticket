@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
@@ -5,7 +6,7 @@ import { postNote, postReply } from "@/server/domain/ticket/post";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { runWrite } from "@/server/domain/write";
 
-import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
+import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
 
 const IP = "127.0.0.1";
@@ -56,9 +57,11 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
   });
 
   it("risposta con chiusura del ticket: stato, evento closed, referral", async () => {
-    const args = { agent: 2, ticket: 9, response: "<p>Risolto, chiudiamo.</p>", statusId: 3 };
+    // ticket 21: chiudibile (il 9 ha un task aperto e la chiusura veniva rifiutata da entrambi)
+    const args = { agent: 2, ticket: 21, response: "<p>Risolto, chiudiamo.</p>", statusId: 3 };
     const phpMails = await mailsOf(() => runPhp({ op: "ticket.reply", args }), 1);
-    const tsMails = await mailsOf(() => asAgent(2, (ctx) => postReply(ctx, { ticketId: 9, response: args.response, statusId: 3 })), 1);
+    const tsMails = await mailsOf(() => asAgent(2, (ctx) => postReply(ctx, { ticketId: 21, response: args.response, statusId: 3 })), 1);
+    expect(await statusIn(PHP_DB, 21)).toBe(3);
     expect(await compareWorkingDatabases()).toEqual([]);
     expect(tsMails).toEqual(phpMails);
   });
@@ -106,5 +109,34 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
     expect(phpMails.length).toBeGreaterThan(0);
     expect(tsMails).toEqual(phpMails);
+  });
+});
+
+/** status_id di un ticket in uno dei due DB di lavoro */
+async function statusIn(dbName: string, ticketId: number): Promise<number | undefined> {
+  const { rows } = await sql<{ s: number }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
+  return rows[0]?.s;
+}
+
+describe("stato disabilitato in risposta e nota (differenza voluta)", () => {
+  it("reply_status_id disabilitato: il PHP lo applica, TailTicket pubblica la risposta e ignora lo stato", async () => {
+    await execBoth("UPDATE {p}ticket_status SET mode = mode & ~1 WHERE id = 2");
+    const before = await statusIn(TS_DB, 21);
+    const args = { agent: 2, ticket: 21, response: "<p>Risposta.</p>", statusId: 2 };
+    const phpMails = await mailsOf(() => runPhp({ op: "ticket.reply", args }), 1);
+    const tsMails = await mailsOf(() => asAgent(2, (ctx) => postReply(ctx, { ticketId: 21, response: args.response, statusId: 2 })), 1);
+    expect(await statusIn(PHP_DB, 21)).toBe(2);
+    expect(await statusIn(TS_DB, 21)).toBe(before);
+    expect(tsMails.length).toBe(phpMails.length);
+  });
+
+  it("note_status_id disabilitato: il PHP lo applica, TailTicket salva la nota senza cambiare stato", async () => {
+    await execBoth("UPDATE {p}ticket_status SET mode = mode & ~1 WHERE id = 2");
+    const before = await statusIn(TS_DB, 18);
+    const args = { agent: 2, ticket: 18, note: "<p>Nota.</p>", title: "Nota", state: 2 };
+    await runPhp({ op: "ticket.note", args });
+    await asAgent(2, (ctx) => postNote(ctx, { ticketId: 18, note: args.note, title: args.title, statusId: 2 }));
+    expect(await statusIn(PHP_DB, 18)).toBe(2);
+    expect(await statusIn(TS_DB, 18)).toBe(before);
   });
 });

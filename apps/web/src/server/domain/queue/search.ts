@@ -1,13 +1,15 @@
 import "server-only";
 
-import { sql } from "kysely";
+import { sql, type RawBuilder } from "kysely";
 
 import { db, table, type DbOrTx } from "../../db";
 
 /**
  * Ricerca full-text di MysqlSearchBackend::find (include/class.search.php) sulla tabella `_search`.
  * Risultati ricondotti al ticket: entry di thread (H) → thread → ticket, ticket (T), utente (U) → suoi ticket.
- * Restituisce gli id (max 500) in ordine di rilevanza; null se la query è troppo corta (nessun filtro, come in PHP).
+ * keywordTicketIds restituisce gli id (max 500, come il PHP) in ordine di rilevanza; keywordRelevanceSql la
+ * stessa ricerca come tabella derivata, senza limite; entrambe null se la query è troppo corta (nessun filtro,
+ * come in PHP).
  */
 const BOOLEAN_TERM = String.raw`(?:[<>~+-]?\((?:(?:[<>~+-]?[\w][\w-]*[*]?|"[^"]+")(?:\s+(?:[<>~+-]?[\w][\w-]*[*]?|"[^"]+"))+)\)|[<>~+-]?[\w][\w-]*[*]?|"[^"]+")`;
 const BOOLEAN_RE = new RegExp(`^${BOOLEAN_TERM}(?:\\s+${BOOLEAN_TERM})*$`, "u");
@@ -44,17 +46,11 @@ export function buildMatch(rawQuery: string, allowBoolean = false): { query: str
   return { query, boolean };
 }
 
-export async function keywordTicketIds(
-  rawQuery: string,
-  executor: DbOrTx = db(),
-  allowBoolean = false,
-): Promise<number[] | null> {
-  const m = buildMatch(rawQuery, allowBoolean);
-  if (!m) return null;
+/** FROM della ricerca: una riga per risultato `_search` ricondotto al ticket, con la rilevanza. */
+function keywordRows(m: { query: string; boolean: boolean }): RawBuilder<unknown> {
   const mode = sql.raw(m.boolean ? "IN BOOLEAN MODE" : "IN NATURAL LANGUAGE MODE");
   const match = sql`MATCH (Z1.title, Z1.content) AGAINST (${m.query} ${mode})`;
-  const { rows } = await sql<{ ticket_id: number }>`
-    SELECT ticket_id FROM (
+  return sql`
       SELECT COALESCE(Z3.object_id, Z5.ticket_id, Z8.ticket_id) AS ticket_id, MAX(Z1.relevance) AS relevance
       FROM (SELECT Z1.object_id, Z1.object_type, ${match} AS relevance FROM ${table("_search")} Z1 WHERE ${match}) Z1
       LEFT JOIN ${table("thread_entry")} Z2 ON (Z1.object_type = 'H' AND Z1.object_id = Z2.id)
@@ -62,8 +58,31 @@ export async function keywordTicketIds(
       LEFT JOIN ${table("ticket")} Z5 ON (Z1.object_type = 'T' AND Z1.object_id = Z5.ticket_id)
       LEFT JOIN ${table("user")} Z6 ON (Z6.id = Z1.object_id AND Z1.object_type = 'U')
       LEFT JOIN ${table("ticket")} Z8 ON (Z8.user_id = Z6.id)
-      GROUP BY 1
-    ) R WHERE ticket_id IS NOT NULL
+      GROUP BY 1`;
+}
+
+/**
+ * Ricerca full-text come tabella derivata `(ticket_id, relevance)`, una riga per ticket, da mettere in JOIN
+ * con la lista: la visibilità e la paginazione si applicano dopo, su tutti i risultati.
+ * Differenza voluta: il PHP prende prima i 500 risultati più rilevanti di tutto l'helpdesk e solo dopo
+ * applica la visibilità, quindi un agente con accesso limitato poteva non trovare ticket che vede
+ * (e oltre i 500 risultati i ticket sparivano).
+ */
+export function keywordRelevanceSql(rawQuery: string, allowBoolean = false): RawBuilder<unknown> | null {
+  const m = buildMatch(rawQuery, allowBoolean);
+  if (!m) return null;
+  return sql`(SELECT ticket_id, relevance FROM (${keywordRows(m)}) R WHERE ticket_id IS NOT NULL)`;
+}
+
+export async function keywordTicketIds(
+  rawQuery: string,
+  executor: DbOrTx = db(),
+  allowBoolean = false,
+): Promise<number[] | null> {
+  const m = buildMatch(rawQuery, allowBoolean);
+  if (!m) return null;
+  const { rows } = await sql<{ ticket_id: number }>`
+    SELECT ticket_id FROM (${keywordRows(m)}) R WHERE ticket_id IS NOT NULL
     ORDER BY relevance DESC
     LIMIT 500`.execute(executor);
   return rows.map((r) => Number(r.ticket_id));

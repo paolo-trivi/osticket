@@ -45,7 +45,7 @@ import { loadOrganization, lookupUser, lookupUserByEmail, organizationForDomain,
 import { logTicketEvent, type Actor } from "./events";
 import { postNote, postReply } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
-import { DeptFlag, setTicketStatus, stateOf, updateEstDueDate } from "./status";
+import { DeptFlag, isSelectableStatus, loadStatus, setTicketStatus, stateOf, updateEstDueDate } from "./status";
 
 /**
  * Creazione dei ticket (Ticket::create / Ticket::open, include/class.ticket.php): validazione dei form
@@ -589,6 +589,9 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     if (p) form.setAnswer("priority", p);
   }
   let statusId = Number(vars.statusId ?? 0) || 0;
+  // Stato scelto dall'agente: solo quelli della select (abilitati, open/closed), vedi isSelectableStatus;
+  // altrimenti si usa lo stato dell'argomento o quello predefinito, come senza scelta
+  if (statusId && !isSelectableStatus(await loadStatus(tx, statusId))) statusId = 0;
   let deptId = Number(vars.deptId ?? 0) || 0;
   let source = String(vars.source ?? "");
   source = source.charAt(0).toUpperCase() + source.slice(1);
