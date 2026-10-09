@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { FONT_CLASS } from "@/lib/fonts";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import "simplebar-react/dist/simplebar.min.css";
 import "../globals.css";
@@ -46,14 +47,16 @@ export default async function RootLayout({
   setRequestLocale(locale);
 
   const theme = await safeTheme();
+  // nonce della Content-Security-Policy (src/proxy.ts) per lo script inline
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   // Applica chiaro/scuro prima del primo paint (preferenza utente se consentita, altrimenti quella di admin)
   const antiFlash = `(function(){try{var d=${JSON.stringify(theme.mode_default)},a=${theme.allow_user_mode ? "true" : "false"};var m=(a&&localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)}))||d;if(m==="auto")m=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";if(m==="dark")document.documentElement.classList.add("dark")}catch(e){}})()`;
 
   return (
     <html lang={locale} dir={isRtl(locale as Locale) ? "rtl" : "ltr"} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: antiFlash }} />
-        <style id="ost-theme" dangerouslySetInnerHTML={{ __html: themeCss(theme) }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: antiFlash }} />
+        <style id="ost-theme" nonce={nonce} dangerouslySetInnerHTML={{ __html: themeCss(theme) }} />
       </head>
       <body className={`${FONT_CLASS[theme.font]} dark:bg-gray-900`}>
         <NextIntlClientProvider>

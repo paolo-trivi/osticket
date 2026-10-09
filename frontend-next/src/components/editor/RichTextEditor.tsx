@@ -82,6 +82,8 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(function RichText
   };
 
   const empty = !html.replace(/<[^>]*>|&nbsp;|\s/g, "");
+  // Il testo digitato senza blocco va in un paragrafo, come produce l'editor di osTicket
+  const value = empty || /^\s*<(p|div|ul|ol|blockquote|h[1-6]|table|pre)\b/i.test(html) ? html : `<p>${html}</p>`;
 
   return (
     <div className="rounded-lg border border-gray-300 focus-within:border-brand-300 focus-within:ring-3 focus-within:ring-brand-500/10 dark:border-gray-700">
@@ -121,7 +123,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(function RichText
           style={{ minHeight }}
         />
       </div>
-      <input type="hidden" name={name} value={html} />
+      <input type="hidden" name={name} value={value} />
     </div>
   );
 });
