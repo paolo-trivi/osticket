@@ -4,6 +4,7 @@ import { NOW, type DbOrTx } from "../../db";
 import type { ConfigNamespace } from "../../config/config";
 import { phpJsonEncode } from "../../format/php-json";
 import { bodySearchable, cleanEntryBody, sanitizeText, stripEmoticons, type BodyFormat } from "../../format/text";
+import { attachFilesToEntry, type AttachInput } from "../file/upload";
 import { replaceSearchRow } from "../search/index-writer";
 
 /** Flag di ThreadEntry (include/class.thread.php). */
@@ -38,6 +39,10 @@ export interface NewThreadEntry {
   ip?: string;
   flags?: number;
   recipients?: EntryRecipients;
+  /** editor_spacing del corpo HTML ($thisstaff || $thisclient); default: autore agente o utente */
+  editorSpacing?: boolean;
+  /** allegati già caricati (ThreadEntry::createAttachments, righe attachment di tipo H) */
+  files?: AttachInput[];
 }
 
 export interface CreatedEntry {
@@ -55,7 +60,7 @@ export interface CreatedEntry {
 export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: NewThreadEntry): Promise<CreatedEntry> {
   const body = cleanEntryBody(e.body, e.format, {
     allowExternalImages: cfg.bool("allow_external_images"),
-    byUser: e.staffId > 0 || e.userId > 0,
+    byUser: e.editorSpacing ?? (e.staffId > 0 || e.userId > 0),
   });
   const titleClean = e.title ? stripEmoticons(sanitizeText(e.title, true)) : "";
   const title = titleClean || null;
@@ -103,6 +108,8 @@ export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: New
   const id = Number(res.insertId);
 
   // MysqlSearchBackend: indicizza solo il contenuto scritto da una persona
+  if (e.files?.length) await attachFilesToEntry(tx, id, e.files);
+
   if (e.userId || e.staffId) await replaceSearchRow(tx, "H", id, bodySearchable(body, e.format), title ?? "");
 
   return { id, body, title, format: e.format, flags };

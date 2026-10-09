@@ -7,6 +7,7 @@ import { buildTicketVars, companyVar, entryVar, loadStaffInfo, loadUserContact, 
 import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from "../../mail/mailer";
 import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
+import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
 import { loadAgent } from "../staff/staff";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
@@ -220,6 +221,8 @@ export interface PostReplyInput {
   alert?: boolean;
   claim?: boolean;
   fromEmailId?: number;
+  /** allegati già caricati della risposta */
+  files?: AttachInput[];
 }
 
 /** Ticket::postReply (include/class.ticket.php:3345) per un agente. */
@@ -244,6 +247,7 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
     pid: last?.id,
     ip: ctx.actor?.ip ?? "",
     recipients: recipients ? recipientsJson(recipients) : undefined,
+    files: input.files,
   });
   await touchThread(tx, threadId, "lastresponse");
 
@@ -313,6 +317,8 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
     const refHeader = /^References:\s*((?:.*(?:\r?\n[ \t]+.*)*))/im.exec(lastEmail.headers ?? "")?.[1]?.replace(/\r?\n[ \t]+/g, " ").trim();
     references = `${refHeader ? `${refHeader} ` : ""}${lastEmail.mid}`;
   }
+  // Allegati della risposta (email_attachments)
+  const attachments = cfg.bool("email_attachments") ? await entryAttachmentsForMail(tx, entry.id) : [];
   const to = recipients.to.map((c) => ({ name: c.name, address: c.email }));
   const cc = recipients.cc.map((c) => ({ name: c.name, address: c.email }));
   ctx.after.push(async () => {
@@ -325,6 +331,7 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
       body,
       recipient: { userId: 0, utype: "M" },
       thread: { entryId: entry.id, threadId, inReplyTo: lastEmail?.mid ?? null, references },
+      attachments: attachments.length ? attachments : undefined,
     });
   });
   return { entryId: entry.id };

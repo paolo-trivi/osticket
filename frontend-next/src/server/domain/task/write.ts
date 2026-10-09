@@ -1,0 +1,714 @@
+import "server-only";
+
+import { sql } from "kysely";
+import { DateTime } from "luxon";
+
+import { NOW, table, type DbOrTx } from "../../db";
+import { loadSystemEmail, sendMail, type SystemEmail } from "../../mail/mailer";
+import { companyVar, loadStaffInfo, staffVar } from "../../mail/objects";
+import { loadMsgTemplate, templateGroupFor, type TemplateCode } from "../../mail/templates";
+import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
+import { logSystem } from "../../system/syslog";
+import { defaultFormOf, createEntry, deleteEntries, entriesFor, FieldFlag, hasAnswerRow, isEditableToStaff, saveEntryAnswers, validateInput } from "../directory/forms";
+import { deleteSearchRow } from "../search/index-writer";
+import { loadAgent, TaskPerm, type Agent } from "../staff/staff";
+import { createThreadEntry, lastMessage, touchThread } from "../thread/write";
+import type { WriteContext } from "../ticket/context";
+import { logNote, ticketThreadId } from "../ticket/post";
+import { TicketRecord } from "../ticket/record";
+import { loadStatus, setTicketStatus } from "../ticket/status";
+import {
+  agentName,
+  assignableAgents,
+  agentsNameJson,
+  deptCanAssign,
+  deptMembersForAlerts,
+  loadTaskRow,
+  loadTeam,
+  logTaskEvent,
+  taskThreadId,
+  teamMembersForAlerts,
+  updateTaskRow,
+  type TaskDbRow,
+} from "./model";
+import { checkTaskPerm, loadTask, TaskFlag } from "./tasks";
+import { activityVar, taskVar, threadEntryVar } from "./vars";
+
+/**
+ * Scritture sui task (include/class.task.php, include/ajax.tasks.php, scp/tasks.php) con le stesse righe
+ * del PHP: task, task__cdata, form_entry(_values), thread 'A', thread_entry, thread_event, sequence,
+ * _search, avvisi email (task.alert, task.activity.alert, task.assignment.alert, task.transfer.alert).
+ */
+export type TaskError =
+  | "not_found" | "forbidden" | "note_required" | "response_required" | "title_required" | "dept_required"
+  | "already_assigned" | "unavailable" | "unknown_assignee" | "team_disabled" | "team_empty" | "same_dept"
+  | "not_closeable" | "no_change" | "due_past" | "invalid_date" | "already_status";
+
+export type TaskResult<T = object> = ({ ok: true } & T) | { ok: false; error: TaskError };
+
+const isOpen = (t: TaskDbRow) => (t.flags & TaskFlag.ISOPEN) !== 0;
+
+function bodyFormat(ctx: WriteContext): "html" | "text" {
+  return ctx.cfg.bool("enable_richtext") ? "html" : "text";
+}
+
+/* ------------------------------------------------------------------ numerazione */
+
+/** Sequence::format */
+export function formatSequence(format: string, number: number, padding: string): string {
+  const groups = [...format.matchAll(/(?<!\\)#+/g)];
+  const total = groups.reduce((n, g) => n + g[0].length, 0);
+  let num = String(number);
+  if (num.length < total) num = (padding || "0").repeat(total).slice(0, total - num.length) + num;
+  let out = "";
+  let start = 0;
+  let noff = 0;
+  for (const g of groups) {
+    const size = g[0].length;
+    out += format.slice(start, g.index).replace(/\\#/g, "#");
+    out += num.slice(noff, noff + size);
+    start = (g.index ?? 0) + size;
+    noff += size;
+  }
+  if (num.length > noff) out += num.slice(noff);
+  out += format.slice(start).replace(/\\#/g, "#");
+  return out;
+}
+
+/** $cfg->getNewTaskNumber(): Sequence::next con controllo di unicità (RandomSequence se non configurata). */
+export async function nextTaskNumber(ctx: WriteContext): Promise<string> {
+  const { tx, cfg } = ctx;
+  const format = cfg.str("task_number_format");
+  const seqId = cfg.int("task_sequence_id");
+  const seq = seqId ? await tx.selectFrom("sequence").selectAll().where("id", "=", seqId).forUpdate().executeTakeFirst() : undefined;
+  for (;;) {
+    let formatted: string;
+    if (seq) {
+      const next = seq.next;
+      seq.next = next + (seq.increment ?? 1);
+      await tx.updateTable("sequence").set({ next: seq.next, updated: NOW }).where("id", "=", seq.id).execute();
+      formatted = format ? formatSequence(format, next, seq.padding ?? "0") : String(next);
+    } else {
+      const digits = Math.max(6, (format.match(/(?<!\\)#/g) ?? []).length);
+      let n = String(Math.floor(Math.random() * 9) + 1);
+      while (n.length < digits) n += String(Math.floor(Math.random() * 10));
+      formatted = format ? formatSequence(format, Number(n), "0") : n;
+    }
+    const dup = await tx.selectFrom("task").select("id").where("number", "=", formatted).executeTakeFirst();
+    if (!dup) return formatted;
+  }
+}
+
+/* ------------------------------------------------------------------ avvisi */
+
+async function sendStaffAlerts(
+  ctx: WriteContext,
+  opts: {
+    email: SystemEmail | null;
+    code: TemplateCode;
+    deptId: number;
+    recipients: number[];
+    vars: Record<string, unknown>;
+    skip?: (staff: Agent) => Promise<boolean> | boolean;
+    thread?: { entryId: number; threadId: number };
+    adminAlert?: boolean;
+  },
+): Promise<void> {
+  const { tx, cfg } = ctx;
+  if (!opts.email) return;
+  const tpl = await loadMsgTemplate(tx, await templateGroupFor(tx, opts.deptId, cfg), opts.code);
+  if (!tpl) return;
+  const base = { url: cfg.str("helpdesk_url").replace(/\/+$/, ""), company: await companyVar(tx) };
+  // Primo passaggio: variabili dell'operazione; il secondo aggiunge il destinatario (come Task::replaceVars)
+  const first = new VariableReplacer().assign({ ...opts.vars, ...base });
+  const subj1 = first.replaceVars(tpl.subj);
+  const body1 = first.replaceVars(tpl.body);
+  const sent = new Set<string>();
+  const email = opts.email;
+  for (const staffId of opts.recipients) {
+    const staff = await loadAgent(staffId, tx);
+    if (!staff || !staff.isAvailable || sent.has(staff.email)) continue;
+    if (opts.skip && (await opts.skip(staff))) continue;
+    const info = await loadStaffInfo(tx, staff.id);
+    const r = new VariableReplacer().assign({ ...opts.vars, ...base, recipient: info ? staffVar(info, cfg) : null });
+    const subject = r.replaceVars(subj1);
+    const body = r.replaceVars(body1);
+    const to = { name: agentName(staff, cfg), address: staff.email };
+    ctx.after.push(async () => {
+      await sendMail({ email, to: [to], subject, body, recipient: { userId: staff.id, utype: "S" }, thread: opts.thread, notice: true });
+    });
+    sent.add(staff.email);
+  }
+  if (opts.adminAlert) {
+    // Bug PHP replicato: in_array() cerca l'indirizzo tra i valori di $sentlist (tutti 1), quindi
+    // l'amministratore riceve l'avviso anche se è già tra gli agenti avvisati.
+    const admin = cfg.str("admin_email");
+    if (admin) {
+      const r = new VariableReplacer().assign({ ...opts.vars, ...base, recipient: "Admin" });
+      const subject = r.replaceVars(subj1);
+      const body = r.replaceVars(body1);
+      ctx.after.push(async () => {
+        await sendMail({ email, to: [{ name: "", address: admin }], subject, body, recipient: { userId: 0, utype: "?" }, thread: opts.thread, notice: true });
+      });
+    }
+  }
+}
+
+async function alertEmail(ctx: WriteContext): Promise<SystemEmail | null> {
+  return (await loadSystemEmail(ctx.cfg.int("alert_email_id"), ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+}
+
+/** Dept::getAlertEmail(): email del reparto o email predefinita */
+async function deptAlertEmail(ctx: WriteContext, deptId: number): Promise<SystemEmail | null> {
+  const d = await ctx.tx.selectFrom("department").select("email_id").where("id", "=", deptId).executeTakeFirst();
+  return (await loadSystemEmail(d?.email_id ?? 0, ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+}
+
+async function staffTemplateVar(ctx: WriteContext, staffId: number): Promise<TemplateVariable | null> {
+  const info = await loadStaffInfo(ctx.tx, staffId);
+  return info ? staffVar(info, ctx.cfg) : null;
+}
+
+/** Task::onActivity: avviso task.activity.alert */
+async function onActivity(
+  ctx: WriteContext,
+  task: TaskDbRow,
+  threadId: number,
+  entry: { id: number; staffId: number },
+  activity: [string, string],
+  assigneeId: number,
+  alert = true,
+): Promise<void> {
+  const { tx, cfg } = ctx;
+  if (!alert || !cfg.bool("task_activity_alert_active")) return;
+  const email = await alertEmail(ctx);
+  if (!email) return;
+  const recipients: number[] = [];
+  if (cfg.bool("task_activity_alert_laststaff")) {
+    const { rows } = await sql<{ staff_id: number }>`SELECT staff_id FROM ${table("thread_entry")}
+      WHERE thread_id = ${threadId} AND type = 'R' AND staff_id > 0 ORDER BY id DESC LIMIT 1`.execute(tx);
+    if (rows[0]) recipients.push(rows[0].staff_id);
+  }
+  if (cfg.bool("task_activity_alert_assigned")) {
+    if (assigneeId) recipients.push(assigneeId);
+    else if (isOpen(task) && task.staff_id) recipients.push(task.staff_id);
+    if (task.team_id) recipients.push(...(await teamMembersForAlerts(tx, task.team_id)));
+  }
+  if (cfg.bool("task_activity_alert_dept_manager")) {
+    const d = await tx.selectFrom("department").select("manager_id").where("id", "=", task.dept_id).executeTakeFirst();
+    if (d?.manager_id) recipients.push(d.manager_id);
+  }
+  const poster = entry.staffId || (ctx.actor?.kind === "staff" ? ctx.actor.id : 0);
+  const message = await threadEntryVar(tx, entry.id, cfg, ctx.dbZone);
+  const closed = !isOpen(task);
+  const row = await loadTask(task.id, tx);
+  await sendStaffAlerts(ctx, {
+    email,
+    code: "task.activity.alert",
+    deptId: task.dept_id,
+    recipients,
+    vars: { task: await taskVar(tx, task, cfg, ctx.dbZone), note: message, activity: activityVar(...activity), message },
+    skip: (s) => s.id === poster || (closed && !!row && !checkTaskPerm(row, s)),
+    thread: { entryId: entry.id, threadId },
+  });
+}
+
+/** Task::onNewTask: avviso task.alert */
+async function onNewTask(ctx: WriteContext, task: TaskDbRow): Promise<void> {
+  const { tx, cfg } = ctx;
+  if (!cfg.bool("task_alert_active")) return;
+  const dept = await tx.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", task.dept_id).executeTakeFirst();
+  if (!dept || dept.group_membership === 2) return;
+  const email = await alertEmail(ctx);
+  if (!email) return;
+  const adminOnly = dept.group_membership === 3;
+  const recipients: number[] = [];
+  if (cfg.bool("task_alert_dept_manager") && dept.manager_id && !adminOnly) recipients.push(dept.manager_id);
+  if (cfg.bool("task_alert_dept_members") && !adminOnly) recipients.push(...(await deptMembersForAlerts(tx, task.dept_id, cfg)));
+  const poster = ctx.actor?.kind === "staff" ? ctx.actor.id : 0;
+  const row = await loadTask(task.id, tx);
+  await sendStaffAlerts(ctx, {
+    email,
+    code: "task.alert",
+    deptId: task.dept_id,
+    recipients,
+    vars: { task: await taskVar(tx, task, cfg, ctx.dbZone) },
+    skip: (s) => s.id === poster || !row || !checkTaskPerm(row, s),
+    adminAlert: cfg.bool("task_alert_admin"),
+  });
+}
+
+/* ------------------------------------------------------------------ note e risposte */
+
+export interface TaskNoteInput {
+  note: string;
+  title?: string;
+  /** cambio di stato insieme alla nota (task:status) */
+  status?: "open" | "closed";
+  alert?: boolean;
+}
+
+/** Task::postNote. `poster`: agente (default l'agente corrente), stringa, o null = SYSTEM. */
+export async function postTaskNote(
+  ctx: WriteContext,
+  task: TaskDbRow,
+  input: TaskNoteInput,
+  poster: Agent | string | null | undefined = ctx.agent,
+): Promise<TaskResult<{ entryId: number }>> {
+  const { tx, cfg } = ctx;
+  if (!input.note || !input.note.trim()) return { ok: false, error: "note_required" };
+  const threadId = await taskThreadId(tx, task.id);
+  if (!threadId) return { ok: false, error: "not_found" };
+  const staffId = poster && typeof poster === "object" ? poster.id : 0;
+  const posterName = poster && typeof poster === "object" ? agentName(poster, cfg) : poster || "SYSTEM";
+  const entry = await createThreadEntry(tx, cfg, {
+    threadId,
+    type: "N",
+    body: input.note,
+    format: bodyFormat(ctx),
+    title: input.title ?? "",
+    staffId,
+    userId: 0,
+    poster: posterName,
+  });
+  const assigneeId = task.staff_id;
+  if (input.status) await setTaskStatus(ctx, task, input.status);
+  await onActivity(ctx, task, threadId, { id: entry.id, staffId }, ["New Internal Note", "New internal note posted"], assigneeId, input.alert ?? true);
+  return { ok: true, entryId: entry.id };
+}
+
+/** Task::postReply (aggiornamento del task da parte di un agente). */
+export async function postTaskReply(ctx: WriteContext, task: TaskDbRow, input: { response: string; status?: "open" | "closed" }): Promise<TaskResult<{ entryId: number }>> {
+  const { tx, cfg, agent } = ctx;
+  if (!agent) return { ok: false, error: "forbidden" };
+  if (!input.response || !input.response.trim()) return { ok: false, error: "response_required" };
+  const threadId = await taskThreadId(tx, task.id);
+  const last = await lastMessage(tx, threadId);
+  const entry = await createThreadEntry(tx, cfg, {
+    threadId,
+    type: "R",
+    body: input.response,
+    format: bodyFormat(ctx),
+    staffId: agent.id,
+    userId: 0,
+    poster: agentName(agent, cfg),
+    pid: last?.id,
+    ip: ctx.actor?.ip ?? "",
+    flags: 0,
+  });
+  await touchThread(tx, threadId, "lastresponse");
+  const assigneeId = task.staff_id;
+  if (input.status) await setTaskStatus(ctx, task, input.status);
+  await onActivity(ctx, task, threadId, { id: entry.id, staffId: agent.id }, ["New Response", "New response posted"], assigneeId);
+  return { ok: true, entryId: entry.id };
+}
+
+/* ------------------------------------------------------------------ stato */
+
+/** Ticket::reopen(): stato di riapertura dello stato chiuso o stato predefinito. */
+async function reopenTicket(ctx: WriteContext, ticketId: number): Promise<void> {
+  const rec = await TicketRecord.load(ctx.tx, ticketId, true);
+  if (!rec) return;
+  const current = await loadStatus(ctx.tx, rec.get("status_id"));
+  if (current?.state !== "closed") return;
+  let statusId = 0;
+  try {
+    const props = current.properties ? (JSON.parse(current.properties) as Record<string, unknown>) : {};
+    statusId = Number(props.reopenstatus) || 0;
+  } catch {
+    statusId = 0;
+  }
+  if (!statusId) statusId = ctx.cfg.int("default_ticket_status_id", 1);
+  if (!statusId) return;
+  const threadId = await ticketThreadId(ctx.tx, rec.id);
+  await setTicketStatus(ctx, rec, threadId, statusId, { logNote: (t, b) => logNote(ctx, rec.id, t, b) });
+}
+
+/** Campi del form del task obbligatori per la chiusura e senza valore (Task::getMissingRequiredFields). */
+async function missingRequiredFields(executor: DbOrTx, taskId: number): Promise<number> {
+  const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("form_entry")} E
+    JOIN ${table("form_entry_values")} V ON (V.entry_id = E.id)
+    JOIN ${table("form_field")} F ON (F.id = V.field_id)
+    WHERE E.object_type = 'A' AND E.object_id = ${taskId} AND (F.flags & ${FieldFlag.CLOSE_REQUIRED}) != 0 AND V.value IS NULL`.execute(executor);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Task::setStatus($status, $comments) */
+export async function setTaskStatus(ctx: WriteContext, task: TaskDbRow, status: "open" | "closed", comments = ""): Promise<TaskResult> {
+  const { tx } = ctx;
+  const threadId = await taskThreadId(tx, task.id);
+  let ecb: () => Promise<void>;
+  if (status === "open") {
+    if (isOpen(task)) return { ok: false, error: "already_status" };
+    await updateTaskRow(tx, task, { flags: task.flags | TaskFlag.ISOPEN, ...(task.closed !== null ? { closed: null } : {}) });
+    ecb = async () => {
+      await logTaskEvent(ctx, task, threadId, "reopened", null, undefined, "closed");
+      if (task.object_type === "T" && task.object_id) {
+        await reopenTicket(ctx, task.object_id);
+        await logNote(ctx, task.object_id, `Task ${task.number} Reopened`, "Task reopened");
+      }
+    };
+  } else {
+    if (!isOpen(task)) return { ok: false, error: "already_status" };
+    if (await missingRequiredFields(tx, task.id)) return { ok: false, error: "not_closeable" };
+    await updateTaskRow(tx, task, { flags: task.flags & ~TaskFlag.ISOPEN, closed: "NOW" });
+    ecb = async () => {
+      await logTaskEvent(ctx, task, threadId, "closed");
+      if (task.object_type === "T" && task.object_id) await logNote(ctx, task.object_id, `Task ${task.number} Closed`, "Task closed");
+    };
+  }
+  await ecb();
+  if (comments && comments.trim()) {
+    await postTaskNote(ctx, task, { note: comments, title: `Status changed to ${isOpen(task) ? "Open" : "Completed"}` });
+  }
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ assegnazione */
+
+export type TaskAssignee = { type: "staff"; id: number } | { type: "team"; id: number };
+
+async function onAssignment(ctx: WriteContext, task: TaskDbRow, assignee: { staff?: Agent; team?: { team_id: number; name: string; flags: number; lead_id: number } }, comments: string, alert: boolean): Promise<void> {
+  const { tx, cfg, agent } = ctx;
+  const assignerName = agent ? agent : "SYSTEM (Auto Assignment)";
+  const assigneeName = assignee.staff ? agentName(assignee.staff, cfg) : (assignee.team?.name ?? "");
+  let noteId = 0;
+  if (comments) {
+    const r = await postTaskNote(ctx, task, { note: comments, title: `Task assigned to ${assigneeName}`, alert: false }, assignerName);
+    if (r.ok) noteId = r.entryId;
+  }
+  if (!alert || !cfg.bool("task_assignment_alert_active")) return;
+  const email = await deptAlertEmail(ctx, task.dept_id);
+  const recipients: number[] = [];
+  if (assignee.staff) {
+    if (cfg.bool("task_assignment_alert_staff")) recipients.push(assignee.staff.id);
+  } else if (assignee.team && !(assignee.team.flags & 0x0002)) {
+    const members = await teamMembersForAlerts(tx, assignee.team.team_id);
+    if (cfg.bool("task_assignment_alert_team_members") && members.length) recipients.push(...members);
+    else if (cfg.bool("task_assignment_alert_team_lead") && assignee.team.lead_id) recipients.push(assignee.team.lead_id);
+  }
+  if (!recipients.length) return;
+  const threadId = await taskThreadId(tx, task.id);
+  const assigneeVar = assignee.staff
+    ? await staffTemplateVar(ctx, assignee.staff.id)
+    : { getVar: (t: string) => (t === "name" ? assignee.team!.name : t === "id" ? assignee.team!.team_id : ""), asVar: () => assignee.team!.name };
+  await sendStaffAlerts(ctx, {
+    email,
+    code: "task.assignment.alert",
+    deptId: task.dept_id,
+    recipients,
+    vars: {
+      task: await taskVar(tx, task, cfg, ctx.dbZone),
+      comments,
+      assignee: assigneeVar,
+      assigner: agent ? await staffTemplateVar(ctx, agent.id) : assignerName,
+    },
+    thread: noteId ? { entryId: noteId, threadId } : undefined,
+  });
+}
+
+/** Task::assign(AssignmentForm) con le validazioni di AssignmentForm::isValid. */
+export async function assignTask(ctx: WriteContext, task: TaskDbRow, to: TaskAssignee, comments = "", alert = true): Promise<TaskResult> {
+  const { tx, cfg, agent } = ctx;
+  const threadId = await taskThreadId(tx, task.id);
+  if (to.type === "staff") {
+    const staff = await loadAgent(to.id, tx);
+    if (!staff) return { ok: false, error: "unknown_assignee" };
+    if (!staff.isAvailable) return { ok: false, error: "unavailable" };
+    // AssignmentForm::isValid: l'agente deve essere tra le scelte del campo (Dept::getAssignees + visibilità)
+    if (!(await assignableAgents(tx, task.dept_id, agent, cfg)).some((a) => a.id === staff.id)) return { ok: false, error: "unknown_assignee" };
+    if (task.staff_id === staff.id) return { ok: false, error: "already_assigned" };
+    if (!(await deptCanAssign(tx, task.dept_id, staff, cfg))) return { ok: false, error: "forbidden" };
+    const evd: Record<string, unknown> =
+      agent && agent.id === staff.id ? { claim: true } : { staff: [staff.id, agentsNameJson(staff.name.first, staff.name.last, cfg)] };
+    await updateTaskRow(tx, task, { staff_id: staff.id });
+    await logTaskEvent(ctx, task, threadId, "assigned", evd);
+    await onAssignment(ctx, task, { staff }, comments, alert);
+    return { ok: true };
+  }
+  const team = await loadTeam(tx, to.id);
+  if (!team) return { ok: false, error: "unknown_assignee" };
+  if (!(team.flags & 0x0001)) return { ok: false, error: "team_disabled" };
+  if (!team.members) return { ok: false, error: "team_empty" };
+  if (task.team_id === team.team_id) return { ok: false, error: "already_assigned" };
+  await updateTaskRow(tx, task, { team_id: team.team_id });
+  await logTaskEvent(ctx, task, threadId, "assigned", { team: team.team_id });
+  await onAssignment(ctx, task, { team }, comments, alert);
+  return { ok: true };
+}
+
+/** Task::claim → assignToStaff($thisstaff, $comments, false) */
+export async function claimTask(ctx: WriteContext, task: TaskDbRow, comments = ""): Promise<TaskResult> {
+  const { tx, cfg, agent } = ctx;
+  if (!agent) return { ok: false, error: "unknown_assignee" };
+  if (!agent.isAvailable) return { ok: false, error: "unavailable" };
+  if (!(await deptCanAssign(tx, task.dept_id, agent, cfg))) return { ok: false, error: "forbidden" };
+  const threadId = await taskThreadId(tx, task.id);
+  if (task.staff_id !== agent.id) await updateTaskRow(tx, task, { staff_id: agent.id });
+  await onAssignment(ctx, task, { staff: agent }, comments, false);
+  await logTaskEvent(ctx, task, threadId, "assigned", { claim: true });
+  return { ok: true };
+}
+
+/** Task::transfer(TransferForm) */
+export async function transferTask(ctx: WriteContext, task: TaskDbRow, deptId: number, comments = "", alert = true): Promise<TaskResult> {
+  const { tx, cfg, agent } = ctx;
+  const dept = await tx.selectFrom("department").select(["id", "name", "manager_id", "flags"]).where("id", "=", deptId).executeTakeFirst();
+  if (!dept) return { ok: false, error: "dept_required" };
+  if (dept.id === task.dept_id) return { ok: false, error: "same_dept" };
+  const from = await tx.selectFrom("department").select("name").where("id", "=", task.dept_id).executeTakeFirst();
+  const threadId = await taskThreadId(tx, task.id);
+  await updateTaskRow(tx, task, { dept_id: dept.id });
+  await logTaskEvent(ctx, task, threadId, "transferred", { dept: dept.name });
+  let noteId = 0;
+  if (comments) {
+    const r = await postTaskNote(ctx, task, { note: comments, title: `Task transferred from ${from?.name ?? ""} to ${dept.name}`, alert: false });
+    if (r.ok) noteId = r.entryId;
+  }
+  if (!alert || !cfg.bool("task_transfer_alert_active")) return { ok: true };
+  const email = await deptAlertEmail(ctx, dept.id);
+  const recipients: number[] = [];
+  const assigned = isOpen(task) && !!(task.staff_id || task.team_id);
+  if (assigned && cfg.bool("task_transfer_alert_assigned")) {
+    if (task.staff_id) recipients.push(task.staff_id);
+    else if (task.team_id) recipients.push(...(await teamMembersForAlerts(tx, task.team_id)));
+  } else if (cfg.bool("task_transfer_alert_dept_members") && !assigned) {
+    recipients.push(...(await deptMembersForAlerts(tx, dept.id, cfg)));
+  }
+  if (cfg.bool("task_transfer_alert_dept_manager") && dept.manager_id) recipients.push(dept.manager_id);
+  await sendStaffAlerts(ctx, {
+    email,
+    code: "task.transfer.alert",
+    deptId: dept.id,
+    recipients,
+    vars: {
+      task: await taskVar(tx, task, cfg, ctx.dbZone),
+      // $note diventa la ThreadEntry della nota, se pubblicata
+      comments: noteId ? await threadEntryVar(tx, noteId, cfg, ctx.dbZone) : comments,
+      staff: agent ? await staffTemplateVar(ctx, agent.id) : null,
+    },
+    thread: noteId ? { entryId: noteId, threadId } : undefined,
+  });
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ creazione */
+
+export interface NewTaskInput {
+  title: string;
+  description: string;
+  deptId: number;
+  assignee?: TaskAssignee | null;
+  /** istante ISO 8601 (con fuso) o vuoto */
+  duedate?: string | null;
+  /** ticket collegato */
+  ticketId?: number;
+  /** altri campi del form del task (per nome) */
+  fields?: Record<string, unknown>;
+}
+
+/** Converte un istante ISO nel formato del DB ('Y-m-d H:i:s' nel fuso del DB). */
+function isoToDb(iso: string, dbZone: string): string | null {
+  const dt = DateTime.fromISO(iso, { setZone: true });
+  if (!dt.isValid) return null;
+  return dt.setZone(dbZone).toFormat("yyyy-MM-dd HH:mm:ss");
+}
+
+/** Task::create (ajax.tasks.php:add, ajax.tickets.php:addTask) */
+export async function createTask(ctx: WriteContext, input: NewTaskInput): Promise<TaskResult<{ id: number; number: string }>> {
+  const { tx, cfg, agent } = ctx;
+  if (!agent || !agent.hasPermInAnyRole(TaskPerm.CREATE)) return { ok: false, error: "forbidden" };
+  const form = await defaultFormOf(tx, "A");
+  if (!form) return { ok: false, error: "not_found" };
+  const values: Record<string, unknown> = { ...(input.fields ?? {}), title: input.title, description: input.description };
+  const errors = validateInput(form.fields, values, () => true);
+  if (errors.title) return { ok: false, error: "title_required" };
+  if (!input.deptId) return { ok: false, error: "dept_required" };
+  const dept = await tx.selectFrom("department").select("id").where("id", "=", input.deptId).executeTakeFirst();
+  if (!dept) return { ok: false, error: "dept_required" };
+  let duedate: string | null = null;
+  if (input.duedate) {
+    duedate = isoToDb(input.duedate, ctx.dbZone);
+    if (!duedate) return { ok: false, error: "invalid_date" };
+    if (DateTime.fromISO(input.duedate).toMillis() <= Date.now()) return { ok: false, error: "due_past" };
+    duedate = duedate.slice(0, 16) + ":00"; // date('Y-m-d G:i'): niente secondi
+  }
+  if (input.assignee) {
+    const a = input.assignee;
+    if (a.type === "staff") {
+      const s = await loadAgent(a.id, tx);
+      if (!s || !s.isAvailable) return { ok: false, error: "unavailable" };
+      // TaskInternalForm: AssigneeField senza reparto (Staff::getStaffMembers con visibilità)
+      if (!(await assignableAgents(tx, null, agent, cfg)).some((x) => x.id === s.id)) return { ok: false, error: "unknown_assignee" };
+    } else {
+      const t = await loadTeam(tx, a.id);
+      if (!t || !(t.flags & 1)) return { ok: false, error: "team_disabled" };
+      if (!t.members) return { ok: false, error: "team_empty" };
+    }
+  }
+
+  const number = await nextTaskNumber(ctx);
+  const res = await tx
+    .insertInto("task")
+    .values({
+      flags: TaskFlag.ISOPEN,
+      ...(input.ticketId ? { object_id: input.ticketId, object_type: "T" } : { object_type: "" }),
+      number,
+      created: NOW,
+      updated: NOW,
+      dept_id: input.deptId,
+      ...(duedate ? { duedate } : {}),
+    })
+    .executeTakeFirstOrThrow();
+  const id = Number(res.insertId);
+  const task = (await loadTaskRow(tx, id))!;
+
+  // addDynamicData: entry del form "Task Details" con le risposte
+  await createEntry(tx, form, "A", "A", id, values);
+
+  // TaskThread::create + addDescription (MessageThreadEntry con flag ORIGINAL_MESSAGE)
+  const th = await tx.insertInto("thread").values({ object_id: id, object_type: "A", created: NOW }).executeTakeFirstOrThrow();
+  const threadId = Number(th.insertId);
+  const entry = await createThreadEntry(tx, cfg, {
+    threadId,
+    type: "M",
+    body: input.description,
+    format: bodyFormat(ctx),
+    staffId: agent.id,
+    userId: 0,
+    poster: agentName(agent, cfg),
+    ip: ctx.actor?.ip ?? "",
+  });
+  await tx.updateTable("thread_entry").set({ flags: entry.flags | 0x0001 }).where("id", "=", entry.id).execute();
+
+  await logTaskEvent(ctx, task, threadId, "created", null, ctx.actor);
+
+  if (input.assignee && agent.roleFor(task.dept_id).perms.has(TaskPerm.ASSIGN)) {
+    await assignTask(ctx, task, input.assignee, "");
+  }
+  await onNewTask(ctx, task);
+  return { ok: true, id, number };
+}
+
+/* ------------------------------------------------------------------ modifica */
+
+/** Task::update($forms, $vars): campi del form, nota facoltativa, evento edited. */
+export async function updateTaskFields(ctx: WriteContext, task: TaskDbRow, fields: Record<string, unknown>, note = ""): Promise<TaskResult> {
+  const { tx } = ctx;
+  const entries = await entriesFor(tx, "A", task.id);
+  if (!entries.length) return { ok: false, error: "not_found" };
+  for (const e of entries) {
+    const errors = validateInput(e.fields, fields, (f) => isEditableToStaff(f));
+    if (Object.keys(errors).length) return { ok: false, error: "title_required" };
+  }
+  const changes: Record<string, [string | null, string | null]> = {};
+  for (const e of entries) {
+    const r = await saveEntryAnswers(tx, e, task.id, fields, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f) });
+    for (const [k, v] of Object.entries(r.changes)) if (!(k in changes)) changes[k] = v;
+  }
+  if (note && note.trim()) await postTaskNote(ctx, task, { note, title: "Task Updated" });
+  const threadId = await taskThreadId(tx, task.id);
+  if (Object.keys(changes).length) await logTaskEvent(ctx, task, threadId, "edited", { fields: changes });
+  await updateTaskRow(tx, task, { updated: "NOW" });
+  return { ok: true };
+}
+
+/** Task::updateField per la data di scadenza (ajax.tasks.php:editField 'duedate'). `iso` vuoto = rimozione. */
+export async function updateTaskDueDate(ctx: WriteContext, task: TaskDbRow, iso: string | null, comments = ""): Promise<TaskResult> {
+  const { tx } = ctx;
+  let val: string | null = null;
+  if (iso) {
+    val = isoToDb(iso, ctx.dbZone);
+    if (!val) return { ok: false, error: "invalid_date" };
+  }
+  // FormField::getChanges confronta il timestamp attuale con il valore inviato: "nessuna modifica" solo se entrambi vuoti
+  if (!task.duedate && !val) return { ok: false, error: "no_change" };
+  if (iso && DateTime.fromISO(iso).toMillis() <= Date.now()) return { ok: false, error: "due_past" };
+  const threadId = await taskThreadId(tx, task.id);
+  await updateTaskRow(tx, task, { duedate: val });
+  await logTaskEvent(ctx, task, threadId, "edited", null);
+  if (comments && comments.trim()) await postTaskNote(ctx, task, { note: comments, title: "Due Date updated", alert: false });
+  await updateTaskRow(tx, task, { updated: "NOW" });
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ eliminazione */
+
+/** Task::delete($comments): task, thread (voci, indice, collaboratori, referral), eventi, bozze, form. */
+export async function deleteTask(ctx: WriteContext, task: TaskDbRow, comments = ""): Promise<TaskResult> {
+  const { tx, agent, cfg } = ctx;
+  const threadId = await taskThreadId(tx, task.id);
+  await tx.deleteFrom("task").where("id", "=", task.id).execute();
+  await deleteSearchRow(tx, "A", task.id);
+  if (threadId) {
+    await tx.deleteFrom("thread").where("id", "=", threadId).execute();
+    await sql`DELETE s.* FROM ${table("_search")} s JOIN ${table("thread_entry")} h ON (h.id = s.object_id)
+      WHERE s.object_type = 'H' AND h.thread_id = ${threadId}`.execute(tx);
+    await sql`UPDATE ${table("thread_entry_email")} E JOIN ${table("thread_entry")} H ON (H.id = E.thread_entry_id)
+      SET E.headers = NULL WHERE H.thread_id = ${threadId}`.execute(tx);
+    await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("thread_entry")} H ON (A.type = 'H' AND A.object_id = H.id)
+      WHERE H.thread_id = ${threadId}`.execute(tx);
+    await tx.deleteFrom("thread_collaborator").where("thread_id", "=", threadId).execute();
+    await tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).execute();
+    await tx.deleteFrom("thread_entry").where("thread_id", "=", threadId).execute();
+    await tx.updateTable("thread_event").set({ thread_id: 0 }).where("thread_id", "=", threadId).execute();
+    await logTaskEvent(ctx, task, threadId, "deleted");
+  }
+  // Draft::deleteForNamespace('task.%.<id>')
+  const ns = `task.%.${task.id}`;
+  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
+    WHERE D.namespace LIKE ${ns.replace(/([%_\\])/g, "\\$1") + "%"}`.execute(tx);
+  await tx.deleteFrom("draft").where("namespace", "like", ns).execute();
+  await deleteEntries(tx, "A", task.id);
+  let log = `Task #${task.number} deleted by ${agent ? agentName(agent, cfg) : "SYSTEM"}`;
+  if (comments) log += `<hr>${comments}`;
+  await logSystem("Debug", `Task #${task.number} deleted`, log, ctx.actor?.ip ?? "", { executor: tx });
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ azioni di massa */
+
+export type TaskMassAction =
+  | { action: "claim" }
+  | { action: "assign"; to: TaskAssignee }
+  | { action: "transfer"; deptId: number }
+  | { action: "close"; comments?: string }
+  | { action: "reopen"; comments?: string }
+  | { action: "delete"; comments?: string };
+
+/** ajax.tasks.php:massProcess: restituisce il numero di task elaborati. */
+export async function massTaskAction(ctx: WriteContext, ids: number[], op: TaskMassAction): Promise<number> {
+  const agent = ctx.agent;
+  if (!agent) return 0;
+  let done = 0;
+  for (const id of ids) {
+    const row = await loadTask(id, ctx.tx);
+    const task = await loadTaskRow(ctx.tx, id, true);
+    if (!row || !task) continue;
+    let r: TaskResult | null = null;
+    switch (op.action) {
+      case "claim":
+        if (checkTaskPerm(row, agent, TaskPerm.ASSIGN)) r = await claimTask(ctx, task, "");
+        break;
+      case "assign":
+        if (checkTaskPerm(row, agent, TaskPerm.ASSIGN)) r = await assignTask(ctx, task, op.to, "");
+        break;
+      case "transfer":
+        if (checkTaskPerm(row, agent, TaskPerm.TRANSFER)) r = await transferTask(ctx, task, op.deptId, "");
+        break;
+      case "close":
+      case "reopen": {
+        const perm = op.action === "close" ? TaskPerm.CLOSE : TaskPerm.CREATE;
+        if (agent.hasPermInAnyRole(perm) && checkTaskPerm(row, agent, perm)) {
+          r = await setTaskStatus(ctx, task, op.action === "close" ? "closed" : "open", op.comments ?? "");
+        }
+        break;
+      }
+      case "delete":
+        if (checkTaskPerm(row, agent, TaskPerm.DELETE)) r = await deleteTask(ctx, task, op.comments ?? "");
+        break;
+    }
+    if (r?.ok) done++;
+  }
+  return done;
+}
