@@ -299,7 +299,15 @@
     "orgTickets": "Organization tickets",
     "domain": "Domain",
     "prev": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "accountGuest": "Guest",
+    "status": "Status",
+    "ticketsFilter": {
+      "all": "All",
+      "open": "Open",
+      "closed": "Closed"
+    },
+    "viewAll": "View all ({n})"
   },
   "kb": {
     "title": "Knowledgebase",
@@ -369,7 +377,18 @@
     "signatureType": "Default signature",
     "threadOrder": "Thread order",
     "systemDefault": "System default",
-    "permissions": "Permissions"
+    "permissions": "Permissions",
+    "access": "Departments and roles",
+    "primaryDept": "Primary department",
+    "extendedAccess": "Extended access",
+    "alerts": "Alerts",
+    "alertsOn": "On",
+    "alertsOff": "Off",
+    "teams": "Teams",
+    "noTeams": "No teams",
+    "noExtended": "No extended access",
+    "rolePerms": "{role} role permissions",
+    "agentPerms": "Agent permissions"
   },
   "composer": {
     "reply": "Reply",
@@ -454,5 +473,52 @@
     "name": "TailTicket",
     "tagline": "The modern helpdesk, fully compatible with osTicket",
     "basedOn": "TailTicket · based on osTicket (GPL-2.0)"
+  },
+  "permissions": {
+    "groups": {
+      "Tickets": "Tickets",
+      "Tasks": "Tasks",
+      "Users": "Users",
+      "Organizations": "Organizations",
+      "Knowledgebase": "Knowledge base",
+      "Miscellaneous": "Miscellaneous"
+    },
+    "items": {
+      "ticket_assign": "assign",
+      "ticket_close": "close",
+      "ticket_create": "create",
+      "ticket_delete": "delete",
+      "ticket_edit": "edit",
+      "thread_edit": "edit thread",
+      "ticket_link": "link",
+      "ticket_markanswered": "mark as answered",
+      "ticket_merge": "merge",
+      "ticket_reply": "post reply",
+      "ticket_refer": "refer",
+      "ticket_release": "release",
+      "ticket_transfer": "transfer",
+      "task_assign": "assign",
+      "task_close": "close",
+      "task_create": "create",
+      "task_delete": "delete",
+      "task_edit": "edit",
+      "task_reply": "post reply",
+      "task_transfer": "transfer",
+      "user_create": "create",
+      "user_delete": "delete",
+      "user_edit": "edit",
+      "user_manage": "manage account",
+      "user_dir": "user directory",
+      "org_create": "create",
+      "org_delete": "delete",
+      "org_edit": "edit",
+      "canned_manage": "canned responses",
+      "faq_manage": "FAQ",
+      "visibility_agents": "see agents in all departments",
+      "emails_banlist": "email banlist",
+      "visibility_departments": "see all departments",
+      "search_all": "search all tickets",
+      "stats_agents": "other agents' stats"
+    }
   }
 }

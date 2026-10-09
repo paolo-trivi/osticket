@@ -11,7 +11,7 @@ import { db } from "@/server/db";
 import { pageSizeFor } from "@/server/domain/queue/context";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
-import { listTasks, TaskFlag, type TaskQueueName } from "@/server/domain/task/tasks";
+import { countTaskQueues, listTasks, TaskFlag, type TaskQueueName } from "@/server/domain/task/tasks";
 import { selectableDepts } from "@/server/domain/ticket/assign";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
@@ -43,7 +43,10 @@ export default async function TasksPage({
   // ?ticket=<id>: task di un ticket (ticket-tasks.inc.php), con creazione dal ticket
   const ticket = sp.ticket ? await loadTicket(Number(sp.ticket), agent.id) : null;
   const ticketOk = !!ticket && (await checkStaffPerm(ticket, agent));
-  const { rows, total } = await listTasks(agent, { queue, q: sp.q, page, pageSize, ticketId: ticketOk ? ticket!.ticket_id : undefined });
+  const [{ rows, total }, counts] = await Promise.all([
+    listTasks(agent, { queue, q: sp.q, page, pageSize, ticketId: ticketOk ? ticket!.ticket_id : undefined }),
+    countTaskQueues(agent, QUEUES),
+  ]);
   const tz = await agentTimeZone(agent);
   const tp = await getTranslations("peopleTasks");
 
@@ -97,6 +100,7 @@ export default async function TasksPage({
             )}
           >
             {t(`queues.${q}`)}
+            <span className="ms-1.5 rounded-full bg-gray-100 px-1.5 text-theme-xs tabular-nums text-gray-600 dark:bg-white/5 dark:text-gray-400">{counts[q]}</span>
           </Link>
         ))}
       </div>

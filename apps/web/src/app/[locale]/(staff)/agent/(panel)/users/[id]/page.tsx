@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 
 import ComponentCard from "@/components/common/ComponentCard";
 import { Forbidden, PageHeader } from "@/components/common/DataTable";
+import AccountStatusBadge from "@/components/people/AccountStatusBadge";
 import UserActions from "@/components/people/directory/UserActions";
+import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
 import { db } from "@/server/db";
 import { loadUser } from "@/server/domain/directory/directory";
@@ -13,8 +15,16 @@ import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../guard";
 
-export default async function UserPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
+export default async function UserPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ tickets?: string }>;
+}) {
   const { locale, id } = await params;
+  const { tickets } = await searchParams;
+  const filter: TicketStateFilter = tickets === "open" || tickets === "closed" ? tickets : "all";
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("directory");
@@ -28,7 +38,6 @@ export default async function UserPage({ params }: { params: Promise<{ locale: s
     db().selectFrom("user_account").select(["status", "username", "timezone"]).where("user_id", "=", user.id).executeTakeFirst(),
     db().selectFrom("organization").select(["id", "name"]).orderBy("name").execute(),
   ]);
-  const account = user.account_status === null ? t("noAccount") : user.account_status & 2 ? t("accountLocked") : user.account_status & 1 ? t("accountActive") : t("accountPending");
 
   return (
     <div className="space-y-6">
@@ -65,7 +74,7 @@ export default async function UserPage({ params }: { params: Promise<{ locale: s
           <dl className="space-y-2 text-sm">
             <Row label={t("emails")} value={user.emails.join(", ")} />
             <Row label={t("organization")} value={user.org_id ? <Link href={`/agent/orgs/${user.org_id}`}>{user.org_name}</Link> : "—"} />
-            <Row label={t("account")} value={account} />
+            <Row label={t("account")} value={<AccountStatusBadge status={user.account_status} />} />
             {user.username && <Row label={t("username")} value={user.username} />}
             <Row label={t("created")} value={formatDbDate(user.created, tz, locale)} />
             <Row label={t("updated")} value={formatDbDate(user.updated, tz, locale)} />
@@ -77,6 +86,15 @@ export default async function UserPage({ params }: { params: Promise<{ locale: s
           </dl>
         </ComponentCard>
       </div>
+      <PersonTickets
+        agent={agent}
+        criterion={["user_id", "equal", user.id]}
+        filter={filter}
+        basePath={`/agent/users/${user.id}`}
+        allHref={`/agent/tickets?user=${user.id}`}
+        tz={tz}
+        locale={locale}
+      />
     </div>
   );
 }

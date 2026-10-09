@@ -1,4 +1,7 @@
+import { useTranslations } from "next-intl";
+
 import { Link } from "@/i18n/navigation";
+import { ChatIcon } from "@/icons";
 import type { QueueColumnDef } from "@/server/domain/queue/engine";
 import type { TicketRow } from "@/server/domain/ticket/rows";
 import { formatDbDate, isoOf, type DateStyle } from "@/server/format/datetime";
@@ -90,9 +93,16 @@ function conditionStyle(column: QueueColumnDef, row: TicketRow): React.CSSProper
   return Object.fromEntries(Object.entries(style).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()), v]));
 }
 
-const SOURCE_ICON: Record<string, string> = { Email: "✉", Web: "🌐", Phone: "☎", API: "⚙", Other: "•" };
+const SOURCES = ["Email", "Web", "Phone", "API", "Other"] as const;
+
+/** Colore della priorità dal DB (ticket_priority.priority_color), solo se è un esadecimale valido. */
+function safeColor(color: string | null): string {
+  return color && /^#[0-9a-f]{6}$/i.test(color) ? color : "#98a2b3";
+}
 
 export default function TicketCell({ column, row, tz, locale, assigneeName, staffName }: Props) {
+  const tSource = useTranslations("ticketEdit.sources");
+  const sourceLabel = (SOURCES as readonly string[]).includes(row.source) ? tSource(row.source as (typeof SOURCES)[number]) : row.source;
   const names = { assignee: assigneeName, staff: staffName };
   let value = rawValue(column.primary, row, names);
   if (!value && column.secondary) value = rawValue(column.secondary, row, names);
@@ -108,9 +118,13 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
     );
   }
   if (column.primary === "cdata__priority" && row.priority) {
+    const color = safeColor(row.priority_color);
     content = (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-2.5 rounded-full" style={{ backgroundColor: row.priority_color ?? "#ccc" }} />
+      // i colori di osTicket sono tinte pastello pensate come sfondo: testo scuro in entrambi i temi
+      <span
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-theme-xs font-medium text-gray-800 ring-1 ring-black/10 ring-inset"
+        style={{ backgroundColor: color }}
+      >
         {row.priority}
       </span>
     );
@@ -132,7 +146,8 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
       case "TicketThreadCount":
         if (row.thread_count > 1)
           target.push(
-            <span key={a.c} className="rounded-full bg-gray-100 px-1.5 text-theme-xs text-gray-600 dark:bg-white/5 dark:text-gray-400">
+            <span key={a.c} className="inline-flex items-center gap-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+              <ChatIcon className="size-3.5" aria-hidden />
               {row.thread_count}
             </span>,
           );
@@ -156,8 +171,8 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         break;
       case "TicketSourceDecoration":
         target.push(
-          <span key={a.c} className="text-gray-400" title={row.source}>
-            {SOURCE_ICON[row.source] ?? "•"}
+          <span key={a.c} className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-600 dark:bg-white/5 dark:text-gray-400">
+            {sourceLabel}
           </span>,
         );
         break;

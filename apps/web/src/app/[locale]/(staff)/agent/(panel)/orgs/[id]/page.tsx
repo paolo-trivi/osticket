@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import ComponentCard from "@/components/common/ComponentCard";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import InfoRow from "@/components/common/InfoRow";
+import AccountStatusBadge from "@/components/people/AccountStatusBadge";
 import { RowSelect } from "@/components/people/directory/DirectoryButtons";
 import OrgActions, { OrgMembersBar } from "@/components/people/directory/OrgActions";
+import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
@@ -17,8 +19,16 @@ import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../guard";
 
-export default async function OrgPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
+export default async function OrgPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ tickets?: string }>;
+}) {
   const { locale, id } = await params;
+  const { tickets } = await searchParams;
+  const filter: TicketStateFilter = tickets === "open" || tickets === "closed" ? tickets : "all";
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("directory");
@@ -87,6 +97,7 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
               { key: "sel", label: "" },
               { key: "name", label: t("name") },
               { key: "email", label: t("email") },
+              { key: "status", label: t("status") },
               { key: "tickets", label: t("tickets") },
             ]}
             rows={users.rows.map((u) => ({
@@ -95,12 +106,22 @@ export default async function OrgPage({ params }: { params: Promise<{ locale: st
                 sel: <RowSelect id={u.id} group="member" />,
                 name: canSeeUsers ? <Link href={`/agent/users/${u.id}`} className="text-brand-600 dark:text-brand-400">{u.name}</Link> : u.name,
                 email: u.email,
+                status: <AccountStatusBadge status={u.account_status} />,
                 tickets: u.tickets,
               },
             }))}
           />
         </div>
       </div>
+      <PersonTickets
+        agent={agent}
+        criterion={["user__org_id", "equal", org.id]}
+        filter={filter}
+        basePath={`/agent/orgs/${org.id}`}
+        allHref={`/agent/tickets?org=${org.id}`}
+        tz={tz}
+        locale={locale}
+      />
     </div>
   );
 }

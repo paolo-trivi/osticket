@@ -356,7 +356,15 @@
     "orgTickets": "Ticket dell'organizzazione",
     "domain": "Dominio",
     "prev": "Precedente",
-    "next": "Successiva"
+    "next": "Successiva",
+    "accountGuest": "Ospite",
+    "status": "Stato",
+    "ticketsFilter": {
+      "all": "Tutti",
+      "open": "Aperti",
+      "closed": "Chiusi"
+    },
+    "viewAll": "Vedi tutti ({n})"
   },
   "kb": {
     "title": "Knowledge base",
@@ -426,7 +434,18 @@
     "signatureType": "Firma predefinita",
     "threadOrder": "Ordine dei messaggi",
     "systemDefault": "Predefinito di sistema",
-    "permissions": "Permessi"
+    "permissions": "Permessi",
+    "access": "Reparti e ruoli",
+    "primaryDept": "Reparto principale",
+    "extendedAccess": "Accesso esteso",
+    "alerts": "Avvisi",
+    "alertsOn": "Attivi",
+    "alertsOff": "Disattivati",
+    "teams": "Team",
+    "noTeams": "Nessun team",
+    "noExtended": "Nessun accesso esteso",
+    "rolePerms": "Permessi del ruolo {role}",
+    "agentPerms": "Permessi dell'agente"
   },
   "composer": {
     "reply": "Rispondi",
@@ -511,5 +530,52 @@
     "name": "TailTicket",
     "tagline": "L'helpdesk moderno, compatibile con osTicket",
     "basedOn": "TailTicket · basato su osTicket (GPL-2.0)"
+  },
+  "permissions": {
+    "groups": {
+      "Tickets": "Ticket",
+      "Tasks": "Task",
+      "Users": "Utenti",
+      "Organizations": "Organizzazioni",
+      "Knowledgebase": "Knowledge base",
+      "Miscellaneous": "Varie"
+    },
+    "items": {
+      "ticket_assign": "assegnare",
+      "ticket_close": "chiudere",
+      "ticket_create": "creare",
+      "ticket_delete": "eliminare",
+      "ticket_edit": "modificare",
+      "thread_edit": "modificare il thread",
+      "ticket_link": "collegare",
+      "ticket_markanswered": "segnare come risposto",
+      "ticket_merge": "unire",
+      "ticket_reply": "rispondere",
+      "ticket_refer": "segnalare (referral)",
+      "ticket_release": "rilasciare",
+      "ticket_transfer": "trasferire",
+      "task_assign": "assegnare",
+      "task_close": "chiudere",
+      "task_create": "creare",
+      "task_delete": "eliminare",
+      "task_edit": "modificare",
+      "task_reply": "rispondere",
+      "task_transfer": "trasferire",
+      "user_create": "creare",
+      "user_delete": "eliminare",
+      "user_edit": "modificare",
+      "user_manage": "gestire l'account",
+      "user_dir": "directory utenti",
+      "org_create": "creare",
+      "org_delete": "eliminare",
+      "org_edit": "modificare",
+      "canned_manage": "risposte predefinite",
+      "faq_manage": "FAQ",
+      "visibility_agents": "vedere gli agenti di tutti i reparti",
+      "emails_banlist": "lista di blocco email",
+      "visibility_departments": "vedere tutti i reparti",
+      "search_all": "cercare in tutti i ticket",
+      "stats_agents": "statistiche degli altri agenti"
+    }
   }
 }
