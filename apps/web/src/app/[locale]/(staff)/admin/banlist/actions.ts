@@ -1,23 +1,24 @@
 "use server";
 
 import type { SysFormState } from "@/components/adminsys/SysForm";
+import { massRedirect, sysFormResult } from "@/server/actions/result";
 import { str } from "@/server/domain/admin/php";
 import { addBanRule, massBanRules, updateBanRule, type BanMassAction } from "@/server/domain/adminsys/banlist";
 
-import { adminWrite, formResult, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 /** scp/banlist.php do=add */
 export async function addBanAction(_prev: SysFormState, form: FormData): Promise<SysFormState> {
   const { locale } = await requireAdminAction();
   const r = await adminWrite((tx) => addBanRule(tx, parsePhpForm(form)));
-  return formResult(r, { locale });
+  return sysFormResult(r, { locale });
 }
 
 /** scp/banlist.php do=update */
 export async function updateBanAction(ruleId: number, _prev: SysFormState, form: FormData): Promise<SysFormState> {
   const { locale } = await requireAdminAction();
   const r = await adminWrite((tx) => updateBanRule(tx, ruleId, parsePhpForm(form)));
-  return formResult(r, { locale });
+  return sysFormResult(r, { locale });
 }
 
 const ACTIONS: BanMassAction[] = ["enable", "disable", "delete"];

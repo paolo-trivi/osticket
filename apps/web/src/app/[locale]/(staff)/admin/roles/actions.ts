@@ -1,18 +1,19 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str } from "@/server/domain/admin/php";
 import { massRoles, saveRole, type RoleMassAction } from "@/server/domain/admin/role";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /** scp/roles.php do=update / do=add */
 export async function saveRoleAction(roleId: number | null, _prev: AdminFormState, form: FormData): Promise<AdminFormState> {
   const { locale } = await requireAdminAction();
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => saveRole(tx, roleId, vars));
-  return formResult(r, { path: "/admin/roles", locale, created: roleId ? undefined : (id) => `/admin/roles/${id}?created=1` });
+  return adminFormResult(r, { locale, created: roleId ? undefined : (id) => `/admin/roles/${id}?created=1` });
 }
 
 const ACTIONS: RoleMassAction[] = ["enable", "disable", "delete"];

@@ -1,12 +1,13 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { checkPasswordPolicy } from "@/server/domain/directory/accounts";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str, truthy, type PhpVars } from "@/server/domain/admin/php";
 import { massStaff, saveStaff, setAgentPassword, type StaffMassAction } from "@/server/domain/admin/staff-admin";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /**
  * scp/staff.php do=update / do=create. Alla creazione il PHP prende la password dal dialogo
@@ -42,7 +43,7 @@ export async function saveAgentAction(staffId: number | null, _prev: AdminFormSt
     }
   }
   const r = await adminWrite((tx) => saveStaff(tx, staffId, vars, { actorId: agent.id, ip }));
-  return formResult(r, { path: "/admin/agents", locale, created: staffId ? undefined : (id) => `/admin/agents/${id}?created=1` });
+  return adminFormResult(r, { locale, created: staffId ? undefined : (id) => `/admin/agents/${id}?created=1` });
 }
 
 /** ajax.staff.php setPassword: email di reset oppure nuova password. */

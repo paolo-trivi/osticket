@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import BackLink from "@/components/adminsys/BackLink";
-import { Callout } from "@/components/adminsys/fields";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
+import Callout from "@/components/common/Callout";
 import { PageHeader } from "@/components/common/DataTable";
 import { redirect } from "@/i18n/navigation";
 import { db } from "@/server/db";

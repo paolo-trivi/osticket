@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { formFlag, formHtml, formNum, formStr } from "@/server/actions/form-data";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { assignTicket, claimTicket, referTicket, releaseTicket, removeReferrals } from "@/server/domain/ticket/assign";
@@ -10,7 +11,6 @@ import { ticketHardDelete } from "@/server/domain/ticket/delete";
 import { changeTicketStatus, markTicketAnswered, type ActionResult } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";
 import { runWrite } from "@/server/domain/write";
-import { sanitizeText } from "@/server/format/text";
 
 /**
  * Server action delle azioni sul ticket (area "actions"): assegnazione, presa in carico, rilascio,
@@ -28,13 +28,6 @@ export interface TicketActionState {
   nonce?: number;
 }
 
-/** Commento HTML dei form (TextareaField html → Format::sanitize); vuoto se contiene solo tag/spazi. */
-function comments(form: FormData, sanitize = true): string {
-  const raw = String(form.get("comments") ?? "");
-  if (!raw.replace(/<[^>]*>|&nbsp;|\s/g, "")) return "";
-  return sanitize ? sanitizeText(raw) : raw;
-}
-
 async function run(ticketId: number, fn: (ctx: WriteContext) => Promise<ActionResult & { removed?: number }>): Promise<TicketActionState> {
   const agent = await currentAgent();
   if (!agent) return { error: "session_expired" };
@@ -47,44 +40,44 @@ async function run(ticketId: number, fn: (ctx: WriteContext) => Promise<ActionRe
   return { ok: true, warn: r.warn, removed: r.removed, nonce: Date.now() };
 }
 
-const ticketIdOf = (form: FormData) => Number(form.get("ticketId") ?? 0);
+const ticketIdOf = (form: FormData) => formNum(form, "ticketId");
 
 export async function assignAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
   return run(ticketId, (ctx) =>
     assignTicket(ctx, {
       ticketId,
-      assignee: String(form.get("assignee") ?? ""),
-      refer: form.get("refer") === "1",
-      comments: comments(form),
+      assignee: formStr(form, "assignee"),
+      refer: formFlag(form, "refer"),
+      comments: formHtml(form),
     }),
   );
 }
 
 export async function claimAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
-  return run(ticketId, (ctx) => claimTicket(ctx, { ticketId, comments: comments(form) }));
+  return run(ticketId, (ctx) => claimTicket(ctx, { ticketId, comments: formHtml(form) }));
 }
 
 export async function releaseAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
   return run(ticketId, (ctx) =>
-    releaseTicket(ctx, { ticketId, staff: form.get("sid") === "1", team: form.get("tid") === "1", comments: comments(form) }),
+    releaseTicket(ctx, { ticketId, staff: formFlag(form, "sid"), team: formFlag(form, "tid"), comments: formHtml(form) }),
   );
 }
 
 export async function transferAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
   return run(ticketId, (ctx) =>
-    transferTicket(ctx, { ticketId, deptId: Number(form.get("dept") ?? 0), refer: form.get("refer") === "1", comments: comments(form) }),
+    transferTicket(ctx, { ticketId, deptId: formNum(form, "dept"), refer: formFlag(form, "refer"), comments: formHtml(form) }),
   );
 }
 
 export async function referAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
-  const target = String(form.get("target") ?? "");
+  const target = formStr(form, "target");
   if (target !== "agent" && target !== "team" && target !== "dept") return { error: "unknown_referee", nonce: Date.now() };
-  return run(ticketId, (ctx) => referTicket(ctx, { ticketId, target, id: Number(form.get(target) ?? 0), comments: comments(form) }));
+  return run(ticketId, (ctx) => referTicket(ctx, { ticketId, target, id: formNum(form, target), comments: formHtml(form) }));
 }
 
 export async function statusAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
@@ -93,9 +86,9 @@ export async function statusAction(_prev: TicketActionState, form: FormData): Pr
   return run(ticketId, (ctx) =>
     changeTicketStatus(
       ctx,
-      { ticketId, statusId: Number(form.get("statusId") ?? 0), comments: comments(form, false), children: form.get("children") === "1" },
+      { ticketId, statusId: formNum(form, "statusId"), comments: formHtml(form, "comments", { sanitize: false }), children: formFlag(form, "children") },
       // AGGANCIO "ticketedit": stato "deleted" → Ticket::delete (anche dei figli, vedi ticketHardDelete)
-      { hardDelete: ticketHardDelete({ children: form.get("children") === "1" }) },
+      { hardDelete: ticketHardDelete({ children: formFlag(form, "children") }) },
     ),
   );
 }
@@ -110,5 +103,5 @@ export async function removeReferralsAction(_prev: TicketActionState, form: Form
 
 export async function markAction(_prev: TicketActionState, form: FormData): Promise<TicketActionState> {
   const ticketId = ticketIdOf(form);
-  return run(ticketId, (ctx) => markTicketAnswered(ctx, { ticketId, answered: form.get("answered") === "1", comments: comments(form) }));
+  return run(ticketId, (ctx) => markTicketAnswered(ctx, { ticketId, answered: formFlag(form, "answered"), comments: formHtml(form) }));
 }

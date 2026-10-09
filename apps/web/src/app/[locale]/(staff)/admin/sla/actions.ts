@@ -1,18 +1,19 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str } from "@/server/domain/admin/php";
 import { massSla, saveSla, type SlaMassAction } from "@/server/domain/admin/sla";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /** scp/slas.php do=update / do=add */
 export async function saveSlaAction(slaId: number | null, _prev: AdminFormState, form: FormData): Promise<AdminFormState> {
   const { locale } = await requireAdminAction();
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => saveSla(tx, slaId, vars));
-  return formResult(r, { path: "/admin/sla", locale, created: slaId ? undefined : (id) => `/admin/sla/${id}?created=1` });
+  return adminFormResult(r, { locale, created: slaId ? undefined : (id) => `/admin/sla/${id}?created=1` });
 }
 
 const ACTIONS: SlaMassAction[] = ["enable", "disable", "delete"];

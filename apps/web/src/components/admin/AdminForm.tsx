@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 
+import Callout from "@/components/common/Callout";
 import ComponentCard from "@/components/common/ComponentCard";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
@@ -138,13 +139,9 @@ export default function AdminForm({
   const other = Object.entries(errors).filter(([k]) => !known.has(k));
   return (
     <form action={formAction} className="space-y-6" key={state.status === "saved" ? state.nonce : undefined}>
-      {state.status === "saved" && (
-        <div className="rounded-lg border border-success-500 bg-success-50 p-4 text-sm text-success-700 dark:border-success-500/30 dark:bg-success-500/15 dark:text-success-400">
-          {savedMessage ?? t("saved")}
-        </div>
-      )}
+      {state.status === "saved" && <Callout tone="success">{savedMessage ?? t("saved")}</Callout>}
       {state.status === "error" && (
-        <div className="rounded-lg border border-error-500 bg-error-50 p-4 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+        <Callout tone="error">
           <p>{t("fixErrors")}</p>
           {other.length > 0 && (
             <ul className="mt-2 list-disc ps-5">
@@ -153,7 +150,7 @@ export default function AdminForm({
               ))}
             </ul>
           )}
-        </div>
+        </Callout>
       )}
       {sections.map((s) => (
         <ComponentCard key={s.title} title={s.title} desc={s.desc}>

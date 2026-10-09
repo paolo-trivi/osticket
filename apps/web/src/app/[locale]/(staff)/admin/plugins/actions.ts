@@ -1,9 +1,10 @@
 "use server";
 
+import { massRedirect } from "@/server/actions/result";
 import { str } from "@/server/domain/admin/php";
 import { massPluginInstances, massPlugins, type InstanceMassAction, type PluginMassAction } from "@/server/domain/adminsys/plugin";
 
-import { adminWrite, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 /** scp/plugins.php do=mass_process (abilita/disabilita) */
 export async function massPluginAction(form: FormData): Promise<void> {

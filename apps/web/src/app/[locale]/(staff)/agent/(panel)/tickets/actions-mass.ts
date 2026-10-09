@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { formFlag, formHtml, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { coreConfig } from "@/server/config/config";
@@ -20,7 +21,6 @@ import {
   type MassResult,
 } from "@/server/domain/ticket/mass";
 import { runWrite } from "@/server/domain/write";
-import { sanitizeText } from "@/server/format/text";
 
 /**
  * Server action delle azioni di massa della lista ticket (area "ticketedit"): ajax.tickets.php
@@ -35,13 +35,7 @@ export interface MassActionState {
   nonce?: number;
 }
 
-const tidsOf = (form: FormData) => [...new Set(form.getAll("tids").map(Number).filter(Boolean))];
-
-function comments(form: FormData): string {
-  const raw = String(form.get("comments") ?? "");
-  if (!raw.replace(/<[^>]*>|&nbsp;|\s/g, "")) return "";
-  return sanitizeText(raw);
-}
+const tidsOf = (form: FormData) => [...new Set(formIds(form, "tids"))];
 
 async function run(fn: (ctx: WriteContext) => Promise<MassResult>): Promise<MassActionState> {
   const agent = await currentAgent();
@@ -53,48 +47,46 @@ async function run(fn: (ctx: WriteContext) => Promise<MassResult>): Promise<Mass
 }
 
 export async function massAssignAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
-  const assignee = String(form.get("assignee") ?? "");
+  const assignee = formStr(form, "assignee");
   if (!/^[st]\d+$/.test(assignee)) return { error: "assignee_required", nonce: Date.now() };
-  return run((ctx) => massAssign(ctx, { ticketIds: tidsOf(form), assignee, comments: comments(form) }));
+  return run((ctx) => massAssign(ctx, { ticketIds: tidsOf(form), assignee, comments: formHtml(form) }));
 }
 
 export async function massClaimAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
-  return run((ctx) => massClaim(ctx, { ticketIds: tidsOf(form), comments: comments(form) }));
+  return run((ctx) => massClaim(ctx, { ticketIds: tidsOf(form), comments: formHtml(form) }));
 }
 
 export async function massTransferAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
-  const deptId = Number(form.get("dept") ?? 0);
+  const deptId = formNum(form, "dept");
   if (!deptId) return { error: "dept_required", nonce: Date.now() };
-  return run((ctx) => massTransfer(ctx, { ticketIds: tidsOf(form), deptId, comments: comments(form) }));
+  return run((ctx) => massTransfer(ctx, { ticketIds: tidsOf(form), deptId, comments: formHtml(form) }));
 }
 
 export async function massDeleteAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
-  return run((ctx) => massDelete(ctx, { ticketIds: tidsOf(form), comments: String(form.get("comments") ?? "") }));
+  return run((ctx) => massDelete(ctx, { ticketIds: tidsOf(form), comments: formStr(form, "comments") }));
 }
 
 export async function massStatusAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
   // setSelectedTicketsStatus passa $_REQUEST['comments'] grezzo (pulito da ThreadEntryBody)
-  const raw = String(form.get("comments") ?? "");
-  return run((ctx) =>
-    massChangeStatus(ctx, { ticketIds: tidsOf(form), statusId: Number(form.get("statusId") ?? 0), comments: raw.replace(/<[^>]*>|&nbsp;|\s/g, "") ? raw : "" }),
-  );
+  const comments = formHtml(form, "comments", { sanitize: false });
+  return run((ctx) => massChangeStatus(ctx, { ticketIds: tidsOf(form), statusId: formNum(form, "statusId"), comments }));
 }
 
 /** Merge/link dei ticket scelti: ordine dal dialogo (il primo è il padre), poi Ticket::merge. */
 export async function massMergeAction(_prev: MassActionState, form: FormData): Promise<MassActionState> {
   const title = form.get("title") === "link" ? "link" : "merge";
-  const numbers = form.getAll("numbers").map(String).filter(Boolean);
+  const numbers = formStrs(form, "numbers").filter(Boolean);
   if (numbers.length < 2) return { error: "select_two", nonce: Date.now() };
   return run(async (ctx) => {
     const r = await mergeTickets(ctx, {
       title,
       numbers,
-      combine: title === "link" ? "2" : String(form.get("combine") ?? "1"),
-      participants: String(form.get("participants") ?? "all"),
-      childStatusId: Number(form.get("childStatusId") ?? 0) || undefined,
-      parentStatusId: Number(form.get("parentStatusId") ?? 0) || undefined,
-      deleteChild: form.get("deleteChild") === "1",
-      moveTasks: form.get("moveTasks") === "1",
+      combine: title === "link" ? "2" : formStr(form, "combine", "1"),
+      participants: formStr(form, "participants", "all"),
+      childStatusId: formNum(form, "childStatusId") || undefined,
+      parentStatusId: formNum(form, "parentStatusId") || undefined,
+      deleteChild: formFlag(form, "deleteChild"),
+      moveTasks: formFlag(form, "moveTasks"),
     });
     return "error" in r ? { error: r.error } : { ok: true, count: numbers.length, total: numbers.length };
   });

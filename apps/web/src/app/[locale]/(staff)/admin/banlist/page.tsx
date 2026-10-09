@@ -1,9 +1,10 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Callout, RadioField, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
+import { RadioField, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
+import Callout from "@/components/common/Callout";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";

@@ -1,18 +1,19 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { massDept, saveDept, type DeptMassAction } from "@/server/domain/admin/dept";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str } from "@/server/domain/admin/php";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /** scp/departments.php do=update / do=create */
 export async function saveDeptAction(deptId: number | null, _prev: AdminFormState, form: FormData): Promise<AdminFormState> {
   const { locale } = await requireAdminAction();
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => saveDept(tx, deptId, vars));
-  return formResult(r, { path: "/admin/departments", locale, created: deptId ? undefined : (id) => `/admin/departments/${id}?created=1` });
+  return adminFormResult(r, { locale, created: deptId ? undefined : (id) => `/admin/departments/${id}?created=1` });
 }
 
 const ACTIONS: DeptMassAction[] = ["enable", "disable", "archive", "delete"];

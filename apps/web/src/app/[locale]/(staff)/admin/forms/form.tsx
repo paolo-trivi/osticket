@@ -2,8 +2,9 @@ import "server-only";
 
 import { getTranslations } from "next-intl/server";
 
-import { Callout, Hidden, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
+import { Hidden, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
 import Repeater from "@/components/adminsys/Repeater";
+import Callout from "@/components/common/Callout";
 import { db } from "@/server/db";
 import { CDATA_FORM_TYPES, FIELD_TYPES, FieldFlag, REQUIREMENT_MODES, type formDetail } from "@/server/domain/adminsys/form";
 
