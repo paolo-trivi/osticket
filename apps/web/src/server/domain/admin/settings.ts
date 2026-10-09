@@ -7,10 +7,10 @@ import { sql } from "kysely";
 
 import { NOW, table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
-import { phpLooseEquals } from "../ticket/record";
+import { htmlcharsVars, inArray, intval, isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { hasHash } from "./common";
 import { ConfigWriter, type ConfigValue } from "./config-write";
 import { saveCompanyForm, validateCompanyForm } from "./company";
-import { formatHtmlchars, hasHash, inArray, intval, isNumeric, isset, list, str, truthy, type PhpVal, type PhpVars } from "./php";
 import { validate, type Errors, type FieldRule } from "./validator";
 
 /**
@@ -91,19 +91,6 @@ export async function updateSettings(executor: DbOrTx, input: PhpVars, opts: { i
   return { ok, errors };
 }
 
-/** Format::htmlchars($vars, true): sanitize + htmlspecialchars su ogni valore. */
-function htmlcharsSanitized(vars: PhpVars): PhpVars {
-  const conv = (v: PhpVal): PhpVal => {
-    if (v === undefined || v === null) return v;
-    if (Array.isArray(v)) return v.map(conv);
-    if (typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, conv(x)]));
-    return formatHtmlchars(sanitizeText(str(v)));
-  };
-  const out: PhpVars = {};
-  for (const [k, v] of Object.entries(vars)) out[k] = conv(v);
-  return out;
-}
-
 async function updateSystemSettings(executor: DbOrTx, cfg: ConfigWriter, input: PhpVars, errors: Errors, ip: string): Promise<boolean> {
   const f: Record<string, FieldRule> = {
     helpdesk_url: { type: "string", required: true, error: "required" },
@@ -120,7 +107,8 @@ async function updateSystemSettings(executor: DbOrTx, cfg: ConfigWriter, input: 
     default_timezone: { type: "string", required: true, error: "required" },
     system_language: { type: "string", required: true, error: "required" },
   };
-  const vars = htmlcharsSanitized(input);
+  // Format::htmlchars($vars, true)
+  const vars = htmlcharsVars(input, true);
 
   // ACL: l'amministratore non può chiudersi fuori
   if (truthy(vars.acl)) {

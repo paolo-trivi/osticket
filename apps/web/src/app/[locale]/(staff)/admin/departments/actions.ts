@@ -4,7 +4,7 @@ import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { massDept, saveDept, type DeptMassAction } from "@/server/domain/admin/dept";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";
 

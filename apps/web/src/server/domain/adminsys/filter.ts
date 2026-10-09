@@ -4,12 +4,12 @@ import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
 import { stripEmoticons } from "../../format/text";
+import { htmlchars, intval, isArray, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
 import { DeptFlag } from "../admin/dept";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { ov, pv } from "./orm-util";
-import { formatHtmlchars, intval, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import { TopicFlag } from "../admin/topic";
 import type { Errors } from "../admin/validator";
 import { isEmail } from "../forms/validator";
@@ -155,7 +155,7 @@ async function parseConfiguration(executor: DbOrTx, type: string, vars: PhpVars)
     }
     // FormField::validateEntry: required, poi i validatori dichiarati; TextboxField li riceve con
     // htmlchars ('0' → '&#48') e aggiunge il validatore "formula"
-    const value: PhpVal = f.kind === "text" ? (clean === "0" ? "&#48" : str(formatHtmlchars(str(clean)))) : clean;
+    const value: PhpVal = f.kind === "text" ? (clean === "0" ? "&#48" : str(htmlchars(str(clean)))) : clean;
     if (f.required && !truthy(value)) errors.push("required");
     const e = f.check?.(value);
     if (e) errors.push(e);
@@ -322,7 +322,7 @@ async function actionById(executor: DbOrTx, info: PhpVal) {
 /** Filter::validate_actions: true, false o 1 (errore su un valore vuoto). */
 async function validateActions(ctx: Ctx, vars: PhpVars, errors: Errors): Promise<boolean | null | 1> {
   if (truthy(vars.pass)) return true;
-  if (!Array.isArray(vars.actions) && !(vars.actions && typeof vars.actions === "object")) return null;
+  if (!isArray(vars.actions)) return null;
   let info: PhpVal = null;
   for (const v of list(vars.actions)) {
     const sv = str(v);
@@ -393,7 +393,7 @@ async function setFlag(ctx: Ctx, filterId: number, flag: number, on: boolean): P
 
 /** Filter::save_actions */
 async function saveActions(ctx: Ctx, filterId: number, vars: PhpVars, errors: Errors): Promise<void> {
-  if (!Array.isArray(vars.actions) && !(vars.actions && typeof vars.actions === "object")) return;
+  if (!isArray(vars.actions)) return;
   const entries = Array.isArray(vars.actions) ? vars.actions.map((v, i) => [i, v] as const) : Object.entries(vars.actions as Record<string, PhpVal>);
   for (const [sort, v] of entries) {
     const sv = str(v);

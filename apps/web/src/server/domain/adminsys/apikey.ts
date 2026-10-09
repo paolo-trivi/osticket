@@ -6,8 +6,8 @@ import { sql } from "kysely";
 
 import { table, type DbOrTx } from "../../db";
 import { randCode } from "../../mail/message-id";
+import { str, truthy, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
-import { str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
 import { sanitizeHtml } from "./sanitize";
 
@@ -18,8 +18,6 @@ import { sanitizeHtml } from "./sanitize";
  */
 const KEY_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-const input = (v: unknown) => (v === undefined || v === null || v === false ? "" : str(v as string));
-
 /** API::save($id, $vars, $errors) */
 export async function saveApiKey(executor: DbOrTx, id: number | null, vars: PhpVars): Promise<SaveResult> {
   const errors: Errors = {};
@@ -29,12 +27,12 @@ export async function saveApiKey(executor: DbOrTx, id: number | null, vars: PhpV
   }
   if (!id && (!truthy(vars.ipaddr) || !isIP(str(vars.ipaddr)))) errors.ipaddr = "valid_ip_required";
   if (Object.keys(errors).length) return { ok: false, errors };
-  const set = sql`updated=NOW(), isactive=${input(vars.isactive)}, can_create_tickets=${input(vars.can_create_tickets)}, can_exec_cron=${input(vars.can_exec_cron)}, notes=${sanitizeHtml(input(vars.notes))}`;
+  const set = sql`updated=NOW(), isactive=${str(vars.isactive)}, can_create_tickets=${str(vars.can_create_tickets)}, can_exec_cron=${str(vars.can_exec_cron)}, notes=${sanitizeHtml(str(vars.notes))}`;
   if (id) {
     await sql`UPDATE ${table("api_key")} SET ${set} WHERE id=${id}`.execute(executor);
     return { ok: true, id, errors };
   }
-  const res = await sql`INSERT INTO ${table("api_key")} SET ${set}, created=NOW(), ipaddr=${input(vars.ipaddr)}, apikey=${randCode(48, KEY_CHARS)}`.execute(executor);
+  const res = await sql`INSERT INTO ${table("api_key")} SET ${set}, created=NOW(), ipaddr=${str(vars.ipaddr)}, apikey=${randCode(48, KEY_CHARS)}`.execute(executor);
   return { ok: true, id: Number(res.insertId), errors };
 }
 

@@ -6,12 +6,12 @@ import { encrypt, decrypt } from "../../crypto/crypto";
 import { type DbOrTx } from "../../db";
 import { installConfig } from "../../env";
 import { stripTags } from "../../format/html";
+import { htmlchars, inArray, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
 import { ConfigWriter } from "../admin/config-write";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { pv } from "./orm-util";
-import { formatHtmlchars, inArray, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import { stripEmoticons } from "../../format/text";
 import type { Errors } from "../admin/validator";
 import { isEmail } from "../forms/validator";
@@ -351,7 +351,7 @@ export async function saveBasicAuth(
   // il campo password è obbligatorio quando il valore inviato è vuoto (anche con una password salvata)
   const formErrors: Errors = {};
   if (!username) formErrors.username = "username_required";
-  else if (!/(^[^=+@-].*$)|(^\+\d+$)/s.test(str(formatHtmlchars(username)))) formErrors.username = "formula";
+  else if (!/(^[^=+@-].*$)|(^\+\d+$)/s.test(str(htmlchars(username)))) formErrors.username = "formula";
   if (!passwd) formErrors.passwd = "password_required";
   if (Object.keys(formErrors).length) return { ok: false, errors: formErrors };
 

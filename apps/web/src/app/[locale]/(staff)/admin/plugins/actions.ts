@@ -1,7 +1,7 @@
 "use server";
 
 import { massRedirect } from "@/server/actions/result";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 import { massPluginInstances, massPlugins, type InstanceMassAction, type PluginMassAction } from "@/server/domain/adminsys/plugin";
 
 import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";

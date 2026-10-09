@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
 import { massDept, saveDept, type DeptMassAction } from "@/server/domain/admin/dept";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 
 import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 

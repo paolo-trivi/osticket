@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NOW, type DbOrTx } from "../../db";
-import { phpLooseEquals } from "../ticket/record";
+import { phpLooseEquals } from "../../php/values";
 
 /**
  * Config di osTicket (include/class.config.php) in scrittura, per un namespace:

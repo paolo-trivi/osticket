@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { formatHtmlchars, intval, isNumeric, truthy, usernameError } from "@/server/domain/admin/php";
 import { rebuildPermissions } from "@/server/domain/admin/role";
+import { usernameError } from "@/server/domain/admin/validator";
+import { htmlchars, intval, isNumeric, truthy } from "@/server/php/values";
 
 describe("parsePhpForm: FormData → $_POST", () => {
   it("liste, mappe e valori semplici come PHP", () => {
@@ -34,7 +35,7 @@ describe("semantica PHP", () => {
   });
 
   it("Format::htmlchars senza doppia codifica e Validator::is_username", () => {
-    expect(formatHtmlchars(`a & b <c> "d" 'e' &amp; &#39;`)).toBe(`a &amp; b &lt;c&gt; &quot;d&quot; 'e' &amp; &#39;`);
+    expect(htmlchars(`a & b <c> "d" 'e' &amp; &#39;`)).toBe(`a &amp; b &lt;c&gt; &quot;d&quot; 'e' &amp; &#39;`);
     expect([usernameError("a"), usernameError("123"), usernameError("m.rossi"), usernameError("m rossi")]).toEqual(["too_short", "invalid_chars", "", "invalid_chars"]);
   });
 

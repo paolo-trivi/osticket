@@ -1,10 +1,9 @@
 import "server-only";
 
 import { NOW, type DbOrTx } from "../../db";
+import { phpLooseEquals, type PhpVars } from "../../php/values";
 import { inputFor, loadFormFields, parseInput, saveEntryAnswers, toDatabase, validateInput, type FormEntry } from "../forms/answers";
 import { hasAnswerRow, type FieldDef } from "../forms/fields";
-import { phpLooseEquals } from "../ticket/record";
-import type { PhpVars } from "./php";
 
 /**
  * Informazioni dell'azienda (include/class.company.php): form dinamico di tipo "C" con una sola

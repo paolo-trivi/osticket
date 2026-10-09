@@ -5,9 +5,9 @@ import { sql } from "kysely";
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
+import { inArray, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { type MassResult, type SaveResult } from "./common";
 import { OrmRow, SQL_NOW } from "./orm";
-import { inArray, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /**
  * Ruoli: scp/roles.php → Role::update / Role::delete / mass_process (include/class.role.php) e

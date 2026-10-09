@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { updateSettings } from "@/server/domain/admin/settings";
 
 import { compareWorkingDatabases, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
@@ -219,6 +219,14 @@ describe("impostazioni: PHP vs TypeScript", () => {
     const bad = await both({ ...PAGES, name: "", landing_page_id: "" });
     expect(bad.php.ok).toBe(false);
     expect(bad.ts.ok).toBe(false);
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("azienda (pages): risalvataggio senza loghi, false == '' non riscrive le chiavi (confronto debole)", async () => {
+    expect((await both(PAGES)).ts.ok).toBe(true);
+    const again = await both(PAGES);
+    expect(again.php.ok).toBe(true);
+    expect(again.ts.ok).toBe(true);
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 });

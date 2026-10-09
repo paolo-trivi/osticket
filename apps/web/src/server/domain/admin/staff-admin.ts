@@ -11,6 +11,7 @@ import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
 import { randCode } from "../../mail/message-id";
 import { loadStaffInfo, staffVar } from "../../mail/objects";
+import { at, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { logSystem } from "../../system/syslog";
 import { MISC_RAND_CHARS, checkPasswordPolicy, type PasswordError } from "../directory/accounts";
 import { alertOrDefaultEmail, baseUrl, loadContentPage, sendContentMail } from "../directory/content-mail";
@@ -20,9 +21,9 @@ import { exists, idOf, type MassResult, type SaveResult } from "./common";
 import { ACCESS_ALERTS, DeptFlag } from "./dept";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { at, isset, list, phpLooseEquals, str, truthy, usernameError, type PhpVal, type PhpVars } from "./php";
 import { ALL_PERMISSIONS, rebuildPermissions } from "./role";
 import { MEMBER_ALERTS } from "./team";
+import { usernameError } from "./validator";
 
 /**
  * Agenti: scp/staff.php → Staff::update / Staff::create / Staff::delete / mass_process

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { addSchedule, deleteScheduleEntries, deleteSchedules, saveScheduleEntry, updateSchedule, type EntryInput } from "@/server/domain/admin/schedule";
 
 import { compareWorkingDatabases, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";

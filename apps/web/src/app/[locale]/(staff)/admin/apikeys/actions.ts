@@ -2,7 +2,7 @@
 
 import type { SysFormState } from "@/components/adminsys/SysForm";
 import { massRedirect, sysFormResult } from "@/server/actions/result";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 import { massApiKeys, saveApiKey, type ApiKeyMassAction } from "@/server/domain/adminsys/apikey";
 
 import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";

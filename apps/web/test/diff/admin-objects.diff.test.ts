@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { massRoles, saveRole, type RoleMassAction } from "@/server/domain/admin/role";
 import { massSla, saveSla, type SlaMassAction } from "@/server/domain/admin/sla";
 import { massTeams, saveTeam, type TeamMassAction } from "@/server/domain/admin/team";
@@ -139,6 +139,14 @@ describe("SLA: PHP vs TypeScript", () => {
       expect(e.php.ok).toBe(false);
       expect(keys(e.ts.errors)).toEqual(keys(e.php.errors));
     }
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("nome con entità: Format::htmlchars ricodifica quelle sconosciute o fuori intervallo", async () => {
+    const vars = { ...SLA, name: "R&D &foo; &eacute; &#1114112; &#39;" };
+    const r = await both("admin.sla.save", 1, vars, (t) => saveSla(t, 1, vars));
+    expect(r.ts).toMatchObject({ ok: true, id: 1 });
+    expect(r.php).toMatchObject({ ok: true, id: 1 });
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

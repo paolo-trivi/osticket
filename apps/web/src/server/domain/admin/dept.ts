@@ -5,10 +5,10 @@ import { sql } from "kysely";
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { sanitizeText } from "../../format/text";
+import { at, intval, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { adminDefaults, exists, idOf, type MassResult, type SaveResult } from "./common";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { at, intval, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /**
  * Reparti: scp/departments.php → Dept::update / Dept::create / Dept::delete / mass_process

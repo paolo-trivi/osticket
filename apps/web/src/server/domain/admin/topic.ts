@@ -6,12 +6,12 @@ import { table, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
-import { adminDefaults, exists, idOf, type MassResult, type SaveResult } from "./common";
+import { isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { adminDefaults, exists, hasHash, idOf, type MassResult, type SaveResult } from "./common";
 import { ConfigWriter } from "./config-write";
 import { DeptFlag } from "./dept";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { hasHash, isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /**
  * Help topic: scp/helptopics.php → Topic::update / Topic::delete / mass_process (include/class.topic.php),

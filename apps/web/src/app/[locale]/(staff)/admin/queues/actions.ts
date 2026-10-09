@@ -1,7 +1,7 @@
 "use server";
 
 import { massRedirect } from "@/server/actions/result";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 import { massQueues, type QueueMassAction } from "@/server/domain/adminsys/queue";
 
 import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";

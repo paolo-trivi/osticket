@@ -6,9 +6,9 @@ import { NOW, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode, phpJsonDecode } from "../../format/php-json";
 import { stripEmoticons } from "../../format/text";
+import { htmlchars, htmlcharsVars, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
-import { formatHtmlchars, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
 import { isEmail } from "../forms/validator";
 import { sanitizeHtml } from "./sanitize";
@@ -34,19 +34,6 @@ export const ItemStatus = { ENABLED: 0x0001, INTERNAL: 0x0002 } as const;
 export const SORT_MODES = ["Alpha", "-Alpha", "SortCol"] as const;
 const LIST_FIELDS = ["name", "name_plural", "sort_mode", "notes"] as const;
 const PROPERTY_FLAGS = 0x00001 | 0x01000 | 0x02000;
-
-/** Format::htmlchars($vars, $sanitize) ricorsivo. */
-export function htmlcharsVars(vars: PhpVars, sanitize: boolean): PhpVars {
-  const conv = (v: PhpVal): PhpVal => {
-    if (v === undefined || v === null) return v;
-    if (Array.isArray(v)) return v.map(conv);
-    if (typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, conv(x)]));
-    return formatHtmlchars(sanitize ? sanitizeHtml(str(v)) : str(v));
-  };
-  const out: PhpVars = {};
-  for (const [k, v] of Object.entries(vars)) out[k] = conv(v);
-  return out;
-}
 
 async function loadList(executor: DbOrTx, id: number) {
   return (await executor.selectFrom("list").selectAll().where("id", "=", id).executeTakeFirst()) ?? null;
@@ -250,7 +237,7 @@ async function propertyFields(executor: DbOrTx, listId: number): Promise<PropFie
 /** Validatore dei TextboxField (formula se non configurato). */
 function textboxErrors(value: string, required: boolean, validator: string): string[] {
   const out: string[] = [];
-  const v = value === "0" ? "&#48" : str(formatHtmlchars(value));
+  const v = value === "0" ? "&#48" : str(htmlchars(value));
   if (required && !truthy(v)) out.push("required");
   if (!truthy(v)) return out;
   const valid = validator || "formula";

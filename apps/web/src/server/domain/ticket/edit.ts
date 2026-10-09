@@ -7,6 +7,7 @@ import { NOW, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { phpStripTags } from "../../format/html";
 import { editorSpacing, phpTrim, sanitizeText } from "../../format/text";
+import { isNumeric } from "../../php/values";
 import { upsertCdata } from "../forms/cdata";
 import {
   FieldFlag,
@@ -73,8 +74,6 @@ function cleanHtmlBody(body: string): string {
   const b = phpTrim(body ?? "", " <>br/\t\n\r") ? body : "";
   return b ? sanitizeText(editorSpacing(b)) : "";
 }
-
-const isNumeric = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(v));
 
 /**
  * Data inserita dall'agente → datetime del DB come Ticket::update / updateField: la stringa è

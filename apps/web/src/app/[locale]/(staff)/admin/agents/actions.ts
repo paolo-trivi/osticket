@@ -4,7 +4,7 @@ import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { checkPasswordPolicy } from "@/server/domain/directory/accounts";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { str, truthy, type PhpVars } from "@/server/domain/admin/php";
+import { str, truthy, type PhpVars } from "@/server/php/values";
 import { massStaff, saveStaff, setAgentPassword, type StaffMassAction } from "@/server/domain/admin/staff-admin";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";

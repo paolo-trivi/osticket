@@ -3,7 +3,7 @@
 import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 import { massRoles, saveRole, type RoleMassAction } from "@/server/domain/admin/role";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";

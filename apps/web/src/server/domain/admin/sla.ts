@@ -4,10 +4,10 @@ import { sql } from "kysely";
 
 import type { DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
+import { htmlcharsVars, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "../../php/values";
 import { adminDefaults, type MassResult, type SaveResult } from "./common";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW } from "./orm";
-import { htmlcharsVars, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "./php";
 
 /** SLA: scp/slas.php → SLA::update / SLA::delete / mass_process (include/class.sla.php). */
 export const SlaFlag = { ACTIVE: 0x0001, ESCALATE: 0x0002, NOALERTS: 0x0004, TRANSIENT: 0x0008 } as const;

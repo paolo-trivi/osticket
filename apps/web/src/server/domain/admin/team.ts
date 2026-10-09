@@ -5,10 +5,10 @@ import { sql } from "kysely";
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { sanitizeText } from "../../format/text";
+import { at, inArray, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { exists, idOf, type MassResult, type SaveResult } from "./common";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { at, inArray, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /** Team: scp/teams.php → Team::update / Team::delete / mass_process (include/class.team.php). */
 export const TeamFlag = { ENABLED: 0x0001, NOALERTS: 0x0002 } as const;
