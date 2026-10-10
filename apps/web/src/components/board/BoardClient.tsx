@@ -13,7 +13,8 @@ import {
 import type { BoardData, BoardSourceOption } from "@/server/domain/board/types";
 
 import BoardToolbar, { type PriorityChoice } from "./BoardToolbar";
-import BoardView, { type BoardActions } from "./BoardView";
+import BoardView from "./BoardView";
+import type { BoardActions } from "./types";
 
 const PREFS_KEY = "tailticket.board.view";
 
