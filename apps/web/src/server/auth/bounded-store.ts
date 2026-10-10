@@ -3,6 +3,10 @@
  * processo (tentativi falliti, codici 2FA, sessioni revocate), che altrimenti crescerebbe senza limite.
  * Le voci scadute si eliminano ogni SWEEP_EVERY scritture (e alla lettura); oltre il tetto si scartano
  * le voci inserite per prime.
+ *
+ * Le istanze vanno create con sharedStore(): Turbopack/webpack duplicano i moduli tra i bundle (route
+ * handler, pagine, server action), quindi una costante di modulo darebbe copie diverse dello stesso stato
+ * nello stesso processo (es. una sessione revocata dal logout ancora valida sulle route /api).
  */
 const SWEEP_EVERY = 256;
 
@@ -46,4 +50,24 @@ export class BoundedStore<V> {
   private sweep(now: number): void {
     for (const [k, e] of this.map) if (e.expires <= now) this.map.delete(k);
   }
+}
+
+/**
+ * Valore unico per processo, registrato su globalThis con Symbol.for("tailticket.store.<name>"): tutti i
+ * bundle che lo chiedono con lo stesso nome ricevono la stessa istanza (stesso schema di db/index.ts).
+ */
+function processShared<T>(name: string, init: () => T): T {
+  const key = Symbol.for(`tailticket.store.${name}`);
+  const registry = globalThis as unknown as Record<symbol, T | undefined>;
+  let value = registry[key];
+  if (value === undefined) {
+    value = init();
+    registry[key] = value;
+  }
+  return value;
+}
+
+/** BoundedStore condiviso dal processo (vedi processShared). */
+export function sharedStore<V>(name: string, maxEntries: number): BoundedStore<V> {
+  return processShared(name, () => new BoundedStore<V>(maxEntries));
 }

@@ -99,6 +99,7 @@ const SOURCES = ["Email", "Web", "Phone", "API", "Other"] as const;
 
 export default function TicketCell({ column, row, tz, locale, assigneeName, staffName }: Props) {
   const tSource = useTranslations("ticketEdit.sources");
+  const tFlag = useTranslations("ticket");
   const sourceLabel = (SOURCES as readonly string[]).includes(row.source) ? tSource(row.source as (typeof SOURCES)[number]) : row.source;
   const names = { assignee: assigneeName, staff: staffName };
   let value = rawValue(column.primary, row, names);
@@ -162,10 +163,10 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
           );
         break;
       case "OverdueFlagDecoration":
-        if (row.isoverdue) target.push(<span key={a.c} className="text-error-500" title="Overdue">⚑</span>);
+        if (row.isoverdue) target.push(<span key={a.c} className="text-error-500" role="img" title={tFlag("overdue")} aria-label={tFlag("overdue")}>⚑</span>);
         break;
       case "LockDecoration":
-        if (row.locked_by_other) target.push(<span key={a.c} title="Locked">🔒</span>);
+        if (row.locked_by_other) target.push(<span key={a.c} role="img" title={tFlag("locked")} aria-label={tFlag("locked")}>🔒</span>);
         break;
       case "TicketSourceDecoration":
         target.push(
@@ -175,10 +176,10 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         );
         break;
       case "MergedFlagDecoration":
-        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) target.push(<span key={a.c} title="Merged">⇉</span>);
+        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) target.push(<span key={a.c} role="img" title={tFlag("merged")} aria-label={tFlag("merged")}>⇉</span>);
         break;
       case "LinkedFlagDecoration":
-        if (row.flags & Ticket.LINKED) target.push(<span key={a.c} title="Linked">🔗</span>);
+        if (row.flags & Ticket.LINKED) target.push(<span key={a.c} role="img" title={tFlag("linked")} aria-label={tFlag("linked")}>🔗</span>);
         break;
     }
   }

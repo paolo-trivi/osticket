@@ -5,6 +5,7 @@ import BackLink from "@/components/adminsys/BackLink";
 import { Hidden, RadioField, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
 import SysForm from "@/components/adminsys/SysForm";
 import { PageHeader } from "@/components/common/DataTable";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { banlistFilterId } from "@/server/domain/adminsys/banlist";
 
@@ -17,10 +18,10 @@ export default async function EditBanPage({ params }: { params: Promise<{ locale
   await requireAdmin(locale);
   const t = await getTranslations("asys.banlist");
   const c = await getTranslations("asys.common");
-  const ruleId = Number(id);
+  const ruleId = idOrNotFound(id);
   const filterId = await banlistFilterId(db());
   const rule =
-    filterId && Number.isInteger(ruleId) && ruleId > 0
+    filterId
       ? await db().selectFrom("filter_rule").selectAll().where("id", "=", ruleId).where("filter_id", "=", filterId).executeTakeFirst()
       : null;
   if (!rule) notFound();

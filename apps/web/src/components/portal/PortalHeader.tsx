@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import BrandLogo from "@/components/brand/BrandLogo";
+import LanguageSwitcher from "@/components/common/LanguageSwitcher";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import { Link, usePathname } from "@/i18n/navigation";
 import { CloseIcon, ListIcon } from "@/icons";
@@ -23,7 +24,7 @@ interface Props {
   logoutAction: () => Promise<void>;
 }
 
-/** Testata del portale clienti (include/client/header.inc.php): logo, menu, accesso/uscita. */
+/** Testata del portale clienti (include/client/header.inc.php): logo, menu, lingua, accesso/uscita. */
 export default function PortalHeader({ items, user, showLogin, logoutAction }: Props) {
   const t = useTranslations("portal.nav");
   const pathname = usePathname();
@@ -54,6 +55,7 @@ export default function PortalHeader({ items, user, showLogin, logoutAction }: P
         </nav>
 
         <div className="flex items-center gap-3">
+          <LanguageSwitcher className="hidden sm:flex" />
           <ThemeToggleButton />
           {user ? (
             <div className="hidden items-center gap-3 sm:flex">
@@ -81,7 +83,7 @@ export default function PortalHeader({ items, user, showLogin, logoutAction }: P
             aria-expanded={open}
             aria-label={t("menu")}
           >
-            {open ? <CloseIcon className="size-5" /> : <ListIcon className="size-5" />}
+            {open ? <CloseIcon aria-hidden="true" className="size-5 fill-current" /> : <ListIcon aria-hidden="true" className="size-5" />}
           </button>
         </div>
       </div>
@@ -107,6 +109,7 @@ export default function PortalHeader({ items, user, showLogin, logoutAction }: P
                 </Link>
               )
             )}
+            <LanguageSwitcher className="px-3 pt-2 sm:hidden" />
           </div>
         </nav>
       )}

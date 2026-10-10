@@ -16,7 +16,7 @@ const FALLBACK: Record<string, string> = {
 
 export async function GET(request: Request, { params }: { params: Promise<{ kind: string }> }) {
   const { kind } = await params;
-  if (!(kind in FALLBACK)) return new NextResponse(null, { status: 404 });
+  if (!Object.hasOwn(FALLBACK, kind)) return new NextResponse(null, { status: 404 });
 
   const theme = await loadTheme();
   const fileId = kind === "staff-logo" ? theme.staffLogoId : kind === "client-logo" ? theme.clientLogoId : theme.backdropId;

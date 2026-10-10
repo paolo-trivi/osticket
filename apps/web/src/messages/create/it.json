@@ -48,7 +48,9 @@
       "message": "Descrizione del problema",
       "messagePlaceholder": "Dettagli della richiesta",
       "attachments": "Allegati",
-      "loadingTopic": "Caricamento dei campi dell'argomento…"
+      "loadingTopic": "Caricamento dei campi dell'argomento…",
+      "topicLoadError": "Impossibile caricare i campi dell'argomento.",
+      "retry": "Riprova"
     },
     "response": {
       "placeholder": "Risposta iniziale (facoltativa)",

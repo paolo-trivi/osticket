@@ -48,7 +48,9 @@
       "message": "Issue details",
       "messagePlaceholder": "Details of the request",
       "attachments": "Attachments",
-      "loadingTopic": "Loading help topic fields…"
+      "loadingTopic": "Loading help topic fields…",
+      "topicLoadError": "The help topic fields could not be loaded.",
+      "retry": "Try again"
     },
     "response": {
       "placeholder": "Initial response (optional)",

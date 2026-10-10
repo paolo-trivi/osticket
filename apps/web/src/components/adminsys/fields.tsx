@@ -24,21 +24,29 @@ export function Section({ title, desc, children, grid = true }: { title: string;
   );
 }
 
-function Wrap({ id, label, hint, wide, children }: { id: string; label?: string; hint?: string; wide?: boolean; children: ReactNode }) {
+function Wrap({ id, label, hint, wide, group, children }: { id: string; label?: string; hint?: string; wide?: boolean; group?: boolean; children: ReactNode }) {
+  const labelClass = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400";
   return (
     <div className={cn(wide && "md:col-span-2")}>
-      {label && (
-        <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-          {label}
-        </label>
-      )}
+      {/* per un gruppo (radio) l'etichetta dà il nome al gruppo, non a un singolo controllo */}
+      {label &&
+        (group ? (
+          <span id={`${id}-label`} className={labelClass}>
+            {label}
+          </span>
+        ) : (
+          <label htmlFor={id} className={labelClass}>
+            {label}
+          </label>
+        ))}
       {children}
       {hint && <p className="mt-1.5 text-theme-xs text-gray-500 dark:text-gray-400">{hint}</p>}
     </div>
   );
 }
 
-const fid = (name: string) => `f-${name.replace(/[^\w-]/g, "_")}`;
+/** Id del controllo: dal nome del campo, oppure esplicito quando lo stesso nome compare più volte nella pagina. */
+const fid = (name: string, id?: string) => id ?? `f-${name.replace(/[^\w-]/g, "_")}`;
 
 export function TextField({
   name,
@@ -49,7 +57,9 @@ export function TextField({
   wide,
   placeholder,
   required,
+  id,
 }: {
+  id?: string;
   name: string;
   label?: string;
   value?: string | number | null;
@@ -60,9 +70,9 @@ export function TextField({
   required?: boolean;
 }) {
   return (
-    <Wrap id={fid(name)} label={label} hint={hint} wide={wide}>
+    <Wrap id={fid(name, id)} label={label} hint={hint} wide={wide}>
       <input
-        id={fid(name)}
+        id={fid(name, id)}
         name={name}
         type={type}
         defaultValue={value ?? ""}
@@ -83,10 +93,10 @@ export function TextAreaField({ name, label, value, hint, rows = 4, wide = true,
   );
 }
 
-export function SelectField({ name, label, value, options, hint, wide }: { name: string; label?: string; value?: string | number | null; options: Opt[]; hint?: string; wide?: boolean }) {
+export function SelectField({ name, label, value, options, hint, wide, id }: { name: string; label?: string; value?: string | number | null; options: Opt[]; hint?: string; wide?: boolean; id?: string }) {
   return (
-    <Wrap id={fid(name)} label={label} hint={hint} wide={wide}>
-      <select id={fid(name)} name={name} defaultValue={value === null || value === undefined ? "" : String(value)} className={cn(controlClass, "h-11 py-0")}>
+    <Wrap id={fid(name, id)} label={label} hint={hint} wide={wide}>
+      <select id={fid(name, id)} name={name} defaultValue={value === null || value === undefined ? "" : String(value)} className={cn(controlClass, "h-11 py-0")}>
         {options.map((o) => (
           <option key={o.value} value={o.value} disabled={o.disabled} className="dark:bg-gray-900">
             {o.label}
@@ -99,8 +109,8 @@ export function SelectField({ name, label, value, options, hint, wide }: { name:
 
 export function RadioField({ name, label, value, options, hint, wide }: { name: string; label?: string; value?: string | null; options: Opt[]; hint?: string; wide?: boolean }) {
   return (
-    <Wrap id={fid(name)} label={label} hint={hint} wide={wide}>
-      <div className="flex flex-wrap gap-4 pt-2">
+    <Wrap id={fid(name)} label={label} hint={hint} wide={wide} group>
+      <div role="radiogroup" aria-labelledby={label ? `${fid(name)}-label` : undefined} className="flex flex-wrap gap-4 pt-2">
         {options.map((o) => (
           <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} className="h-4 w-4 accent-brand-500" />

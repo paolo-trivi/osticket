@@ -6,6 +6,7 @@ import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
 import { PageHeader } from "@/components/common/DataTable";
 import { FormType } from "@/lib/osticket/object-types";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { formDetail } from "@/server/domain/adminsys/form";
 
@@ -17,8 +18,8 @@ export default async function EditFormPage({ params, searchParams }: { params: P
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const formId = Number(id);
-  const detail = Number.isInteger(formId) && formId > 0 ? await formDetail(db(), formId) : null;
+  const formId = idOrNotFound(id);
+  const detail = await formDetail(db(), formId);
   if (!detail || detail.form.type.startsWith(FormType.LIST_PREFIX)) notFound();
   const t = await getTranslations("asys.forms");
   const c = await getTranslations("asys.common");

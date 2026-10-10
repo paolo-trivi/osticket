@@ -5,6 +5,7 @@ import ReplyForm from "@/components/portal/ReplyForm";
 import Alert from "@/components/ui/alert/Alert";
 import { Link } from "@/i18n/navigation";
 import { FormType } from "@/lib/osticket/object-types";
+import { parseId } from "@/lib/route-id";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { loadClientTicketView } from "@/server/domain/client/ticket-view";
@@ -14,10 +15,9 @@ import { formatDbDate } from "@/server/format/datetime";
 
 import { requireClient } from "../../guard";
 
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
-  const t = await getTranslations("portal.ticket");
-  const { id } = await params;
-  return { title: `${t("title")} ${id}` };
+export async function generateMetadata() {
+  // titolo generico: niente dati del ticket (né l'id della URL) prima del controllo di accesso
+  return { title: (await getTranslations("portal.ticket"))("title") };
 }
 
 const EVENTS = ["created", "closed", "reopened", "edited", "collab", "merged"] as const;
@@ -33,7 +33,7 @@ export default async function ClientTicketPage({ params, searchParams }: { param
   const client = await requireClient(locale, `/tickets/${id}`);
   const t = await getTranslations("portal.ticket");
   const cfg = await coreConfig();
-  const view = await loadClientTicketView(cfg, client, Number(id) || 0);
+  const view = await loadClientTicketView(cfg, client, parseId(id) ?? 0);
   if (!view) {
     return (
       <div className="space-y-4">

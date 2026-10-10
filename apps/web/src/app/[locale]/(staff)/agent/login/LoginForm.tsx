@@ -70,7 +70,8 @@ export default function LoginForm({ next, expired }: { next?: string; expired?: 
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute end-4 top-1/2 z-30 -translate-y-1/2 cursor-pointer"
-                  aria-label="password"
+                  aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                  aria-pressed={showPassword}
                 >
                   {showPassword ? (
                     <EyeIcon className="fill-gray-500 dark:fill-gray-400" />

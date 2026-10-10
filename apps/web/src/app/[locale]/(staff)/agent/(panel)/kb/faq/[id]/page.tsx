@@ -8,6 +8,7 @@ import HtmlContent from "@/components/kb/HtmlContent";
 import KbBreadcrumb from "@/components/kb/KbBreadcrumb";
 import VisibilityBadge from "@/components/kb/VisibilityBadge";
 import Badge from "@/components/ui/badge/Badge";
+import { idOrNotFound } from "@/lib/route-id";
 import { agentFileUrl } from "@/server/domain/kb/html";
 import { getFaq } from "@/server/domain/kb/faq";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
@@ -23,7 +24,7 @@ export default async function FaqPage({ params }: { params: Promise<{ locale: st
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
-  const faq = await getFaq(agent, /^\d+$/.test(id) ? Number(id) : 0);
+  const faq = await getFaq(agent, idOrNotFound(id));
   if (!faq) notFound();
   const [t, tk, tz] = await Promise.all([getTranslations("kb"), getTranslations("kbAgent"), agentTimeZone(agent)]);
   const vis = { featured: t("featured"), public: t("public"), internal: t("internal") };

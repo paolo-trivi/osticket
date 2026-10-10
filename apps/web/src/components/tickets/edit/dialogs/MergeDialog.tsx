@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { mergeAction, unlinkAction, type EditActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions-edit";
 import { useRouter } from "@/i18n/navigation";
+import { tryAction } from "@/lib/try-action";
 
 import EditDialog from "../EditDialog";
 import { Check, Field, Select, TextInput } from "../inputs";
@@ -119,9 +120,16 @@ export default function MergeDialog(p: MergeDialogProps) {
 function UnlinkList({ linked, onDone }: { linked: { id: number; number: string }[]; onDone: () => void }) {
   const t = useTranslations("ticketEdit");
   const router = useRouter();
+  // un errore di rete o del server resta nella finestra (la formAction gira in una transizione)
+  const [failed, setFailed] = useState(false);
   return (
     <div className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
       <p className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">{t("linkedTickets")}</p>
+      {failed && (
+        <p role="alert" className="text-theme-xs text-error-600 dark:text-error-400">
+          {t("errors.generic")}
+        </p>
+      )}
       <ul className="space-y-1">
         {linked.map((l) => (
           <li key={l.id} className="flex items-center justify-between text-theme-sm text-gray-700 dark:text-gray-300">
@@ -131,7 +139,9 @@ function UnlinkList({ linked, onDone }: { linked: { id: number; number: string }
               name="dtids"
               value={l.id}
               formAction={async (fd: FormData) => {
-                await unlinkAction({}, fd);
+                setFailed(false);
+                const res = await tryAction(() => unlinkAction({}, fd));
+                if (!res.ok) return setFailed(true);
                 onDone();
                 router.refresh();
               }}

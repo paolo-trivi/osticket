@@ -5,6 +5,7 @@ import { RICH_CLASS } from "@/components/portal/rich";
 import { Link, redirect } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
 import { inlineCidImages } from "@/lib/format/inline-images";
+import { parseId } from "@/lib/route-id";
 import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
@@ -13,11 +14,13 @@ import { publicFaq, topicsWithFaqs } from "@/server/domain/client/kb";
 import { formatDbDate } from "@/server/format/datetime";
 import { safeHtml } from "@/server/format/sanitize";
 
-import { requireKb } from "../../guard";
+import { kbVisible, requireKb } from "../../guard";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const faq = await publicFaq(Number(id) || 0);
+  // titolo dai dati solo se la knowledge base è visibile al visitatore (come la pagina)
+  const faqId = parseId(id);
+  const faq = faqId && (await kbVisible()) ? await publicFaq(faqId) : null;
   return { title: faq?.question ?? (await getTranslations("portal.kb"))("title") };
 }
 
@@ -26,7 +29,8 @@ export default async function KbFaqPage({ params }: { params: Promise<{ locale: 
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireKb(locale);
-  const faq = await publicFaq(Number(id) || 0);
+  const faqId = parseId(id);
+  const faq = faqId ? await publicFaq(faqId) : null;
   if (!faq) redirect({ href: "/kb", locale });
   const f = faq!;
   const t = await getTranslations("portal.kb");

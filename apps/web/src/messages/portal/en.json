@@ -230,7 +230,9 @@
         "login_required": "You need an account to open a ticket",
         "captcha_unsupported": "Without an account use the classic portal (captcha enabled) or sign in"
       },
-      "signIn": "Sign in"
+      "signIn": "Sign in",
+      "topicLoadError": "The help topic fields could not be loaded.",
+      "retry": "Try again"
     },
     "kb": {
       "title": "Knowledge base",

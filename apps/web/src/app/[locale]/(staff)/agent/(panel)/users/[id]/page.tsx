@@ -7,6 +7,7 @@ import AccountStatusBadge from "@/components/people/AccountStatusBadge";
 import UserActions from "@/components/people/directory/UserActions";
 import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { loadUser } from "@/server/domain/directory/directory";
 import { editFormFields } from "@/server/domain/directory/ui";
@@ -29,7 +30,7 @@ export default async function UserPage({
   const agent = await requireAgent(locale);
   const t = await getTranslations("directory");
   if (!agent.hasGlobalPerm(GlobalPerm.USER_DIR)) return <Forbidden message={t("noAccess")} />;
-  const user = await loadUser(Number(id));
+  const user = await loadUser(idOrNotFound(id));
   if (!user) notFound();
   const tz = await agentTimeZone(agent);
   // UserAccount: status con i bit di UserAccountStatus (confermato, bloccato…)

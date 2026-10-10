@@ -10,6 +10,7 @@ import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { DynamicListItem } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { htmlDecode } from "@/server/format/html";
 import { listDetail } from "@/server/domain/adminsys/list";
@@ -24,8 +25,8 @@ export default async function ListPage({ params, searchParams }: { params: Promi
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const listId = Number(id);
-  const detail = Number.isInteger(listId) && listId > 0 ? await listDetail(db(), listId) : null;
+  const listId = idOrNotFound(id);
+  const detail = await listDetail(db(), listId);
   if (!detail) notFound();
   const t = await getTranslations("asys.lists");
   const c = await getTranslations("asys.common");

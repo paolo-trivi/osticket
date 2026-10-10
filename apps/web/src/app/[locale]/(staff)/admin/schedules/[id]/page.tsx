@@ -9,6 +9,7 @@ import DataTable, { PageHeader } from "@/components/common/DataTable";
 import { Link } from "@/i18n/navigation";
 import type { FormSection } from "@/lib/admin/form-schema";
 import { Schedule } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { scheduleOptions, timezoneOptions } from "@/server/domain/admin/lookups";
 import { FREQUENCIES } from "@/server/domain/admin/schedule-entry-form";
@@ -25,8 +26,8 @@ export default async function SchedulePage({ params, searchParams }: { params: P
   const t = await getTranslations("admSchedules");
   const u = await getTranslations("admUi");
   const sp = await searchParams;
-  const scheduleId = Number(id);
-  const schedule = Number.isInteger(scheduleId) && scheduleId > 0 ? await db().selectFrom("schedule").selectAll().where("id", "=", scheduleId).executeTakeFirst() : undefined;
+  const scheduleId = idOrNotFound(id);
+  const schedule = await db().selectFrom("schedule").selectAll().where("id", "=", scheduleId).executeTakeFirst();
   if (!schedule) notFound();
   const bizhrs = !!(schedule.flags & Schedule.BIZHRS);
   const entries = await db().selectFrom("schedule_entry").selectAll().where("schedule_id", "=", scheduleId).orderBy("sort").orderBy("id").execute();

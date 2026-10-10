@@ -1,6 +1,6 @@
 import "server-only";
 
-import { BoundedStore } from "./bounded-store";
+import { sharedStore } from "./bounded-store";
 
 /**
  * Sessioni revocate al logout (equivalente di session_destroy del PHP per i cookie firmati della app):
@@ -10,7 +10,7 @@ import { BoundedStore } from "./bounded-store";
  */
 const MAX_ENTRIES = 100_000;
 
-const revoked = new BoundedStore<true>(MAX_ENTRIES);
+const revoked = sharedStore<true>("revoked-sessions", MAX_ENTRIES);
 
 export function revokeSession(sid: string, expires: number): void {
   revoked.set(sid, true, expires);

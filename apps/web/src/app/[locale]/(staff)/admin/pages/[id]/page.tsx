@@ -5,6 +5,7 @@ import BackLink from "@/components/adminsys/BackLink";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
 import { PageHeader } from "@/components/common/DataTable";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 
 import { requireAdmin } from "../../guard";
@@ -15,8 +16,8 @@ export default async function EditSitePage({ params, searchParams }: { params: P
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const pageId = Number(id);
-  const page = Number.isInteger(pageId) && pageId > 0 ? await db().selectFrom("content").selectAll().where("id", "=", pageId).executeTakeFirst() : null;
+  const pageId = idOrNotFound(id);
+  const page = await db().selectFrom("content").selectAll().where("id", "=", pageId).executeTakeFirst();
   if (!page) notFound();
   const t = await getTranslations("asys.pages");
   const c = await getTranslations("asys.common");

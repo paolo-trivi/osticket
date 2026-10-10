@@ -7,6 +7,7 @@ import SysNotice from "@/components/adminsys/SysNotice";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { groupTemplates, loadGroup, TEMPLATE_GROUPS, TEMPLATE_NAMES } from "@/server/domain/adminsys/template";
 
@@ -20,8 +21,8 @@ export default async function TemplateSetPage({ params, searchParams }: { params
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAdmin(locale);
-  const tplId = Number(id);
-  const group = Number.isInteger(tplId) && tplId > 0 ? await loadGroup(db(), tplId) : null;
+  const tplId = idOrNotFound(id);
+  const group = await loadGroup(db(), tplId);
   if (!group) notFound();
   const t = await getTranslations("asys.templates");
   const c = await getTranslations("asys.common");

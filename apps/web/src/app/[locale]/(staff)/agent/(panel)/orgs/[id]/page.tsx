@@ -10,6 +10,7 @@ import OrgActions, { OrgMembersBar } from "@/components/people/directory/OrgActi
 import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
 import { UserModel } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { listUsers, loadOrg } from "@/server/domain/directory/directory";
@@ -33,7 +34,7 @@ export default async function OrgPage({
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("directory");
-  const org = await loadOrg(Number(id));
+  const org = await loadOrg(idOrNotFound(id));
   if (!org) notFound();
   const tz = await agentTimeZone(agent);
   const users = await listUsers({ orgId: org.id, page: 1, pageSize: 200 });

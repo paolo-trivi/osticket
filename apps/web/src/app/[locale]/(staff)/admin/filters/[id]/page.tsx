@@ -8,6 +8,7 @@ import Callout from "@/components/common/Callout";
 import { PageHeader } from "@/components/common/DataTable";
 import { redirect } from "@/i18n/navigation";
 import { Filter } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { filterInfo } from "@/server/domain/adminsys/filter";
 
@@ -20,8 +21,8 @@ export default async function EditFilterPage({ params, searchParams }: { params:
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const filterId = Number(id);
-  const info = Number.isInteger(filterId) && filterId > 0 ? await filterInfo(db(), filterId) : null;
+  const filterId = idOrNotFound(id);
+  const info = await filterInfo(db(), filterId);
   if (!info) notFound();
   // la ban list ha la sua pagina (scp/filters.php → banlist.php)
   if (info.filter.name.toLowerCase() === "system ban list") redirect({ href: "/admin/banlist", locale });

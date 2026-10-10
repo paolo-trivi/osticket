@@ -230,7 +230,9 @@
         "login_required": "Per aprire un ticket devi accedere con un account",
         "captcha_unsupported": "Senza account usa il portale classico (verifica captcha attiva) oppure accedi"
       },
-      "signIn": "Accedi"
+      "signIn": "Accedi",
+      "topicLoadError": "Impossibile caricare i campi dell'help topic.",
+      "retry": "Riprova"
     },
     "kb": {
       "title": "Knowledge base",

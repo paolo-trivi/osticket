@@ -4,6 +4,7 @@ import { useBranding } from "@/context/BrandingContext";
 import { useTheme } from "@/context/ThemeContext";
 import { FONT_CLASS } from "@/lib/fonts";
 import { isHexColor } from "@/lib/theme/palette";
+import { tryAction } from "@/lib/try-action";
 import { DEFAULT_THEME, themeCss, type ThemeSettings } from "@/lib/theme/schema";
 import { useEffect, useState, useTransition } from "react";
 
@@ -85,7 +86,9 @@ export default function ThemeEditor({ initial, helpdeskTitle, hasStaffLogo, hasC
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveThemeAction(settings);
+      // errore di rete o del server: esito "error" senza perdere le modifiche in corso
+      const res = await tryAction(() => saveThemeAction(settings));
+      const result: SaveThemeState = res.ok ? res.value : { status: "error" };
       setState(result);
       if (result.status === "saved") setSaved(settings);
     });

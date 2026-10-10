@@ -5,6 +5,7 @@ import AdminForm from "@/components/admin/AdminForm";
 import AdminNotice from "@/components/admin/AdminNotice";
 import { PageHeader } from "@/components/common/DataTable";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 
 import { requireAdmin } from "../../guard";
 import { saveDeptAction } from "../actions";
@@ -15,8 +16,8 @@ export default async function EditPage({ params, searchParams }: { params: Promi
   setRequestLocale(locale);
   await requireAdmin(locale);
   const t = await getTranslations("admDepts");
-  const objectId = Number(id);
-  const sections = Number.isInteger(objectId) && objectId > 0 ? await deptSections(objectId) : null;
+  const objectId = idOrNotFound(id);
+  const sections = await deptSections(objectId);
   if (!sections) notFound();
   const sp = await searchParams;
   return (

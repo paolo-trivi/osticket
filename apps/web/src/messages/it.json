@@ -12,7 +12,8 @@
     "yes": "Sì",
     "no": "No",
     "none": "Nessuno",
-    "legacyPanel": "Pannello classico"
+    "legacyPanel": "Pannello classico",
+    "pagination": "Paginazione"
   },
   "nav": {
     "groups": {
@@ -47,7 +48,8 @@
     "language": "Lingua",
     "admin": "Amministratore",
     "home": "Vai alla dashboard",
-    "menu": "Altre azioni"
+    "menu": "Altre azioni",
+    "toggleTheme": "Cambia tema chiaro/scuro"
   },
   "auth": {
     "agentLoginTitle": "Accesso agenti",
@@ -66,7 +68,9 @@
       "backend": "Questo account usa un sistema di autenticazione esterno non ancora supportato: usa il pannello classico",
       "mfa_unsupported": "La verifica in due passaggi non è ancora disponibile qui: usa il pannello classico"
     },
-    "sessionExpired": "Sessione scaduta: accedi di nuovo"
+    "sessionExpired": "Sessione scaduta: accedi di nuovo",
+    "showPassword": "Mostra password",
+    "hidePassword": "Nascondi password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -306,7 +310,10 @@
     "message": "Messaggio",
     "editedBy": "modificato da",
     "via": "via",
-    "tasks": "Task ({count})"
+    "tasks": "Task ({count})",
+    "pageTitle": "Ticket",
+    "merged": "Unito ad altri ticket",
+    "linked": "Collegato ad altri ticket"
   },
   "events": {
     "created": "Creato da <b>{somebody}</b>",
@@ -578,5 +585,12 @@
       "search_all": "cercare in tutti i ticket",
       "stats_agents": "statistiche degli altri agenti"
     }
+  },
+  "errorPage": {
+    "title": "Si è verificato un errore",
+    "message": "Non è stato possibile completare la richiesta. Riprova; se il problema persiste contatta l'amministratore.",
+    "code": "Codice errore: {code}",
+    "retry": "Riprova",
+    "backHome": "Torna alla home"
   }
 }

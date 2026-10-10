@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 
 import { useTranslations } from "next-intl";
 
+import RetryAlert from "@/components/common/RetryAlert";
 import RichTextEditor from "@/components/editor/RichTextEditor";
 import AttachmentInput from "@/components/forms/AttachmentInput";
 import DynamicForm from "@/components/forms/dynamic/DynamicForm";
@@ -12,6 +13,7 @@ import { selectCls } from "@/components/forms/dynamic/styles";
 import Alert from "@/components/ui/alert/Alert";
 import { Link } from "@/i18n/navigation";
 import type { DynamicFormView } from "@/lib/forms/dynamic-field";
+import { tryAction } from "@/lib/try-action";
 
 import { openTicketAction, portalTopicFormsAction, type OpenState } from "@/app/[locale]/(client)/actions";
 
@@ -38,7 +40,18 @@ export default function OpenTicketForm({ userForm, ticketForm, topics, defaultTo
   const [state, action, pending] = useActionState<OpenState, FormData>(openTicketAction, {});
   const [topic, setTopic] = useState(initialTopic);
   const [loading, start] = useTransition();
-  const changeTopic = (id: number) => start(async () => setTopic(id ? await portalTopicFormsAction(id) : { forms: [], disabled: [] }));
+  // argomento il cui caricamento dei form è fallito: messaggio e "Riprova", il resto del modulo resta com'è
+  const [topicFailed, setTopicFailed] = useState<number | null>(null);
+  const changeTopic = (id: number) =>
+    start(async () => {
+      setTopicFailed(null);
+      if (!id) return setTopic({ forms: [], disabled: [] });
+      const res = await tryAction(() => portalTopicFormsAction(id));
+      if (res.ok) return setTopic(res.value);
+      // i form del vecchio argomento non valgono per quello scelto
+      setTopic({ forms: [], disabled: [] });
+      setTopicFailed(id);
+    });
 
   if (state.created) {
     return (
@@ -104,6 +117,7 @@ export default function OpenTicketForm({ userForm, ticketForm, topics, defaultTo
           />
         )}
         {loading && <p className="text-theme-xs text-gray-500 dark:text-gray-400">{t("loadingTopic")}</p>}
+        {topicFailed !== null && !loading && <RetryAlert message={t("topicLoadError")} retryLabel={t("retry")} onRetry={() => changeTopic(topicFailed)} />}
         {topic.forms.map((f) => (
           <DynamicForm key={f.id} form={f} values={state.values} errors={state.fieldErrors} showTitle />
         ))}

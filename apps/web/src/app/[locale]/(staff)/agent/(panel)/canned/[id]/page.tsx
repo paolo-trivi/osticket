@@ -8,6 +8,7 @@ import AttachmentList from "@/components/kb/AttachmentList";
 import HtmlContent from "@/components/kb/HtmlContent";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { ChevronLeftIcon } from "@/icons";
 import { agentFileUrl } from "@/server/domain/kb/html";
 import { getCanned } from "@/server/domain/kb/canned";
@@ -30,7 +31,7 @@ export default async function CannedViewPage({
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
-  const c = await getCanned(agent, /^\d+$/.test(id) ? Number(id) : 0);
+  const c = await getCanned(agent, idOrNotFound(id));
   if (!c) notFound();
   const asText = (await searchParams).format === "text";
   const [t, tk, tf, tz] = await Promise.all([

@@ -160,9 +160,10 @@ export async function loadTicketView(agent: Agent, ticketId: number): Promise<Ti
 }
 
 /** Numero del ticket per il titolo della pagina (null se inesistente). */
-export async function ticketViewNumber(ticketId: number): Promise<string | null> {
-  const row = await db().selectFrom("ticket").select("number").where("ticket_id", "=", ticketId).executeTakeFirst();
-  return row ? row.number : null;
+export async function ticketViewNumber(agent: Agent, ticketId: number): Promise<string | null> {
+  // stesso controllo della vista: il numero non si rivela a chi non può vedere il ticket
+  const ticket = await loadTicket(ticketId, agent.id);
+  return ticket && (await checkStaffPerm(ticket, agent)) ? ticket.number : null;
 }
 
 const REF_KINDS = ["staff", "team", "dept", "status"] as const;

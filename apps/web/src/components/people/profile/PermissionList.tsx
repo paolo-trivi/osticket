@@ -17,13 +17,17 @@ export default function PermissionList({ perms, color }: { perms: readonly strin
   const unknown = perms.filter((p) => !ALL_PERMISSIONS.some((d) => d.key === p));
   return (
     <div className="flex flex-wrap gap-2">
-      {known.map((p) => (
-        <Badge key={p.key} size="sm" color={color}>
-          <span title={p.key}>
-            {t(`groups.${p.group}`)}: {t.has(`items.${msgKey(p.key)}`) ? t(`items.${msgKey(p.key)}`) : p.title}
-          </span>
-        </Badge>
-      ))}
+      {known.map((p) => {
+        // la chiave tecnica resta come suggerimento solo accanto all'etichetta tradotta
+        const translated = t.has(`items.${msgKey(p.key)}`);
+        return (
+          <Badge key={p.key} size="sm" color={color}>
+            <span title={translated ? p.key : undefined}>
+              {t(`groups.${p.group}`)}: {translated ? t(`items.${msgKey(p.key)}`) : p.title}
+            </span>
+          </Badge>
+        );
+      })}
       {unknown.map((p) => (
         <Badge key={p} size="sm" color={color}>
           {p}

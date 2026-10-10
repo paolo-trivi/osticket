@@ -2,14 +2,17 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
 import { Link, redirect } from "@/i18n/navigation";
+import { parseId } from "@/lib/route-id";
 import { publicCategory } from "@/server/domain/client/kb";
 import { safeHtml } from "@/server/format/sanitize";
 
-import { requireKb } from "../../guard";
+import { kbVisible, requireKb } from "../../guard";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const cat = await publicCategory(Number(id) || 0);
+  // titolo dai dati solo se la knowledge base è visibile al visitatore (come la pagina)
+  const catId = parseId(id);
+  const cat = catId && (await kbVisible()) ? await publicCategory(catId) : null;
   return { title: cat?.name ?? (await getTranslations("portal.kb"))("title") };
 }
 
@@ -18,7 +21,8 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireKb(locale);
-  const cat = await publicCategory(Number(id) || 0);
+  const catId = parseId(id);
+  const cat = catId ? await publicCategory(catId) : null;
   if (!cat) redirect({ href: "/kb", locale });
   const c = cat!;
   const t = await getTranslations("portal.kb");

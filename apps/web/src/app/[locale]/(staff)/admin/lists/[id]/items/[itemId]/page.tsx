@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import BackLink from "@/components/adminsys/BackLink";
 import SysForm from "@/components/adminsys/SysForm";
 import { PageHeader } from "@/components/common/DataTable";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { listDetail } from "@/server/domain/adminsys/list";
 
@@ -15,9 +16,9 @@ export default async function ListItemPage({ params }: { params: Promise<{ local
   const { locale, id, itemId } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const listId = Number(id);
-  const detail = Number.isInteger(listId) && listId > 0 ? await listDetail(db(), listId) : null;
-  const item = detail?.items.find((i) => i.id === Number(itemId));
+  const listId = idOrNotFound(id);
+  const detail = await listDetail(db(), listId);
+  const item = detail?.items.find((i) => i.id === idOrNotFound(itemId));
   if (!detail || !item) notFound();
   const t = await getTranslations("asys.lists");
   return (

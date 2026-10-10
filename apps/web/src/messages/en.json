@@ -12,7 +12,8 @@
     "yes": "Yes",
     "no": "No",
     "none": "None",
-    "legacyPanel": "Classic panel"
+    "legacyPanel": "Classic panel",
+    "pagination": "Pagination"
   },
   "nav": {
     "groups": {
@@ -47,7 +48,8 @@
     "language": "Language",
     "admin": "Administrator",
     "home": "Go to dashboard",
-    "menu": "More actions"
+    "menu": "More actions",
+    "toggleTheme": "Toggle light/dark theme"
   },
   "auth": {
     "agentLoginTitle": "Agent sign in",
@@ -66,7 +68,9 @@
       "backend": "This account uses an external authentication backend that is not supported yet: use the classic panel",
       "mfa_unsupported": "Two-factor verification is not available here yet: use the classic panel"
     },
-    "sessionExpired": "Session expired: please sign in again"
+    "sessionExpired": "Session expired: please sign in again",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -249,7 +253,10 @@
     "message": "Message",
     "editedBy": "edited by",
     "via": "via",
-    "tasks": "Tasks ({count})"
+    "tasks": "Tasks ({count})",
+    "pageTitle": "Ticket",
+    "merged": "Merged with other tickets",
+    "linked": "Linked to other tickets"
   },
   "events": {
     "created": "Created by <b>{somebody}</b>",
@@ -521,5 +528,12 @@
       "search_all": "search all tickets",
       "stats_agents": "other agents' stats"
     }
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "message": "The request could not be completed. Please try again; if the problem persists, contact the administrator.",
+    "code": "Error code: {code}",
+    "retry": "Try again",
+    "backHome": "Back to home"
   }
 }

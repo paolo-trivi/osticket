@@ -10,6 +10,7 @@ import ThreadEntryCard from "@/components/tickets/ThreadEntryCard";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { Dept, TaskModel } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { editFormFields } from "@/server/domain/directory/ui";
@@ -27,7 +28,7 @@ export default async function TaskPage({ params }: { params: Promise<{ locale: s
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
-  const task = await loadTask(Number(id));
+  const task = await loadTask(idOrNotFound(id));
   if (!task || !checkTaskPerm(task, agent)) notFound();
   const t = await getTranslations("tasks");
   const tt = await getTranslations("ticket");
