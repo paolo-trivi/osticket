@@ -106,7 +106,14 @@
       "in_use": "Email is assigned to another user",
       "email": "Valid email address required",
       "phone": "Enter a valid phone number",
-      "formula": "Content cannot start with = - + @"
+      "formula": "Content cannot start with = - + @",
+      "ip": "Enter a valid IP address",
+      "number": "Enter a number",
+      "regex": "Invalid value",
+      "phone_ext": "Invalid extension",
+      "phone_ext_missing": "Extension without a phone number",
+      "files_max": "Too many files",
+      "date_past": "The date must be in the future"
     },
     "account": {
       "contact": "Contact information",

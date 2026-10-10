@@ -12,7 +12,9 @@ import { phpStripTags } from "../../format/html";
 import { editorSpacing, phpTrim, sanitizeText } from "../../format/text";
 import { isNumeric } from "../../php/values";
 import { upsertCdata } from "../forms/cdata";
+import { currentDates, currentTimezone } from "../forms/entry";
 import {
+  answerChangeValue,
   fieldSearchKeys,
   fieldToDatabase,
   hasAnswerRow,
@@ -23,6 +25,7 @@ import {
   isRequiredFor,
   isVisibleTo,
   parseField,
+  parseFieldOrAnswer,
   phpParseDateTime,
   plainLabel,
   validateField,
@@ -95,6 +98,11 @@ interface Answer {
 function dbRepr(f: FieldDef, value: string | null, valueId: number | null): unknown {
   if (f.type === "priority" || f.type === "department") return value === null && valueId === null ? null : [value, valueId];
   return value;
+}
+
+/** Risposta attuale nei dati dell'evento "edited" (getChanges: to_database(to_php($value))). */
+function oldRepr(f: FieldDef, a: Answer): unknown {
+  return f.type === "datetime" ? answerChangeValue(f, a.value) : dbRepr(f, a.value, a.valueId);
 }
 
 function newRepr(f: FieldDef, clean: CleanValue): { value: string | null; valueId: number | null; repr: unknown } {
@@ -230,18 +238,23 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
     : undefined;
   if (topic && !((topic.flags ?? 0) & Topic.ACTIVE)) err("topicId", "inactive");
 
-  // Form dinamici: solo i campi memorizzabili, visibili e modificabili dall'agente
+  // Form dinamici: solo i campi memorizzabili, visibili e modificabili dall'agente. `parsed` è il valore
+  // del widget (getChanges: assente → nullo), `clean` quello di getClean() che si valida e si salva
+  // (assente → risposta attuale), nel fuso dell'agente ($cfg->getTimezone())
   const forms = await ticketForms(tx, cfg, rec.id);
   const keep = input.forms ?? forms.map((f) => f.entryId);
+  const tz = await currentTimezone(ctx);
   const parsed = new Map<number, CleanValue>();
+  const clean = new Map<number, CleanValue>();
   for (const form of forms) {
     if (!keep.includes(form.entryId)) continue;
-    for (const f of form.fields) {
+    for (const a of form.answers) {
+      const f = a.field;
       if (!hasAnswerRow(f)) continue;
-      const clean = parseField(f, input.vars, cfg.str("default_timezone") || "UTC");
-      parsed.set(f.id, clean);
+      parsed.set(f.id, parseField(f, input.vars, tz));
+      clean.set(f.id, parseFieldOrAnswer(f, input.vars, a.exists ? a : null, tz));
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
-      const codes: FieldErrorCode[] = await validateField(f, clean, isRequiredFor(f, "staff"), cfg);
+      const codes: FieldErrorCode[] = await validateField(f, clean.get(f.id)!, isRequiredFor(f, "staff"), cfg);
       if (codes.length) errors[`field.${f.id}`] = codes;
     }
   }
@@ -284,7 +297,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
       if (!a.exists || !hasData(f) || isPresentationOnly(f) || !parsed.has(f.id)) continue;
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
       const n = newRepr(f, parsed.get(f.id)!);
-      if (!sameAnswer(f, a, n)) fieldChanges.push([String(f.id), [dbRepr(f, a.value, a.valueId), n.repr]]);
+      if (!sameAnswer(f, a, n)) fieldChanges.push([String(f.id), [oldRepr(f, a), n.repr]]);
     }
   }
   if (fieldChanges.length) changes.push(["fields", fieldChanges]);
@@ -303,7 +316,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
       const f = a.field;
       if (!a.exists || !hasAnswerRow(f)) continue;
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
-      await saveAnswer(tx, rec.id, a, parsed.get(f.id) ?? null);
+      await saveAnswer(tx, rec.id, a, clean.get(f.id) ?? null);
     }
   }
 
@@ -323,7 +336,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   await rec.save();
   await updateEstDueDate(ctx, rec);
   // Signal model.updated → indice
-  await reindexTicket(tx, rec.id);
+  await reindexTicket(tx, rec.id, await currentDates(ctx));
   return { ok: true };
 }
 
@@ -404,25 +417,28 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
     if (!answer) return { error: "no_such_field" };
     const f = answer.field;
     label = plainLabel(f.label);
-    const clean = parseField(f, input.vars, cfg.str("default_timezone") || "UTC");
-    // SimpleForm::isValid() del form di modifica (campo obbligatorio per l'agente, validatori)
-    const codes = await validateField(f, clean, isRequiredFor(f, "staff"), cfg);
+    const tz = await currentTimezone(ctx);
+    // FormField::save salva getChanges(): il valore del widget (assente → nullo)
+    const clean = parseField(f, input.vars, tz);
+    // SimpleForm::isValid() del form di modifica (campo obbligatorio per l'agente, validatori) su
+    // getClean(): un campo assente vale la risposta attuale
+    const codes = await validateField(f, parseFieldOrAnswer(f, input.vars, answer.exists ? answer : null, tz), isRequiredFor(f, "staff"), cfg);
     if (codes.length) return { error: "invalid", fields: { [`field.${f.id}`]: codes } };
     const n = newRepr(f, clean);
     if (!answer.exists || sameAnswer(f, answer, n)) return { error: "already_set" };
     if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) return { error: "not_editable" };
-    let oldRepr = dbRepr(f, answer.value, answer.valueId);
+    let prevRepr = oldRepr(f, answer);
     let newR = n.repr;
     await saveAnswer(tx, rec.id, answer, clean);
     // TextareaField: tag rimossi e testo troncato a 200 caratteri nei dati dell'evento
     if (f.type === "memo") {
-      oldRepr = truncate(phpStripTags(String(oldRepr ?? "")), 200);
+      prevRepr = truncate(phpStripTags(String(prevRepr ?? "")), 200);
       newR = truncate(phpStripTags(String(newR ?? "")), 200);
     }
     changes = phpAssocJson([
-      ["0", oldRepr],
+      ["0", prevRepr],
       ["1", newR],
-      ["fields", new RawJson(phpAssocJson([[String(f.id), [oldRepr, newR]]]))],
+      ["fields", new RawJson(phpAssocJson([[String(f.id), [prevRepr, newR]]]))],
     ]);
     await rec.save();
   } else {
@@ -492,7 +508,7 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
   rec.set("lastupdate", SQL_NOW as never);
   if (updateDuedate) await updateEstDueDate(ctx, rec);
   await rec.save();
-  await reindexTicket(tx, rec.id);
+  await reindexTicket(tx, rec.id, await currentDates(ctx));
   return { ok: true };
 }
 

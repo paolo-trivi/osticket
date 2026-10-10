@@ -6,7 +6,7 @@ UserAuthStrikeBackend, osTicketClientAuthentication, AccessLinkAuthentication, A
 ClientPasswordResetTokenBackend, ClientAcctConfirmationTokenBackend), `class.client.php` (TicketUser,
 EndUser, ClientAccount), `class.user.php` (User::updateInfo, UserAccount), `class.ticket.php`
 (postMessage, onMessage, notifyCollaborators, sendAccessLink, checkUserAccess), `include/client/*.inc.php`.
-Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (12),
+Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (13),
 `portal-open.diff.test.ts` (5) con le op di `test/diff/php/ops/portal.php`.
 
 ## API
@@ -31,7 +31,7 @@ updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg,
 // Ticket (src/server/domain/ticket/message.ts, domain/client/*)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
 postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
-editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(...)        // tickets.php a=edit
+editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(ctx, ...)     // tickets.php a=edit
 openPortalTicket(cfg, client|null, vars, {ip, sessionKey})                        // open.php → createTicket 'web'
 clientCanAccess, listClientTickets, clientTicketStats, loadClientTicketView, clientAttachment, clientEditForms
 kbEnabled, publicCategories, featuredCategories, searchFaqs, publicCategory, publicFaq, publicFaqFile, contentPage
@@ -54,7 +54,7 @@ Rotte: pagine in `src/app/[locale]/(client)/**` (`/`, `/login`, `/account`, `/pw
 | Accesso con token di reset | `user_account.status \|= 4` (REQUIRE_PASSWD_RESET), login (sopra) senza cancellare il token |
 | Profilo | `user_account` timezone/lang (solo se cambiano), con nuova password: passwd, `DELETE config pwreset c<uid>`, `status &= ~4`; `User::updateInfo`: `user_email.address`, `form_entry_values` dei campi modificabili dai clienti (`user__cdata`), `user.name` normalizzato + `updated`, `_search` U |
 | Messaggio (postMessage) | poster ≠ proprietario e non collaboratore: `thread_collaborator` flag 3 + evento `collab`; `thread_entry` M (recipients = partecipanti attivi tranne il poster, ordine collaboratori per nome; flag REPLY_ALL/REPLY_USER, COLLABORATOR, BALANCED), `_search` H, `attachment` H; `thread.lastmessage`; `ticket` isanswered 0, lastupdate, updated; se chiuso e riapribile `Ticket::reopen` (status, reopened, closed NULL, staff riassegnato, evento `reopened` che annulla `closed`, est_duedate); `DELETE draft` `ticket.client.<id>` (+ allegati D) |
-| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search` |
+| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search`. Date nel fuso del cliente (`$cfg->getTimezone()`); un campo assente dal POST mantiene la risposta (validata e salvata come `getClean()`), ma nell'evento compare con nuovo valore `null` (`getChanges`, stranezza replicata) |
 | Apertura (open.php) | `DELETE draft ticket.client.<ultimi 12 della sessione>` (anche se la creazione fallisce) poi `createTicket(ctx, vars, "web")` (vedi `create.md`) |
 
 Email del messaggio (dopo il commit, ordine del PHP): `message.autoresp` al poster (proprietario in To classe U,

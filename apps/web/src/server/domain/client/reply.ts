@@ -37,5 +37,5 @@ export async function postClientMessage(
 /** tickets.php POST a=edit (solo proprietario): campi del ticket modificabili dai clienti */
 export async function editClientTicket(cfg: ConfigNamespace, client: ClientIdentity, ticketId: number, vars: Record<string, unknown>, ip: string): Promise<ClientEditResult> {
   const actor = clientActor(cfg, client, ip);
-  return runWrite({ actor }, (ctx) => editTicketAsClient(ctx.tx, ctx.cfg, actor, client, ticketId, vars));
+  return runWrite({ actor }, (ctx) => editTicketAsClient(ctx, client, ticketId, vars));
 }

@@ -90,8 +90,10 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 - FA_SendEmail: il PHP passa `"Nome" <email>` come stringa e il nome arriva codificato con le virgolette; qui senza.
 - Canned response con immagini `cid:`: `Format::viewableImages` non replicato.
 - Estensione del telefono: il PHP la legge solo con il nome "hash" del campo; Next la legge da `<nome>-ext`.
-- Formato delle date nei template (`%{ticket.create_date}`): `mail/objects.ts` FormattedDate usa `datetime_format` anche
-  quando `date_formats` non è `custom` (il PHP usa il formato breve ICU, es. "10/9/26 2:36 PM"): da correggere nel core.
+- Formato delle date (`%{ticket.create_date}` di FormattedDate e testo dei campi data per filtri e indice): un'unica
+  implementazione di Format::date/datetime/time/daydatetime, `phpFormatDate` in `server/format/datetime.ts` (formati ICU
+  della lingua di sistema con U+202F prima di AM/PM come ICU >= 72, pattern della config con `date_formats = custom`); la
+  modalità `date_formats = 24` non è gestita.
 
 ## Stranezze PHP replicate
 - Scadenza e date dei campi interpretate in UTC (default di bootstrap.php) anche senza offset; la UI invia ISO con offset.

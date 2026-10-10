@@ -10,9 +10,29 @@ import { db, table, type DbOrTx } from "../../db";
 import { phpLooseEquals } from "../../php/values";
 import { buildMatch } from "../queue/search";
 import { upsertCdata } from "../forms/cdata";
-import { cleanFromDb, fieldSearchKeys, fieldToDatabase, fieldToString, hasData, isEditableTo, isPresentationOnly, isRequiredFor, isStorable, isVisibleTo, parseField, validateField, type CleanValue, type FieldDef, type FieldErrorCode } from "../forms/fields";
+import { currentTimezone } from "../forms/entry";
+import {
+  answerChangeValue,
+  cleanFromDb,
+  fieldSearchKeys,
+  fieldToDatabase,
+  fieldToString,
+  hasData,
+  isEditableTo,
+  isPresentationOnly,
+  isRequiredFor,
+  isStorable,
+  isVisibleTo,
+  parseField,
+  parseFieldOrAnswer,
+  validateField,
+  type CleanValue,
+  type FieldDef,
+  type FieldErrorCode,
+} from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { findTicketThreadId, ticketThreadId } from "../thread/ids";
+import type { WriteContext } from "../ticket/context";
 import { logTicketEvent, type Actor } from "../ticket/events";
 import { TicketRecord } from "../ticket/record";
 import { ticketIsReopenable, loadStatus } from "../ticket/status";
@@ -322,22 +342,31 @@ export type ClientEditResult = { ok: true; changes: number } | { error: "access"
  * tickets.php POST a=edit: solo il proprietario; validazione isValidForClient(true) dei campi
  * memorizzabili, risposte salvate per i campi visibili e modificabili dai clienti (cdata), evento
  * "edited" `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente come autore. Il ticket non viene
- * salvato (nessun updated, nessuna reindicizzazione di `_search`: come il PHP).
+ * salvato (nessun updated, nessuna reindicizzazione di `_search`: come il PHP). Date nel fuso del
+ * cliente ($cfg->getTimezone()).
  */
-export async function editTicketAsClient(tx: DbOrTx, cfg: ConfigNamespace, actor: Actor, client: ClientIdentity, ticketId: number, vars: Record<string, unknown>): Promise<ClientEditResult> {
+export async function editTicketAsClient(ctx: WriteContext, client: ClientIdentity, ticketId: number, vars: Record<string, unknown>): Promise<ClientEditResult> {
+  const { tx, cfg, actor } = ctx;
   const rec = await TicketRecord.load(tx, ticketId, true);
   if (!rec || !(await clientCanAccess(client, ticketId, tx)) || rec.get("user_id") !== client.id) return { error: "access" };
   const forms = await clientEditForms(cfg, ticketId, tx);
-  const tz = cfg.str("default_timezone") || "UTC";
+  const tz = await currentTimezone(ctx);
   const errors: Record<number, FieldErrorCode[]> = {};
+  // `parsed`: valore del widget (getChanges: assente → nullo); `clean`: getClean(), validato e salvato
+  // (assente → risposta attuale)
   const parsed = new Map<number, CleanValue>();
+  const clean = new Map<number, CleanValue>();
+  const rowsOf = new Map<number, { field_id: number; value: string | null; value_id: number | null }[]>();
   for (const form of forms) {
+    const rows = await tx.selectFrom("form_entry_values").select(["field_id", "value", "value_id"]).where("entry_id", "=", form.entryId).execute();
+    rowsOf.set(form.entryId, rows);
     for (const f of form.fields) {
       if (!hasData(f) || isPresentationOnly(f)) continue;
-      const clean = parseField(f, vars, tz);
-      parsed.set(f.id, clean);
+      const cur = rows.find((r) => r.field_id === f.id);
+      parsed.set(f.id, parseField(f, vars, tz));
+      clean.set(f.id, parseFieldOrAnswer(f, vars, cur ? { value: cur.value, valueId: cur.value_id } : null, tz));
       if (!isEditableTo(f, "client")) continue;
-      const codes = await validateField(f, clean, isRequiredFor(f, "client"), cfg);
+      const codes = await validateField(f, clean.get(f.id)!, isRequiredFor(f, "client"), cfg);
       if (codes.length) errors[f.id] = codes;
     }
   }
@@ -345,28 +374,31 @@ export async function editTicketAsClient(tx: DbOrTx, cfg: ConfigNamespace, actor
 
   // DynamicFormEntry::getChanges su tutti i campi memorizzabili, anche quelli non visibili o non
   // modificabili dal cliente (assenti dal POST → nuovo valore nullo): stranezza del PHP replicata
-  // nell'evento, ma si salvano solo i campi visibili e modificabili dai clienti.
+  // nell'evento; saveAnswers salva getClean() dei soli campi visibili e modificabili dai clienti.
   const changes: Record<string, [unknown, unknown]> = {};
+  const idType = (f: FieldDef) => f.type === "priority" || f.type === "department";
+  const same = (f: FieldDef, cur: { value: string | null; value_id: number | null }, n: { value: string | null; valueId: number | null }) =>
+    phpLooseEquals(cur.value, n.value) && (!idType(f) || phpLooseEquals(cur.value_id, n.valueId));
   for (const form of forms) {
-    const rows = await tx.selectFrom("form_entry_values").select(["field_id", "value", "value_id"]).where("entry_id", "=", form.entryId).execute();
+    const rows = rowsOf.get(form.entryId) ?? [];
     for (const f of form.fields) {
       if (!hasData(f) || isPresentationOnly(f)) continue;
       const cur = rows.find((r) => r.field_id === f.id);
       if (!cur) continue;
       const n = fieldToDatabase(f, parsed.get(f.id) ?? null);
-      const idType = f.type === "priority" || f.type === "department";
-      const same = phpLooseEquals(cur.value, n.value) && (!idType || phpLooseEquals(cur.value_id, n.valueId));
-      if (same) continue;
       // [vecchio, nuovo] nel formato to_database
-      if (!(String(f.id) in changes)) {
-        const repr = (v: string | null, id: number | null) => (idType ? (v === null && id === null ? null : [v, id]) : v);
-        changes[String(f.id)] = [repr(cur.value, cur.value_id), repr(n.value, n.valueId)];
+      if (!same(f, cur, n) && !(String(f.id) in changes)) {
+        const repr = (v: string | null, id: number | null) => (idType(f) ? (v === null && id === null ? null : [v, id]) : v);
+        changes[String(f.id)] = [f.type === "datetime" ? answerChangeValue(f, cur.value) : repr(cur.value, cur.value_id), repr(n.value, n.valueId)];
       }
       if (!(isVisibleTo(f, "client") && isEditableTo(f, "client"))) continue;
-      const set: Record<string, unknown> = { value: n.value };
-      if (idType) set.value_id = n.valueId;
+      const value = clean.get(f.id) ?? null;
+      const s = fieldToDatabase(f, value);
+      if (same(f, cur, s)) continue;
+      const set: Record<string, unknown> = { value: s.value };
+      if (idType(f)) set.value_id = s.valueId;
       await tx.updateTable("form_entry_values").set(set as never).where("entry_id", "=", form.entryId).where("field_id", "=", f.id).execute();
-      await upsertCdata(tx, "T", ticketId, f, fieldSearchKeys(f, parsed.get(f.id) ?? null));
+      await upsertCdata(tx, "T", ticketId, f, fieldSearchKeys(f, value));
     }
   }
   const n = Object.keys(changes).length;

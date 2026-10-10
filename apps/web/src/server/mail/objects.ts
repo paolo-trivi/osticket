@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 
 import type { ConfigNamespace } from "../config/config";
 import { table, type DbOrTx } from "../db";
+import { phpFormatDate } from "../format/datetime";
 import { htmlChars } from "../format/html";
 import { PersonsName } from "../format/persons-name";
 import { phpJsonDecode } from "../format/php-json";
@@ -53,26 +54,10 @@ export class FormattedDate implements TemplateVariable {
     private readonly dbZone: string,
   ) {}
   private fmt(kind: "short" | "long" | "time" | "full"): string {
-    const dt = DateTime.fromSQL(this.value, { zone: this.dbZone }).setZone(this.cfg.str("default_timezone") || this.dbZone);
+    const dt = DateTime.fromSQL(this.value, { zone: this.dbZone });
     if (!dt.isValid) return "";
-    if (this.cfg.str("date_formats") === "custom") {
-      const key = { short: "date_format", long: "datetime_format", time: "time_format", full: "daydatetime_format" }[kind];
-      return dt.setLocale("en-US").toFormat(this.cfg.str(key) || "MM/dd/y h:mm a");
-    }
-    const locale = (this.cfg.str("system_language") || "en_US").replace("_", "-");
-    const tz = dt.zoneName ?? "UTC";
-    // ICU >= 72 (PHP intl) separa l'ora da AM/PM con U+202F; V8 lo riporta a uno spazio normale
-    const icu = (o: Intl.DateTimeFormatOptions) =>
-      new Intl.DateTimeFormat(locale, { ...o, timeZone: tz })
-        .formatToParts(dt.toJSDate())
-        .map((p, i, all) => (p.type === "literal" && p.value === " " && all[i + 1]?.type === "dayPeriod" ? "\u202f" : p.value))
-        .join("");
-    switch (kind) {
-      case "short": return icu({ dateStyle: "short" });
-      case "time": return icu({ timeStyle: "short" });
-      case "full": return icu({ dateStyle: "full", timeStyle: "short" });
-      default: return `${icu({ dateStyle: "short" })} ${icu({ timeStyle: "short" })}`;
-    }
+    const php = ({ short: "date", long: "datetime", time: "time", full: "daydatetime" } as const)[kind];
+    return phpFormatDate(dt, this.cfg, this.cfg.str("default_timezone") || this.dbZone, php);
   }
   getVar(tag: string): unknown {
     switch (tag) {

@@ -4,7 +4,7 @@ import { sql } from "kysely";
 import { DateTime } from "luxon";
 
 import { Dept, DynamicFormField, TaskModel, Team, ThreadEntry } from "@/lib/osticket/flags";
-import { ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
+import { FormType, ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
 
 import { NOW, table, type DbOrTx } from "../../db";
 import type { SystemEmail } from "../../mail/mailer";
@@ -13,9 +13,9 @@ import type { TemplateCode } from "../../mail/templates";
 import type { TemplateVariable } from "../../mail/variables";
 import { logSystem } from "../../system/syslog";
 import { alertOrDefaultEmail } from "../directory/content-mail";
-import { defaultFormOf, createEntry, deleteEntries, entriesFor, saveEntryAnswers, validateInput } from "../forms/answers";
-import { currentTimezone } from "../forms/entry";
-import { hasAnswerRow, isEditableToStaff } from "../forms/fields";
+import { defaultFormOf, deleteEntries, entriesFor, saveEntryAnswers, validateInput } from "../forms/answers";
+import { currentTimezone, FormInstance, saveFormEntry } from "../forms/entry";
+import { hasAnswerRow, isEditableToStaff, type FieldErrorCode } from "../forms/fields";
 import { deleteDraftsForNamespace } from "../drafts";
 import { deleteSearchRow } from "../search/index-writer";
 import { nextSequenceNumber } from "../sequence";
@@ -57,9 +57,10 @@ import { activityVar, taskVar, threadEntryVar } from "./vars";
 export type TaskError =
   | "not_found" | "forbidden" | "note_required" | "response_required" | "title_required" | "dept_required"
   | "already_assigned" | "unavailable" | "unknown_assignee" | "team_disabled" | "team_empty" | "same_dept"
-  | "not_closeable" | "no_change" | "due_past" | "invalid_date" | "already_status";
+  | "not_closeable" | "no_change" | "due_past" | "invalid_date" | "already_status" | "invalid";
 
-export type TaskResult<T = object> = ({ ok: true } & T) | { ok: false; error: TaskError };
+/** `fields`: errori dei campi del form del task (nome o id del campo → codice), alla creazione. */
+export type TaskResult<T = object> = ({ ok: true } & T) | { ok: false; error: TaskError; fields?: Record<string, FieldErrorCode> };
 
 const isOpen = (t: TaskDbRow) => (t.flags & TaskModel.ISOPEN) !== 0;
 
@@ -473,8 +474,11 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   if (!form) return { ok: false, error: "not_found" };
   const values: Record<string, unknown> = { ...(input.fields ?? {}), title: input.title, description: input.description };
   const timezone = await currentTimezone(ctx);
+  // TaskForm::getInstance()->setSource($_POST) + $form->isValid(): un errore in un campo qualsiasi
+  // del form blocca la creazione
+  const inst = new FormInstance({ id: form.id, type: FormType.TASK, title: "", instructions: "", fields: form.fields }, values, 1, null, { timezone });
   const errors = await validateInput(form.fields, values, () => true, cfg, { timezone });
-  if (errors.title) return { ok: false, error: "title_required" };
+  if (Object.keys(errors).length) return { ok: false, error: errors.title ? "title_required" : "invalid", fields: errors };
   if (!input.deptId) return { ok: false, error: "dept_required" };
   const dept = await tx.selectFrom("department").select("id").where("id", "=", input.deptId).executeTakeFirst();
   if (!dept) return { ok: false, error: "dept_required" };
@@ -515,8 +519,9 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   const id = Number(res.insertId);
   const task = (await loadTaskRow(tx, id))!;
 
-  // addDynamicData: entry del form "Task Details" con le risposte
-  await createEntry(tx, form, "A", "A", id, values, { timezone });
+  // addDynamicData($form->getClean()): entry del form "Task Details" con i valori puliti già validati
+  // (setAnswer; la nuova entry rilegge il POST, che dà gli stessi valori: la scelta multipla resta)
+  await saveFormEntry(tx, inst, FormType.TASK, id);
 
   // TaskThread::create + addDescription (MessageThreadEntry con flag ORIGINAL_MESSAGE)
   const th = await tx.insertInto("thread").values({ object_id: id, object_type: ObjectType.TASK, created: NOW }).executeTakeFirstOrThrow();

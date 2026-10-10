@@ -119,7 +119,10 @@
       "unknown_item": "Elemento della lista sconosciuto.",
       "default_queue": "La coda predefinita non può essere eliminata.",
       "email": "Indirizzo email non valido.",
-      "number": "Deve essere un numero."
+      "number": "Deve essere un numero.",
+      "phone": "Numero di telefono non valido.",
+      "ip": "Indirizzo IP non valido.",
+      "regex": "Valore non valido."
     },
     "emailSettings": {
       "title": "Impostazioni email",

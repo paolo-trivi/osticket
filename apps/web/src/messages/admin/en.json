@@ -86,7 +86,17 @@
       "primary": "It is already the primary department",
       "dept_access": "Invalid department access",
       "members": "Invalid members",
-      "error": "Entry already exists or conflicts"
+      "error": "Entry already exists or conflicts",
+      "email": "Invalid email address",
+      "phone": "Invalid phone number",
+      "ip": "Invalid IP address",
+      "number": "Enter a number",
+      "regex": "Invalid value",
+      "formula": "Content cannot start with = - + @",
+      "phone_ext": "Invalid extension",
+      "phone_ext_missing": "Extension without a phone number",
+      "files_max": "Too many files",
+      "date_past": "The date must be in the future"
     }
   },
   "admDepts": {

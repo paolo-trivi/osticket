@@ -478,7 +478,7 @@ Dopo l'azione:
 
 Fonte: `apps/web/docs/contract/ticketedit.md`.
 
-Verificato con 60 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
+Verificato con 63 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
 `test/diff/php/ops/ticketedit.php`):
 
 ```
@@ -488,7 +488,7 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 
 | File di test | Scenari |
 |---|---|
-| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (13) |
+| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (16) |
 | `ticket-edit-delete.diff.test.ts` | eliminazione da stato "deleted" e Ticket::delete (6) |
 | `ticket-edit-collab.diff.test.ts` | collaboratori, segna scaduto, ban list (13) |
 | `ticket-edit-merge.diff.test.ts` | link, scollegamento, merge combinato/separato (8) |
@@ -528,6 +528,12 @@ Permesso `ticket.edit`. Validazione come `Validator::process` + controlli del PH
 - scadenza: non su ticket chiusi, interpretabile, nel futuro;
 - form dinamici: campi memorizzabili, visibili e modificabili dall'agente (obbligatori per l'agente, validatori).
 Con errori nessuna scrittura (`{error:"invalid", fields}`).
+
+Campi dei form (qui e in `updateTicketField`): date lette nel fuso dell'agente (`$cfg->getTimezone()`, `currentTimezone`),
+anche per il testo di `_search`. Un campo assente dall'input vale la risposta attuale per la validazione e il salvataggio
+(`getClean()` = `Widget::parseValue`, `parseFieldOrAnswer`), mentre le modifiche dell'evento leggono il solo widget
+(`getChanges`: assente → `null`, stranezza replicata); in `updateField` `FormField::save` salva proprio quel valore nullo.
+Il vecchio valore di un campo data `NULL` o non interpretabile compare come `0` nell'evento (`DatetimeField::to_php`).
 
 Scritture, in ordine:
 1. Risposte mancanti dei campi aggiunti al form (`form_entry_values` con `value = NULL`; il PHP lo fa all'apertura della
@@ -730,8 +736,10 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 - FA_SendEmail: il PHP passa `"Nome" <email>` come stringa e il nome arriva codificato con le virgolette; qui senza.
 - Canned response con immagini `cid:`: `Format::viewableImages` non replicato.
 - Estensione del telefono: il PHP la legge solo con il nome "hash" del campo; Next la legge da `<nome>-ext`.
-- Formato delle date nei template (`%{ticket.create_date}`): `mail/objects.ts` FormattedDate usa `datetime_format` anche
-  quando `date_formats` non è `custom` (il PHP usa il formato breve ICU, es. "10/9/26 2:36 PM"): da correggere nel core.
+- Formato delle date (`%{ticket.create_date}` di FormattedDate e testo dei campi data per filtri e indice): un'unica
+  implementazione di Format::date/datetime/time/daydatetime, `phpFormatDate` in `server/format/datetime.ts` (formati ICU
+  della lingua di sistema con U+202F prima di AM/PM come ICU >= 72, pattern della config con `date_formats = custom`); la
+  modalità `date_formats = 24` non è gestita.
 
 #### Stranezze PHP replicate
 - Scadenza e date dei campi interpretate in UTC (default di bootstrap.php) anche senza offset; la UI invia ISO con offset.
@@ -751,7 +759,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 15 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -805,6 +813,10 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
 `ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
+Creazione (`createTask`): come `$form->isValid()` di ajax.tasks.php un errore in un campo qualsiasi del form del task
+blocca la creazione senza scritture (`title_required` per il titolo, altrimenti `invalid`, con `fields` nome → codice);
+`addDynamicData($form->getClean())` salva i valori puliti già validati (`FormInstance` + `saveFormEntry`, un solo parse):
+la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `setAnswer`) e la scelta multipla resta.
 
 #### Utenti
 | Operazione | Scritture |
@@ -897,7 +909,7 @@ UserAuthStrikeBackend, osTicketClientAuthentication, AccessLinkAuthentication, A
 ClientPasswordResetTokenBackend, ClientAcctConfirmationTokenBackend), `class.client.php` (TicketUser,
 EndUser, ClientAccount), `class.user.php` (User::updateInfo, UserAccount), `class.ticket.php`
 (postMessage, onMessage, notifyCollaborators, sendAccessLink, checkUserAccess), `include/client/*.inc.php`.
-Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (12),
+Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (13),
 `portal-open.diff.test.ts` (5) con le op di `test/diff/php/ops/portal.php`.
 
 #### API
@@ -922,7 +934,7 @@ updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg,
 // Ticket (src/server/domain/ticket/message.ts, domain/client/*)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
 postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
-editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(...)        // tickets.php a=edit
+editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(ctx, ...)     // tickets.php a=edit
 openPortalTicket(cfg, client|null, vars, {ip, sessionKey})                        // open.php → createTicket 'web'
 clientCanAccess, listClientTickets, clientTicketStats, loadClientTicketView, clientAttachment, clientEditForms
 kbEnabled, publicCategories, featuredCategories, searchFaqs, publicCategory, publicFaq, publicFaqFile, contentPage
@@ -945,7 +957,7 @@ Rotte: pagine in `src/app/[locale]/(client)/**` (`/`, `/login`, `/account`, `/pw
 | Accesso con token di reset | `user_account.status \|= 4` (REQUIRE_PASSWD_RESET), login (sopra) senza cancellare il token |
 | Profilo | `user_account` timezone/lang (solo se cambiano), con nuova password: passwd, `DELETE config pwreset c<uid>`, `status &= ~4`; `User::updateInfo`: `user_email.address`, `form_entry_values` dei campi modificabili dai clienti (`user__cdata`), `user.name` normalizzato + `updated`, `_search` U |
 | Messaggio (postMessage) | poster ≠ proprietario e non collaboratore: `thread_collaborator` flag 3 + evento `collab`; `thread_entry` M (recipients = partecipanti attivi tranne il poster, ordine collaboratori per nome; flag REPLY_ALL/REPLY_USER, COLLABORATOR, BALANCED), `_search` H, `attachment` H; `thread.lastmessage`; `ticket` isanswered 0, lastupdate, updated; se chiuso e riapribile `Ticket::reopen` (status, reopened, closed NULL, staff riassegnato, evento `reopened` che annulla `closed`, est_duedate); `DELETE draft` `ticket.client.<id>` (+ allegati D) |
-| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search` |
+| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search`. Date nel fuso del cliente (`$cfg->getTimezone()`); un campo assente dal POST mantiene la risposta (validata e salvata come `getClean()`), ma nell'evento compare con nuovo valore `null` (`getChanges`, stranezza replicata) |
 | Apertura (open.php) | `DELETE draft ticket.client.<ultimi 12 della sessione>` (anche se la creazione fallisce) poi `createTicket(ctx, vars, "web")` (vedi `create.md`) |
 
 Email del messaggio (dopo il commit, ordine del PHP): `message.autoresp` al poster (proprietario in To classe U,

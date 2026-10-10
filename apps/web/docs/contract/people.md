@@ -4,7 +4,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 15 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -58,6 +58,10 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
 `ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
+Creazione (`createTask`): come `$form->isValid()` di ajax.tasks.php un errore in un campo qualsiasi del form del task
+blocca la creazione senza scritture (`title_required` per il titolo, altrimenti `invalid`, con `fields` nome → codice);
+`addDynamicData($form->getClean())` salva i valori puliti già validati (`FormInstance` + `saveFormEntry`, un solo parse):
+la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `setAnswer`) e la scelta multipla resta.
 
 ## Utenti
 | Operazione | Scritture |

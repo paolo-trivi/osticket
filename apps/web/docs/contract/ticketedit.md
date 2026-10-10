@@ -1,6 +1,6 @@
 # Contratto di scrittura — modifica del ticket (M2.3 parte B, area "ticketedit")
 
-Verificato con 60 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
+Verificato con 63 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
 `test/diff/php/ops/ticketedit.php`):
 
 ```
@@ -10,7 +10,7 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 
 | File di test | Scenari |
 |---|---|
-| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (13) |
+| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (16) |
 | `ticket-edit-delete.diff.test.ts` | eliminazione da stato "deleted" e Ticket::delete (6) |
 | `ticket-edit-collab.diff.test.ts` | collaboratori, segna scaduto, ban list (13) |
 | `ticket-edit-merge.diff.test.ts` | link, scollegamento, merge combinato/separato (8) |
@@ -50,6 +50,12 @@ Permesso `ticket.edit`. Validazione come `Validator::process` + controlli del PH
 - scadenza: non su ticket chiusi, interpretabile, nel futuro;
 - form dinamici: campi memorizzabili, visibili e modificabili dall'agente (obbligatori per l'agente, validatori).
 Con errori nessuna scrittura (`{error:"invalid", fields}`).
+
+Campi dei form (qui e in `updateTicketField`): date lette nel fuso dell'agente (`$cfg->getTimezone()`, `currentTimezone`),
+anche per il testo di `_search`. Un campo assente dall'input vale la risposta attuale per la validazione e il salvataggio
+(`getClean()` = `Widget::parseValue`, `parseFieldOrAnswer`), mentre le modifiche dell'evento leggono il solo widget
+(`getChanges`: assente → `null`, stranezza replicata); in `updateField` `FormField::save` salva proprio quel valore nullo.
+Il vecchio valore di un campo data `NULL` o non interpretabile compare come `0` nell'evento (`DatetimeField::to_php`).
 
 Scritture, in ordine:
 1. Risposte mancanti dei campi aggiunti al form (`form_entry_values` con `value = NULL`; il PHP lo fa all'apertura della

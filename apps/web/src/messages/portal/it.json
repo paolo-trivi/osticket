@@ -106,7 +106,14 @@
       "in_use": "Email già assegnata a un altro utente",
       "email": "Indirizzo email non valido",
       "phone": "Numero di telefono non valido",
-      "formula": "Il contenuto non può iniziare con = - + @"
+      "formula": "Il contenuto non può iniziare con = - + @",
+      "ip": "Indirizzo IP non valido",
+      "number": "Inserisci un numero",
+      "regex": "Valore non valido",
+      "phone_ext": "Interno non valido",
+      "phone_ext_missing": "Interno senza numero di telefono",
+      "files_max": "Troppi file",
+      "date_past": "La data deve essere nel futuro"
     },
     "account": {
       "contact": "Dati di contatto",

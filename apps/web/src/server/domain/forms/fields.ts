@@ -5,10 +5,11 @@ import { DateTime } from "luxon";
 import { DynamicFormField } from "@/lib/osticket/flags";
 
 import type { ConfigNamespace } from "../../config/config";
+import { phpFormatDate } from "../../format/datetime";
 import { htmlChars, phpStripTags, stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { htmlSearchable, phpTrim, sanitizeText, searchable, stripEmoticons } from "../../format/text";
-import { intval, isArray, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { intval, isArray, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { isFormula, isIp, isPhone, isValidEmail, phpIsNumeric } from "./validator";
 
 /**
@@ -219,21 +220,6 @@ export interface DateFormatOptions {
   cfg: ConfigNamespace;
   /** fuso dell'utente corrente ($cfg->getTimezone()) */
   timezone: string;
-}
-
-/** Format::date / Format::datetime: pattern personalizzato (date_formats = custom) o formato breve ICU della lingua */
-function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = false): string {
-  const z = dt.setZone(o.timezone || "UTC");
-  if (o.cfg.str("date_formats") === "custom") return z.setLocale("en-US").toFormat(o.cfg.str(withTime ? "datetime_format" : "date_format") || "MM/dd/y");
-  const locale = (o.cfg.str("system_language") || "en_US").replace("_", "-");
-  // ICU >= 72 (PHP intl) separa l'ora da AM/PM con U+202F; V8 pu\u00f2 restituire uno spazio normale
-  const icu = (opts: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat(locale, { ...opts, timeZone: z.zoneName ?? "UTC" })
-      .formatToParts(z.toJSDate())
-      .map((p, i, all) => (p.type === "literal" && p.value === " " && all[i + 1]?.type === "dayPeriod" ? "\u202f" : p.value))
-      .join("");
-  const date = icu({ dateStyle: "short" });
-  return withTime ? `${date} ${icu({ timeStyle: "short" })}` : date;
 }
 
 /** Sorgente dei valori (POST/vars): per nome del campo o per id, come Widget::getValue. */
@@ -451,6 +437,16 @@ export function inSource(f: FieldDef, source: FormSource): boolean {
 }
 
 /**
+ * FormField::getClean per un campo di un'entry esistente (Widget::parseValue): il valore della sorgente
+ * o, se il campo vi è assente, la risposta attuale (DynamicFormEntryAnswer::getValue). È il valore che
+ * isValid() valida e saveAnswers() salva: un campo assente mantiene la risposta precedente. Le modifiche
+ * (FormField::getChanges) leggono invece il solo widget: assente → nuovo valore nullo.
+ */
+export function parseFieldOrAnswer(f: FieldDef, source: FormSource, answer: { value: string | null; valueId: number | null } | null | undefined, timezone = "UTC"): CleanValue {
+  return answer && !inSource(f, source) ? cleanFromDb(f, answer.value, answer.valueId) : parseField(f, source, timezone);
+}
+
+/**
  * Valore pulito nella forma di FormField::getClean del PHP, per riusarlo come sorgente (User::fromVars
  * riceve getClean() e lo rilegge con i widget): la scelta singola torna alla sola chiave.
  */
@@ -459,8 +455,12 @@ export function phpCleanValue(f: FieldDef, v: CleanValue): CleanValue {
   return v;
 }
 
-/** Messaggi di errore dei validatori (testo inglese del PHP, tradotto dalla UI tramite il codice). */
-export type FieldErrorCode = "required" | "email" | "phone" | "ip" | "number" | "regex" | "formula" | "phone_ext" | "phone_ext_missing" | "files_max" | "date_past";
+/**
+ * Codici d'errore dei validatori (testo inglese del PHP, tradotto dalla UI tramite il codice): ogni form
+ * che mostra gli errori di validateField ha una traduzione per ciascuno (test/unit/field-error-messages).
+ */
+export const FIELD_ERROR_CODES = ["required", "email", "phone", "ip", "number", "regex", "formula", "phone_ext", "phone_ext_missing", "files_max", "date_past"] as const;
+export type FieldErrorCode = (typeof FIELD_ERROR_CODES)[number];
 
 /**
  * FormField::validateEntry per tipo. `required` è già risolto per il contesto ($thisstaff ?
@@ -531,7 +531,7 @@ export function fieldToString(f: FieldDef, value: CleanValue, dates?: DateFormat
       if (typeof value !== "string" || !dates) return typeof value === "string" ? value : "";
       const dt = phpParseDateTime(value);
       if (!dt || dt.toSeconds() <= 0) return "";
-      return phpFormatDate(dt, dates, !!f.config.time);
+      return phpFormatDate(dt, dates.cfg, dates.timezone, f.config.time ? "datetime" : "date");
     }
     case "bool":
       return value ? "Yes" : "No";
@@ -583,6 +583,17 @@ export function fieldToDatabase(f: FieldDef, value: CleanValue): { value: string
       if (f.type.startsWith("list-")) return { value: typeof value === "object" ? phpJsonEncode(value) : String(value), valueId: null };
       return { value: typeof value === "object" ? phpJsonEncode(value) : String(value), valueId: null };
   }
+}
+
+/**
+ * Valore attuale di una risposta nei dati di FormField::getChanges (to_database(to_php($value))):
+ * DatetimeField::to_php dà 0 per un valore non numerico con strtotime() <= 0 (anche NULL); gli altri
+ * tipi restano come salvati.
+ */
+export function answerChangeValue(f: FieldDef, value: string | null): string | number | null {
+  if (f.type !== "datetime" || (value !== null && isNumeric(value))) return value;
+  const dt = value === null ? null : phpParseDateTime(value);
+  return !dt || dt.toSeconds() <= 0 ? 0 : value;
 }
 
 /** DynamicFormEntryAnswer::getSearchKeys: valore della colonna *__cdata */

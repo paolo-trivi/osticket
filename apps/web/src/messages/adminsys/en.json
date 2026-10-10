@@ -119,7 +119,10 @@
       "unknown_item": "Unknown list item.",
       "default_queue": "The default queue cannot be deleted.",
       "email": "Not a valid email address.",
-      "number": "Must be a number."
+      "number": "Must be a number.",
+      "phone": "Not a valid phone number.",
+      "ip": "Not a valid IP address.",
+      "regex": "Invalid value."
     },
     "emailSettings": {
       "title": "Email settings",
