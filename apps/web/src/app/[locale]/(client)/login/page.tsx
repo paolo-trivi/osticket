@@ -2,9 +2,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import LoginPanel from "@/components/portal/LoginPanel";
 import { redirect } from "@/i18n/navigation";
-import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { renderedContent } from "@/server/domain/client/ui";
+
+import { portalVisitor } from "../guard";
 
 export async function generateMetadata() {
   const t = await getTranslations("portal.login");
@@ -22,7 +23,7 @@ export default async function PortalLoginPage({
   const { locale } = await params;
   setRequestLocale(locale);
   const sp = await searchParams;
-  const client = await currentClient();
+  const client = await portalVisitor(locale);
   if (client && !client.guest) redirect({ href: "/tickets", locale });
   const cfg = await coreConfig();
   const registration = cfg.str("client_registration");

@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { closeDb } from "@/server/db";
+import { closeDb, db } from "@/server/db";
+import { loadAgent } from "@/server/domain/staff/staff";
 import { massAssign, massChangeStatus, massClaim, massDelete, massTransfer } from "@/server/domain/ticket/mass";
+import { runWrite } from "@/server/domain/write";
 
-import { execBoth, prepareSnapshot, resetWorkingDatabases } from "./lib/harness";
+import { execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 import { both } from "./lib/ticketedit";
 
 /** Azioni di massa dalla lista dei ticket (massProcess, setSelectedTicketsStatus). */
@@ -83,6 +85,24 @@ describe("azioni di massa", () => {
     const args = { agent: 1, tids: [2, 5, 16], status_id: 1 };
     const r = await both("ticketedit.mass.status", args, (ctx) => massChangeStatus(ctx, { ticketIds: args.tids, statusId: 1 }));
     expect(r.ts).toMatchObject({ ok: true, count: 3 });
+  });
+
+  // Differenza voluta (doc 17 §3): il PHP riapre anche i ticket dei reparti in cui il ruolo non ha
+  // ticket.close né ticket.create; qui come l'azione singola quei ticket si saltano
+  it("riapertura di massa: saltati i ticket di un reparto senza permesso di riapertura", async () => {
+    // mrossi (2): ruolo "Expanded" nel reparto 1, accesso esteso al reparto 3 ridotto a "View only";
+    // il ticket chiuso 16 (assegnato a un altro agente) passa al reparto 3, il 5 resta nel reparto 1
+    await execBoth("UPDATE {p}staff_dept_access SET role_id = 4 WHERE staff_id = 2 AND dept_id = 3", "UPDATE {p}ticket SET dept_id = 3 WHERE ticket_id = 16");
+    const php = await runPhp<{ count?: number }>({ op: "ticketedit.mass.status", args: { agent: 2, tids: [5, 16], status_id: 1 } });
+    expect(php.count).toBe(2);
+    const agent = await loadAgent(2, db());
+    const ts = await runWrite({ agent: agent!, ip: "127.0.0.1" }, (ctx) => massChangeStatus(ctx, { ticketIds: [5, 16], statusId: 1 }));
+    expect(ts).toEqual({ ok: true, count: 1, total: 2 });
+    const rows = await db().selectFrom("ticket").select(["ticket_id", "status_id"]).where("ticket_id", "in", [5, 16]).orderBy("ticket_id").execute();
+    expect(rows).toEqual([
+      { ticket_id: 5, status_id: 1 },
+      { ticket_id: 16, status_id: 3 },
+    ]);
   });
 
   it("elimina tramite lo stato Deleted", async () => {

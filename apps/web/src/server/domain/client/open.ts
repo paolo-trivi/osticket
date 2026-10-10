@@ -6,6 +6,7 @@ import { createTicket, type CreateResult, type CreateTicketVars } from "../ticke
 import type { Actor } from "../ticket/events";
 import { runWrite } from "../write";
 import type { ClientIdentity } from "./identity";
+import { publicTopics } from "./ui";
 
 /**
  * Apertura di un ticket dal portale (open.php → Ticket::create($vars, $errors, 'Web')).
@@ -43,6 +44,9 @@ export function portalOpenAllowed(cfg: ConfigNamespace, client: ClientIdentity |
  * della sessione>`, anche se la creazione fallisce) e Ticket::create con origine Web, reparto ed email
  * azzerati, utente corrente come proprietario. `vars` = campi dei form (per nome) e `message`,
  * `files` = allegati già verificati.
+ * Differenza voluta (doc 17 §3): l'help topic scelto deve essere tra quelli proposti dal portale
+ * (pubblici e attivi, come il menu di open.php); il PHP accetta qualsiasi topic_id dal POST, anche
+ * privato o disattivato, con reparto, priorità, SLA e assegnazione di quel topic.
  */
 export async function openPortalTicket(
   cfg: ConfigNamespace,
@@ -58,6 +62,10 @@ export async function openPortalTicket(
   else delete input.uid;
   return runWrite({ actor }, async (ctx) => {
     await deleteDraftsForNamespace(ctx.tx, `ticket.client.${opts.sessionKey.slice(-12)}`);
+    const topicId = Number(input.topicId ?? 0);
+    if (topicId && !(await publicTopics(cfg, ctx.tx)).some((t) => t.id === topicId)) {
+      return { ok: false as const, errors: { topicId: "Select a Help Topic", err: "Missing or invalid data — Correct any errors below and try again" } };
+    }
     return createTicket(ctx, input, "web");
   });
 }

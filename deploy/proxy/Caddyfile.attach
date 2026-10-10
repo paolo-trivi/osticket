@@ -1,8 +1,11 @@
 # TailTicket in modalità "attach": solo la nuova interfaccia, davanti a un osTicket esistente.
 # Il pannello classico resta dov'è (OST_PHP_URL); qui non c'è /classic.
+# IP del client: come in Caddyfile, nessun X-Forwarded-For dei client è attendibile salvo dai proxy in
+# TAILTICKET_TRUSTED_PROXIES; l'indirizzo reale arriva alla app in X-Real-IP.
 {
 	servers {
-		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:private_ranges}
+		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
 	}
 }
 
@@ -18,5 +21,10 @@
 	import tls_{$TAILTICKET_HTTPS:off}
 	encode zstd gzip
 	header -Server
-	reverse_proxy tailticket:3000
+	request_body {
+		max_size {$TAILTICKET_MAX_BODY:40MB}
+	}
+	reverse_proxy tailticket:3000 {
+		header_up X-Real-IP {client_ip}
+	}
 }

@@ -41,3 +41,26 @@ describe("safeHtml: attributi obbligatori come htmLawed", () => {
     expect(safeHtml(input)).toBe(expected);
   });
 });
+
+// Differenza voluta (doc 17 §3): la regex di Format::safe_html è sensibile a maiuscole e spazi
+describe("safeHtml: niente posizionamenti CSS (sovrapposizioni all'interfaccia)", () => {
+  it.each([
+    "POSITION:fixed",
+    "position :fixed",
+    "Position: Absolute",
+    "posi/**/tion:fixed",
+    "/*;*/position:fixed",
+    "\\70 osition:fixed",
+    "\\000070osition:fixed",
+    "p\\osition:sticky",
+    "position:-webkit-sticky",
+  ])("%s", (decl) => {
+    const out = safeHtml(`<div style="${decl};top:0;color:red">x</div>`);
+    expect(out).not.toMatch(/osition/i);
+    expect(out).toContain("color:red");
+  });
+
+  it("le altre proprietà restano invariate", () => {
+    expect(safeHtml('<span style="color:red;font-weight:bold">t</span>')).toBe('<span style="color:red;font-weight:bold">t</span>');
+  });
+});

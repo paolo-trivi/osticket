@@ -1,6 +1,7 @@
 import { createConnection, type RowDataPacket } from "mysql2/promise";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { Topic } from "@/lib/osticket/flags";
 import { loadConfigNamespace } from "@/server/config/config";
 import { closeDb, db } from "@/server/db";
 import { loadClientIdentity } from "@/server/domain/client/identity";
@@ -125,6 +126,20 @@ describe("apertura dal portale (open.php)", () => {
     expect(php.ok).toBe(true);
     expect(ts).toMatchObject({ ok: true, ticketId: php.id });
     await compareAll(["file.key"]);
+  });
+
+  // Differenza voluta (doc 17 §3): il PHP crea il ticket con il topic privato o disattivato del POST
+  it("help topic privato o disattivato: rifiutato, nessun ticket (bozze comunque eliminate)", async () => {
+    await execBoth(SEQUENTIAL, "UPDATE {p}help_topic SET ispublic = 0 WHERE topic_id = 2", `UPDATE {p}help_topic SET flags = flags & ~${Topic.ACTIVE} WHERE topic_id = 10`, ...DRAFTS);
+    const before = await db().selectFrom("ticket").select(db().fn.countAll().as("n")).executeTakeFirstOrThrow();
+    for (const topicId of [2, 10]) {
+      const ts = await tsOpen(3, { topicId, subject: "Interno", message: "<p>Verso un topic interno</p>" });
+      expect(ts).toMatchObject({ ok: false, errors: { topicId: "Select a Help Topic" } });
+    }
+    const after = await db().selectFrom("ticket").select(db().fn.countAll().as("n")).executeTakeFirstOrThrow();
+    expect(after.n).toEqual(before.n);
+    const drafts = await db().selectFrom("draft").select("namespace").where("namespace", "like", "ticket.client.%").execute();
+    expect(drafts.map((d) => d.namespace)).toEqual(["ticket.client.altrasession"]);
   });
 
   it("solo clienti registrati (clients_only): ospite rifiutato senza scritture", async () => {

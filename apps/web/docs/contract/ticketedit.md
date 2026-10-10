@@ -159,6 +159,11 @@ Il PHP prepara il file in background e lo invia per email se non scaricato: qui 
 
 ## Differenze volute (permessi) rispetto al PHP
 - **Cambio stato di massa**: solo stati abilitati *open*/*closed* (o *deleted*), come nel menu: vedi area "actions", "Solo stati sceglibili".
+- **Riapertura di massa**: `setSelectedTicketsStatus` verifica `ticket.close`/`ticket.create` solo "in almeno un ruolo" e
+  `Ticket::setStatus` non lo ricontrolla per lo stato *open*: con il permesso nel reparto A si riaprivano i ticket chiusi
+  del reparto B accessibile in sola lettura. Qui, come l'azione singola, il permesso si verifica sul ruolo del reparto di
+  ciascun ticket e gli altri ticket si saltano (`massChangeStatus`). Il PHP ha lo stesso difetto. Test:
+  `ticket-edit-mass` ("riapertura di massa: saltati i ticket…").
 - Collaboratori: gli endpoint ajax controllano solo l'accesso al ticket; qui serve `ticket.reply` o `ticket.edit`
   (come la vista). La riattivazione `cid` è limitata ai collaboratori del thread.
 - Merge/link: niente scorciatoia "thread con un referral qualsiasi" (`isReferred()`), permessi verificati su tutti i

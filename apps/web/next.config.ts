@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_BASE_PATH ? { basePath: process.env.NEXT_BASE_PATH } : {}),
   env: { NEXT_PUBLIC_BASE_PATH: process.env.NEXT_BASE_PATH ?? "" },
   poweredByHeader: false,
+  // Le server action ricevono solo testo: gli allegati passano da /api/{agent,portal}/upload, che
+  // applicano max_file_size di osTicket prima di leggere il corpo. Limite esplicito (default di Next).
+  experimental: { serverActions: { bodySizeLimit: "1mb" } },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

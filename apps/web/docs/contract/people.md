@@ -117,12 +117,35 @@ l'errore accanto a ciascun campo.
   - `scp/orgs.php` (remove-users, mass delete, import) non controlla i permessi → `user.edit`, `org.delete`,
     `org.create` + `user.create`;
   - `Task::checkStaffPerm` mostra a tutti i task chiusi → accesso solo per reparto/assegnazione (già annotato);
-  - `scp/tasks.php a=postreply` non controlla `task.reply` → richiesto.
+  - `scp/tasks.php a=postreply` non controlla `task.reply` → richiesto;
+  - trasferimento di massa dei task: il PHP valida il reparto con `TransferForm` (`DepartmentField`), la versione
+    precedente di Next accettava qualsiasi `dept_id` → solo reparti attivi selezionabili dall'agente
+    (`selectableDepts`, in `massTaskAction` e nella server action). Test: `tasks` ("trasferimento di massa verso un
+    reparto non selezionabile").
+- **Sessione e login degli agenti (sicurezza, non replicati)**:
+  - IP del client: un solo helper (`server/auth/client-ip.ts`) che legge `X-Real-IP` impostato dal reverse proxy o,
+    se manca, il valore più a destra di `X-Forwarded-For` (con `TAILTICKET_TRUSTED_PROXY_HOPS` proxy fidati, default 1);
+    prima si usava il primo valore di `X-Forwarded-For`, scelto dal client (blocco dei tentativi, binding IP, syslog e
+    `thread_entry.ip_address` aggirabili). Il PHP usa `REMOTE_ADDR`. Test: `test/unit/security-helpers.test.ts`;
+  - logout: il PHP distrugge la sessione sul server; i cookie firmati di Next hanno un id (`sid`/`jti`) revocato al
+    logout (lista in memoria fino alla scadenza, una sola istanza) e una durata massima assoluta di 12 ore dal login,
+    anche con `staff_session_timeout = 0`. Al cambio password le altre sessioni decadono (`passwdreset` nel cookie).
+    Test: `test/unit/session-guards.test.ts`;
+  - cambio password obbligatorio (`staff.change_passwd`, impostato anche dal login con il token di reset): come
+    `scp/staff.inc.php` sono ammessi solo il profilo e il logout; `currentAgent` è null per tutte le altre pagine,
+    server action e route handler, `requireAgent` rimanda a `/agent/profile?pwchange=1`. Test:
+    `test/unit/session-guards.test.ts`, `test/unit/current-agent.test.ts`;
+  - cambio password con il token di reset in sessione: la finestra `pw_reset_window` si ricontrolla (il PHP usa `&&` al
+    posto di `||` e il token resta valido per tutta la sessione). Test: `people-profile` ("token scaduto");
+  - login con token: utente sconosciuto e token errato danno lo stesso messaggio (il PHP li distingue); il login con
+    password esegue bcrypt anche per un utente inesistente (stesso tempo di risposta). Nessuna riga diversa.
+  - Restano come il PHP: i messaggi `backend` (account con backend esterno) e `inactive`, che richiedono comunque un
+    account esistente o un token valido.
 - **Stranezze replicate**: email doppia nell'indice dei nuovi utenti; `UserAccount::update` non verifica `passwd2`;
   username impostato anche se uguale all'email (confronto con `"Nome" <email>`); `Organization::update` senza `contacts`
   azzera i contatti principali e reindicizza prima di salvare le risposte; `removeUser` non verifica l'appartenenza;
-  `changePassword` con token non verifica davvero la finestra di validità (`&&` al posto di `||`); il 2FA invia il codice
-  all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato → login senza 2FA.
+  il 2FA invia il codice all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato →
+  login senza 2FA.
 - **Validatori comuni** (`forms/validator.ts`, un'unica implementazione per tutte le aree): `isEmail` è il port di
   `Mail_RFC822::parseAddressList` usato da `Validator::is_email` (prima due regex diverse fra loro e dal PHP, ad es.
   su `a@b`, `Nome <a@b.com>`, `a..b@c.com`, `a@LOCALHOST`); `isPhone` non toglie lo spazio non separabile e

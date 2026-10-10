@@ -11,12 +11,16 @@ server {
     server_name _;
     client_max_body_size 32m;
 
+    # IP del client: TailTicket legge X-Real-IP (o, se manca, l'ultimo valore di X-Forwarded-For).
+    # Entrambi vanno SOVRASCRITTI con l'indirizzo reale: mai $proxy_add_x_forwarded_for, che conserva
+    # il valore scelto dal client. Con un altro proxy/CDN davanti a nginx usare il modulo realip
+    # (set_real_ip_from <CIDR del proxy>; real_ip_header X-Forwarded-For;) così $remote_addr è il client.
     location /app/ {
         proxy_pass http://osticket_next;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # Portale clienti servito da Next (opzionale): i link delle email restano quelli del PHP e
@@ -35,7 +39,8 @@ server {
     location / {
         proxy_pass http://osticket_php;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }

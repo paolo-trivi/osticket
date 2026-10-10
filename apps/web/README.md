@@ -96,7 +96,7 @@ Solo l'immagine di questa app:
 docker build -t tailticket apps/web                                   # app alla radice dell'host
 docker build -t tailticket --build-arg NEXT_BASE_PATH=/app apps/web   # app sotto /app
 ```
-Variabili principali: `OST_CONFIG_PATH` oppure `OST_DB_*` + `OST_SECRET_SALT`, `APP_SESSION_SECRET`, `OST_DB_TIMEZONE`, `OST_SMTP_URL`, `OST_PHP_URL`; per una scrittura su uno schema osTicket non verificato: `TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1` (sconsigliato, vedi [docs/compatibility.md](../../docs/compatibility.md)).
+Variabili principali: `OST_CONFIG_PATH` oppure `OST_DB_*` + `OST_SECRET_SALT`, `APP_SESSION_SECRET` (casuale, >= 32 caratteri: `openssl rand -base64 48`; la app non parte con un valore di esempio), `OST_DB_TIMEZONE`, `OST_SMTP_URL`, `OST_PHP_URL`, `TAILTICKET_TRUSTED_PROXY_HOPS` (proxy fidati davanti alla app, default 1: vedi [SECURITY.md](../../SECURITY.md)); per una scrittura su uno schema osTicket non verificato: `TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1` (sconsigliato, vedi [docs/compatibility.md](../../docs/compatibility.md)).
 
 ## CI
 Workflow GitHub Actions `.github/workflows/ci.yml`:

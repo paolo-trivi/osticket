@@ -16,7 +16,7 @@ import { deleteTicket } from "./delete";
 import { mergeTypeOf, isParentFlags } from "./merge-flags";
 import { logNote } from "./post";
 import { TicketRecord } from "./record";
-import { isSelectableStatus, loadStatus, setTicketStatus } from "./status";
+import { isSelectableStatus, loadStatus, roleOnRow, setTicketStatus, stateOf } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { transferTicket } from "./transfer";
 
@@ -151,6 +151,10 @@ export async function massDelete(ctx: WriteContext, input: { ticketIds: number[]
  * (aperto: ticket.close o ticket.create; chiuso: ticket.close; eliminato: ticket.delete), poi per
  * ogni ticket con stato diverso e accessibile Ticket::setStatus($status, $comments) (nota con avvisi,
  * eliminazione definitiva per lo stato "deleted").
+ * Differenza voluta (doc 17 §3): per la riapertura il permesso (ticket.close o ticket.create) si
+ * controlla anche sul ruolo del reparto di ciascun ticket, come l'azione singola; il PHP lo verifica
+ * solo "in almeno un ruolo" e Ticket::setStatus non lo ricontrolla per lo stato aperto. Chiusura ed
+ * eliminazione sono già controllate per ticket da setTicketStatus.
  */
 export async function massChangeStatus(ctx: WriteContext, input: { ticketIds: number[]; statusId: number; comments?: string }): Promise<MassResult> {
   const { tx, agent } = ctx;
@@ -182,6 +186,10 @@ export async function massChangeStatus(ctx: WriteContext, input: { ticketIds: nu
     if (failed && status.state === "closed") continue;
     const rec = await TicketRecord.load(tx, ticketId, true);
     if (!rec) continue;
+    if (status.state.toLowerCase() === "open") {
+      const role = roleOnRow(rec.row, await stateOf(tx, rec.row), agent);
+      if (!role.perms.has(TicketPerm.CLOSE) && !role.perms.has(TicketPerm.CREATE)) continue;
+    }
     const thread = await ticketThread(tx, ticketId);
     const r = await setTicketStatus(ctx, rec, thread?.id ?? 0, status.id, {
       comments: input.comments ?? "",

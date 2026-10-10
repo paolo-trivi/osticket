@@ -2,11 +2,12 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import AccountForm from "@/components/portal/AccountForm";
 import { redirect } from "@/i18n/navigation";
-import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { renderedContent } from "@/server/domain/client/ui";
 import { baseForms } from "@/server/domain/ticket/create-ui";
+
+import { portalVisitor } from "../guard";
 
 export async function generateMetadata() {
   const t = await getTranslations("portal.account");
@@ -19,7 +20,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
   setRequestLocale(locale);
   const cfg = await coreConfig();
   if (!["public", "auto"].includes(cfg.str("client_registration"))) redirect({ href: "/", locale });
-  const client = await currentClient();
+  const client = await portalVisitor(locale);
   if (client && !client.guest) redirect({ href: "/profile", locale });
   const t = await getTranslations("portal.account");
   const { user } = await baseForms(db(), cfg, "client");

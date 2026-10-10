@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { Dept } from "@/lib/osticket/flags";
 import { closeDb, db } from "@/server/db";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { loadTaskRow } from "@/server/domain/task/model";
@@ -230,6 +231,14 @@ describe("task: PHP vs TypeScript", () => {
     await asAgent(1, (ctx) => massTaskAction(ctx, [1, 2], { action: "claim" }));
     await asAgent(1, (ctx) => massTaskAction(ctx, [1, 3], { action: "close", comments: "" }));
     await asAgent(1, (ctx) => massTaskAction(ctx, [5], { action: "delete" }));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  // Differenza voluta (doc 17 §3): il reparto di destinazione si valida come TransferForm del PHP
+  it("trasferimento di massa verso un reparto non selezionabile: rifiutato, nessuna riga scritta", async () => {
+    await execBoth(`UPDATE {p}department SET flags = flags & ~${Dept.ACTIVE} WHERE id = 2`);
+    expect(await asAgent(1, (ctx) => massTaskAction(ctx, [1, 2], { action: "transfer", deptId: 2 }))).toBe(0);
+    expect(await asAgent(1, (ctx) => massTaskAction(ctx, [1, 2], { action: "transfer", deptId: 9999 }))).toBe(0);
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

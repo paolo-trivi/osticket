@@ -26,7 +26,7 @@ x-legacy: &legacy
 
 services:
   db:
-    image: mariadb:11.4
+    image: mariadb:11.4.12
     restart: unless-stopped
     command: ["--character-set-server=utf8mb3", "--collation-server=utf8mb3_general_ci", "--max-allowed-packet=64M"]
     environment:
@@ -86,10 +86,12 @@ services:
       APP_SESSION_SECRET: ${TAILTICKET_SESSION_SECRET:?impostare TAILTICKET_SESSION_SECRET (./tailticket init)}
       OST_PHP_URL: /classic
       OST_SMTP_URL: ${TAILTICKET_SMTP_URL:-}
-      # una sola istanza: codici 2FA e tentativi falliti sono in memoria
+      # un solo proxy fidato (Caddy): l'IP del client arriva in X-Real-IP
+      TAILTICKET_TRUSTED_PROXY_HOPS: ${TAILTICKET_TRUSTED_PROXY_HOPS:-1}
+      # una sola istanza: codici 2FA, tentativi falliti e sessioni revocate sono in memoria
 
   proxy:
-    image: caddy:2
+    image: caddy:2.10.2
     restart: unless-stopped
     depends_on:
       - tailticket
@@ -98,7 +100,8 @@ services:
       TAILTICKET_SITE: ${TAILTICKET_SITE:-:80}
       TAILTICKET_HTTPS: ${TAILTICKET_HTTPS:-off}
       TAILTICKET_CLASSIC_PORTAL: ${TAILTICKET_CLASSIC_PORTAL:-redirect}
-      TAILTICKET_TRUSTED_PROXIES: ${TAILTICKET_TRUSTED_PROXIES:-private_ranges}
+      TAILTICKET_TRUSTED_PROXIES: ${TAILTICKET_TRUSTED_PROXIES:-127.0.0.1/32}
+      TAILTICKET_MAX_BODY: ${TAILTICKET_MAX_BODY:-40MB}
     ports:
       - "${TAILTICKET_HTTP_PORT:-80}:80"
       - "${TAILTICKET_HTTPS_PORT:-443}:443"
@@ -108,9 +111,10 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
-  # Server email di prova (profilo "mail"): cattura tutte le email, interfaccia web su 127.0.0.1
+  # Server email di prova (profilo "mail", solo per le prove in locale: ./tailticket init lo attiva
+  # solo con localhost): cattura tutte le email, interfaccia web senza password su 127.0.0.1
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.29.7
     profiles: ["mail"]
     restart: unless-stopped
     ports:

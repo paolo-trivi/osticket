@@ -339,7 +339,7 @@
       "reset_disabled": "Password resets are disabled.",
       "reset_unavailable": "Unable to reset password. Contact your administrator.",
       "invalid_user": "Invalid user id",
-      "invalid_token": "Invalid reset token",
+      "invalid_token": "Invalid user id or reset token",
       "inactive": "Account not active"
     }
   }

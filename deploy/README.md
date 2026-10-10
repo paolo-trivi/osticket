@@ -21,12 +21,14 @@ Alla fine il comando stampa gli indirizzi e le credenziali dell'amministratore i
 
 | Servizio | Immagine | Ruolo |
 |---|---|---|
-| `proxy` | `caddy:2` | **unico ingresso** (porte 80/443): HTTPS, `/classic/…` → osTicket, tutto il resto → TailTicket |
+| `proxy` | `caddy:2.10.2` | **unico ingresso** (porte 80/443): HTTPS, `/classic/…` → osTicket, tutto il resto → TailTicket; passa l'IP del client in `X-Real-IP` |
 | `tailticket` | `apps/web/Dockerfile` | la nuova interfaccia: portale clienti `/`, agenti `/agent`, admin `/admin` |
 | `osticket` | `deploy/osticket/Dockerfile` (PHP 8.3 + Apache) | pannello classico in `/classic/`; API REST e pipe email in `/classic/api/` |
 | `cron` | stessa immagine di `osticket` | `php api/cron.php` ogni 5 minuti: fetch email, SLA/scadenze, pulizie |
-| `db` | `mariadb:11.4` | database osTicket (charset utf8 come richiesto da osTicket) |
-| `mailpit` | `axllent/mailpit` (profilo `mail`) | server email di prova: cattura tutte le email, interfaccia su `http://127.0.0.1:8025` |
+| `db` | `mariadb:11.4.12` | database osTicket (charset utf8 come richiesto da osTicket) |
+| `mailpit` | `axllent/mailpit:v1.29.7` (profilo `mail`) | server email di prova, **solo per le prove in locale**: cattura tutte le email, interfaccia senza password su `http://127.0.0.1:8025` |
+
+Le immagini hanno versioni fisse: si aggiornano modificando `compose.yaml` (e `compose.attach.yaml`), non a ogni `pull`.
 
 Al primo avvio con database vuoto:
 1. il container `osticket` **installa osTicket** con l'installer originale (admin, nome dell'helpdesk, fuso orario da `.env`);
@@ -64,8 +66,10 @@ I link del vecchio portale clienti (`/classic/view.php`, `tickets.php?id=…`, `
 ```bash
 ./tailticket init --domain helpdesk.example.com            # HTTPS automatico (Let's Encrypt)
 ./tailticket init --domain 192.168.1.20 --https internal    # rete interna: certificato della CA di Caddy
-./tailticket init                                           # prova in locale: http://localhost
+./tailticket init                                           # prova in locale: http://localhost (con Mailpit)
 ```
+
+Mailpit (profilo `mail`) si attiva solo con `localhost`: con un dominio le email partono dagli account SMTP di osTicket o da `TAILTICKET_SMTP_URL`. `--mail` lo forza anche con un dominio, solo per prove (le email non vengono consegnate e la sua interfaccia non ha password).
 
 Opzioni utili di `.env`:
 
@@ -74,8 +78,11 @@ Opzioni utili di `.env`:
 | `TAILTICKET_URL` | `http://localhost` | URL pubblico; serve per i link nelle email |
 | `TAILTICKET_HTTPS` | `auto` con un dominio, `off` su localhost | `auto` · `internal` · `off` |
 | `TAILTICKET_HTTP_PORT` / `TAILTICKET_HTTPS_PORT` | `80` / `443` | porte pubblicate dal proxy |
-| `TAILTICKET_SMTP_URL` | `smtp://mailpit:1025` | relay per le email in uscita: `smtp://utente:password@host:587` (STARTTLS) o `smtps://…:465` |
-| `COMPOSE_PROFILES` | `mail` | togliere `mail` in produzione |
+| `TAILTICKET_SMTP_URL` | `smtp://mailpit:1025` su localhost, vuoto con un dominio | relay per le email in uscita: `smtp://utente:password@host:587` (STARTTLS) o `smtps://…:465` |
+| `COMPOSE_PROFILES` | `mail` su localhost, vuoto con un dominio | `mail` = Mailpit, solo per le prove |
+| `TAILTICKET_TRUSTED_PROXIES` | `127.0.0.1/32` (nessuno) | CIDR di CDN/bilanciatori davanti a Caddy di cui fidarsi per `X-Forwarded-For`; mai `private_ranges` con traffico da reti non fidate |
+| `TAILTICKET_TRUSTED_PROXY_HOPS` | `1` | proxy fidati davanti a TailTicket (vedi [SECURITY.md](../SECURITY.md)) |
+| `TAILTICKET_MAX_BODY` | `40MB` | dimensione massima di una richiesta (allegati) |
 | `TAILTICKET_ADMIN_USER` / `_EMAIL` / `_PASSWORD` | generati | solo per la prima installazione; l'email dell'admin deve differire da `TAILTICKET_SYSTEM_EMAIL` |
 | `TAILTICKET_TIMEZONE` | `Europe/Rome` | fuso orario di osTicket (il DB resta in UTC) |
 | `TAILTICKET_AUTO_UPGRADE` | `true` | applica le patch di schema di osTicket all'avvio |
@@ -127,15 +134,18 @@ Indicazioni:
 - **Utente MySQL**: serve un utente con privilegi di lettura e scrittura sulle tabelle osTicket. Non servono permessi DDL.
 - **DB sulla stessa macchina**: `TAILTICKET_DB_HOST=host.docker.internal`, e MySQL deve accettare connessioni dalla rete Docker.
 - **Fuso orario**: `TAILTICKET_DB_TIMEZONE` deve essere il fuso del server MySQL.
-- **Nginx al posto di Caddy**: c'è un esempio in [attach/nginx.conf.example](attach/nginx.conf.example) (TailTicket sotto `/app`, build con `NEXT_BASE_PATH=/app`).
+- **Nginx al posto di Caddy**: c'è un esempio in [attach/nginx.conf.example](attach/nginx.conf.example) (TailTicket sotto `/app`, build con `NEXT_BASE_PATH=/app`). Deve sovrascrivere `X-Real-IP` e `X-Forwarded-For` con `$remote_addr` (vedi [SECURITY.md](../SECURITY.md), "Reverse proxy e IP del client").
 
 ## Sicurezza
 
-- **Porte**: solo il proxy pubblica porte. DB, PHP e TailTicket sono raggiungibili solo sulla rete interna di Docker. Mailpit ascolta solo su `127.0.0.1`.
+- **Porte**: solo il proxy pubblica porte. DB, PHP e TailTicket sono raggiungibili solo sulla rete interna di Docker. Mailpit ascolta solo su `127.0.0.1` e si attiva solo per le prove in locale.
+- **IP del client**: Caddy lo passa in `X-Real-IP` e non si fida degli `X-Forwarded-For` ricevuti (salvo `TAILTICKET_TRUSTED_PROXIES`). Non pubblicare la porta 3000 di TailTicket: senza il proxy l'IP non è attendibile.
+- **Segreto di sessione**: `TAILTICKET_SESSION_SECRET` è generato da `./tailticket init`; TailTicket non parte con un valore di esempio o debole.
 - **`.env`**: contiene i segreti, ha permessi `600` ed è escluso da git. Lo stesso vale per i backup.
 - **HTTPS**: obbligatorio fuori da localhost, perché i cookie di TailTicket sono `Secure`.
-- **Una sola istanza di TailTicket**: codici 2FA e contatori dei tentativi falliti sono in memoria. Non scalare il servizio `tailticket` oltre 1 replica.
-- **Admin iniziale**: dopo il primo accesso cambiare la password dell'admin creato dall'installazione.
+- **Una sola istanza di TailTicket**: codici 2FA, contatori dei tentativi falliti e sessioni revocate al logout sono in memoria. Non scalare il servizio `tailticket` oltre 1 replica.
+- **Sessioni**: il logout revoca la sessione sul server; ogni sessione dura al massimo 12 ore dal login, anche con il timeout di inattività disattivato.
+- **Admin iniziale**: dopo il primo accesso cambiare la password dell'admin creato dall'installazione (la password resta in `.env` finché non la si toglie).
 
 ## Problemi comuni
 

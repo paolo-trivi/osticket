@@ -114,6 +114,13 @@ Valore di partenza: 0. Si aggiungono:
 ##### `body`
 `editor_spacing` (`<p></p>` → `<p><br></p>`), poi `Format::sanitize` (htmLawed), `strip_emoticons`. Se il risultato è vuoto si salva `-`. Infine `stripExternalImages`.
 
+**Differenza voluta (sicurezza)**: `Format::safe_html` toglie i posizionamenti CSS con una regex sensibile a
+maiuscole e spazi (`position: ?(fixed|absolute|…)`), aggirabile con `POSITION:fixed`, `position :fixed`, commenti
+(`/*;*/position:fixed`) o escape CSS (`\70 osition`): un'email in arrivo poteva coprire il pannello agenti con una
+pagina falsa. `safeHtml` (`server/format/sanitize.ts`) scarta qualsiasi dichiarazione `position` dopo aver tolto i
+commenti CSS e normalizzato il nome (escape, spazi, maiuscole); il corpo salvato perde quindi anche i commenti CSS negli
+attributi `style`. In più `.thread-body` ha `contain: paint`. Il PHP ha lo stesso difetto. Test: `test/unit/sanitize.test.ts`.
+
 ##### `_search`
 `REPLACE (H, id, title, content)` solo se l'autore è un agente o un utente. `content` = HTML con i tag trasformati in spazi, entità decodificate, spazi compressi.
 
@@ -642,6 +649,11 @@ Il PHP prepara il file in background e lo invia per email se non scaricato: qui 
 
 #### Differenze volute (permessi) rispetto al PHP
 - **Cambio stato di massa**: solo stati abilitati *open*/*closed* (o *deleted*), come nel menu: vedi area "actions", "Solo stati sceglibili".
+- **Riapertura di massa**: `setSelectedTicketsStatus` verifica `ticket.close`/`ticket.create` solo "in almeno un ruolo" e
+  `Ticket::setStatus` non lo ricontrolla per lo stato *open*: con il permesso nel reparto A si riaprivano i ticket chiusi
+  del reparto B accessibile in sola lettura. Qui, come l'azione singola, il permesso si verifica sul ruolo del reparto di
+  ciascun ticket e gli altri ticket si saltano (`massChangeStatus`). Il PHP ha lo stesso difetto. Test:
+  `ticket-edit-mass` ("riapertura di massa: saltati i ticket…").
 - Collaboratori: gli endpoint ajax controllano solo l'accesso al ticket; qui serve `ticket.reply` o `ticket.edit`
   (come la vista). La riattivazione `cid` è limitata ai collaboratori del thread.
 - Merge/link: niente scorciatoia "thread con un referral qualsiasi" (`isReferred()`), permessi verificati su tutti i
@@ -891,12 +903,35 @@ l'errore accanto a ciascun campo.
   - `scp/orgs.php` (remove-users, mass delete, import) non controlla i permessi → `user.edit`, `org.delete`,
     `org.create` + `user.create`;
   - `Task::checkStaffPerm` mostra a tutti i task chiusi → accesso solo per reparto/assegnazione (già annotato);
-  - `scp/tasks.php a=postreply` non controlla `task.reply` → richiesto.
+  - `scp/tasks.php a=postreply` non controlla `task.reply` → richiesto;
+  - trasferimento di massa dei task: il PHP valida il reparto con `TransferForm` (`DepartmentField`), la versione
+    precedente di Next accettava qualsiasi `dept_id` → solo reparti attivi selezionabili dall'agente
+    (`selectableDepts`, in `massTaskAction` e nella server action). Test: `tasks` ("trasferimento di massa verso un
+    reparto non selezionabile").
+- **Sessione e login degli agenti (sicurezza, non replicati)**:
+  - IP del client: un solo helper (`server/auth/client-ip.ts`) che legge `X-Real-IP` impostato dal reverse proxy o,
+    se manca, il valore più a destra di `X-Forwarded-For` (con `TAILTICKET_TRUSTED_PROXY_HOPS` proxy fidati, default 1);
+    prima si usava il primo valore di `X-Forwarded-For`, scelto dal client (blocco dei tentativi, binding IP, syslog e
+    `thread_entry.ip_address` aggirabili). Il PHP usa `REMOTE_ADDR`. Test: `test/unit/security-helpers.test.ts`;
+  - logout: il PHP distrugge la sessione sul server; i cookie firmati di Next hanno un id (`sid`/`jti`) revocato al
+    logout (lista in memoria fino alla scadenza, una sola istanza) e una durata massima assoluta di 12 ore dal login,
+    anche con `staff_session_timeout = 0`. Al cambio password le altre sessioni decadono (`passwdreset` nel cookie).
+    Test: `test/unit/session-guards.test.ts`;
+  - cambio password obbligatorio (`staff.change_passwd`, impostato anche dal login con il token di reset): come
+    `scp/staff.inc.php` sono ammessi solo il profilo e il logout; `currentAgent` è null per tutte le altre pagine,
+    server action e route handler, `requireAgent` rimanda a `/agent/profile?pwchange=1`. Test:
+    `test/unit/session-guards.test.ts`, `test/unit/current-agent.test.ts`;
+  - cambio password con il token di reset in sessione: la finestra `pw_reset_window` si ricontrolla (il PHP usa `&&` al
+    posto di `||` e il token resta valido per tutta la sessione). Test: `people-profile` ("token scaduto");
+  - login con token: utente sconosciuto e token errato danno lo stesso messaggio (il PHP li distingue); il login con
+    password esegue bcrypt anche per un utente inesistente (stesso tempo di risposta). Nessuna riga diversa.
+  - Restano come il PHP: i messaggi `backend` (account con backend esterno) e `inactive`, che richiedono comunque un
+    account esistente o un token valido.
 - **Stranezze replicate**: email doppia nell'indice dei nuovi utenti; `UserAccount::update` non verifica `passwd2`;
   username impostato anche se uguale all'email (confronto con `"Nome" <email>`); `Organization::update` senza `contacts`
   azzera i contatti principali e reindicizza prima di salvare le risposte; `removeUser` non verifica l'appartenenza;
-  `changePassword` con token non verifica davvero la finestra di validità (`&&` al posto di `||`); il 2FA invia il codice
-  all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato → login senza 2FA.
+  il 2FA invia il codice all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato →
+  login senza 2FA.
 - **Validatori comuni** (`forms/validator.ts`, un'unica implementazione per tutte le aree): `isEmail` è il port di
   `Mail_RFC822::parseAddressList` usato da `Validator::is_email` (prima due regex diverse fra loro e dal PHP, ad es.
   su `a@b`, `Nome <a@b.com>`, `a..b@c.com`, `a@LOCALHOST`); `isPhone` non toglie lo spazio non separabile e
@@ -994,7 +1029,28 @@ collaboratore in Cc classe C; `message_autoresponder` e reparto `message_auto_re
 KB: sola lettura, il PHP non registra visualizzazioni (nessuna colonna `faq.views`).
 
 #### Differenze rispetto al PHP (sicurezza, non replicate)
-- Strike per IP (in memoria) invece che per sessione: scartare il cookie non azzera il contatore.
+- Strike per IP (in memoria) invece che per sessione: scartare il cookie non azzera il contatore. Come
+  `UserAuthStrikeBackend` il login riuscito non lo azzera (solo lo scadere del blocco): prima Next lo azzerava, e un
+  proprio account permetteva tentativi illimitati su quelli altrui. Test: `portal-auth` ("il contatore … non si azzera").
+  L'IP è quello del reverse proxy (`X-Real-IP`, vedi area "people").
+- Cambio password obbligatorio (`REQUIRE_PASSWD_RESET`, anche dopo il login con il token di reset): come
+  `client.inc.php` si raggiungono solo il profilo e il logout. `currentClient` è null, le pagine (anche home, apertura,
+  knowledge base, login) rimandano a `/profile?pwchange=1`, le azioni da visitatore (apertura, registrazione, upload)
+  sono negate. Prima solo le pagine protette lo controllavano. Test: `test/unit/session-guards.test.ts`,
+  `test/unit/current-agent.test.ts`.
+- Help topic: il PHP accetta qualsiasi `topicId` dal POST, anche privato o disattivato (reparto, priorità, SLA,
+  assegnazione e numerazione di quel topic). `openPortalTicket` accetta solo i topic proposti dal menu (pubblici e attivi,
+  `publicTopics`), altrimenti errore `topicId` senza ticket (le bozze della sessione si eliminano comunque). Il PHP ha
+  lo stesso difetto. Test: `portal-open` ("help topic privato o disattivato").
+- Dopo il login, `next` accetta solo percorsi relativi interni normalizzati (niente `//`, `/\`, `%5C`, caratteri di
+  controllo, `/agent`, `/admin`): `server/actions/redirect-path.ts`, anche per gli agenti. Test:
+  `test/unit/security-helpers.test.ts`.
+- Login con il token di reset: utente sconosciuto e token errato danno lo stesso messaggio (il PHP mostra sempre
+  "Unknown user"); il login con password esegue bcrypt anche per un utente inesistente.
+- Logout: sessione revocata sul server e durata massima assoluta di 12 ore anche con `client_session_timeout = 0`
+  (vedi area "people").
+- Upload (`/api/portal/upload`, anche senza login): il corpo è limitato a `max_file_size` + margine prima di essere
+  letto (`server/http/limited-form.ts`), non dopo averlo caricato tutto in memoria.
 - `ClientAccount::update` con token di reset: il PHP non verifica scadenza del token (`&&` al posto di `||`),
   conferma e politica della password; qui token valido e non scaduto, conferma e politica obbligatorie.
 - Registrazione/apertura ospite: `Company` legge i propri campi da `$_POST` al primo uso, quindi `%{company.name}`

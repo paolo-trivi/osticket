@@ -6,17 +6,21 @@ import type { PeopleActionState } from "@/components/people/types";
 import { formFlag, formStr } from "@/server/actions/form-data";
 import { nonce } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
-import { currentAgent } from "@/server/auth/staff-auth";
+import { sessionAgent } from "@/server/auth/staff-auth";
 import { refreshSessionAfterPasswordChange, sessionResetToken } from "@/server/auth/staff-recovery";
 import { changeStaffPassword, updateStaffProfile } from "@/server/domain/staff/profile";
 import { setup2faEmail, verify2faSetup } from "@/server/domain/staff/two-factor";
 import { runWrite } from "@/server/domain/write";
 
-/** Server action del profilo agente (scp/profile.php, ajax.staff.php changePassword / configure2FA). */
+/**
+ * Server action del profilo agente (scp/profile.php, ajax.staff.php changePassword / configure2FA).
+ * Sono le sole ammesse con il cambio password obbligatorio (sessionAgent): scp/staff.inc.php in quello
+ * stato serve solo profile.php.
+ */
 
 /** scp/profile.php (Staff::updateProfile) */
 export async function profileUpdateAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const agent = await currentAgent();
+  const agent = await sessionAgent();
   if (!agent) return { error: "session_expired" };
   const r = await runWrite({ agent, ip: await clientIp() }, (ctx) =>
     updateStaffProfile(ctx, {
@@ -55,7 +59,7 @@ export async function profileUpdateAction(_prev: PeopleActionState, form: FormDa
  * dopo il cambio la sessione corrente resta valida (il PHP esclude la propria sessione dalla pulizia).
  */
 export async function passwordChangeAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const agent = await currentAgent();
+  const agent = await sessionAgent();
   if (!agent) return { error: "session_expired" };
   const resetToken = await sessionResetToken();
   const r = await runWrite({ agent, ip: await clientIp() }, (ctx) =>
@@ -71,7 +75,7 @@ const setupKey = (staffId: number) => `setup:${staffId}`;
 
 /** ajax.staff.php:configure2FA stato "validate": salva l'indirizzo e invia il codice di verifica. */
 export async function twofaSetupAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const agent = await currentAgent();
+  const agent = await sessionAgent();
   if (!agent) return { error: "session_expired" };
   const r = await runWrite({ agent, ip: await clientIp() }, (ctx) => setup2faEmail(ctx, formStr(form, "email").trim(), setupKey(agent.id)));
   if (!r.ok) return { error: r.error === "invalid" ? "invalid" : r.error, fields: r.error === "invalid" ? { email: "email" } : undefined, nonce: nonce() };
@@ -85,7 +89,7 @@ export async function twofaSetupAction(_prev: PeopleActionState, form: FormData)
 
 /** configure2FA stato "verify": codice corretto → configurazione verificata. */
 export async function twofaVerifyAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const agent = await currentAgent();
+  const agent = await sessionAgent();
   if (!agent) return { error: "session_expired" };
   const r = await runWrite({ agent, ip: await clientIp() }, (ctx) => verify2faSetup(ctx, setupKey(agent.id), formStr(form, "token")));
   if (r !== "ok") return { error: r === "invalid" ? "invalid_code" : r === "missing" ? "code_missing" : "code_expired", nonce: nonce() };

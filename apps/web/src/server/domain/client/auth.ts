@@ -53,7 +53,7 @@ export interface ClientLogin {
 
 export type ClientAuthOutcome = ({ ok: true } & ClientLogin) | { ok: false; error: ClientAuthError };
 
-export const REALM = "client";
+const REALM = "client";
 
 /**
  * Lo strike backend del PHP conta i tentativi falliti per sessione ($_SESSION['_auth']['user']),

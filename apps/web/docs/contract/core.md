@@ -29,6 +29,13 @@ Valore di partenza: 0. Si aggiungono:
 ### `body`
 `editor_spacing` (`<p></p>` → `<p><br></p>`), poi `Format::sanitize` (htmLawed), `strip_emoticons`. Se il risultato è vuoto si salva `-`. Infine `stripExternalImages`.
 
+**Differenza voluta (sicurezza)**: `Format::safe_html` toglie i posizionamenti CSS con una regex sensibile a
+maiuscole e spazi (`position: ?(fixed|absolute|…)`), aggirabile con `POSITION:fixed`, `position :fixed`, commenti
+(`/*;*/position:fixed`) o escape CSS (`\70 osition`): un'email in arrivo poteva coprire il pannello agenti con una
+pagina falsa. `safeHtml` (`server/format/sanitize.ts`) scarta qualsiasi dichiarazione `position` dopo aver tolto i
+commenti CSS e normalizzato il nome (escape, spazi, maiuscole); il corpo salvato perde quindi anche i commenti CSS negli
+attributi `style`. In più `.thread-body` ha `contain: paint`. Il PHP ha lo stesso difetto. Test: `test/unit/sanitize.test.ts`.
+
 ### `_search`
 `REPLACE (H, id, title, content)` solo se l'autore è un agente o un utente. `content` = HTML con i tag trasformati in spazi, entità decodificate, spazi compressi.
 

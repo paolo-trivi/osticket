@@ -36,8 +36,9 @@ TailTicket — stack Docker (MariaDB + osTicket classico + TailTicket + Caddy)
 
 Uso: ./tailticket <comando> [opzioni]
 
-  init [--domain D] [--https auto|internal|off] [--attach] [--no-mail] [--force]
-                      crea .env con segreti casuali (dominio predefinito: localhost)
+  init [--domain D] [--https auto|internal|off] [--attach] [--mail|--no-mail] [--force]
+                      crea .env con segreti casuali (dominio predefinito: localhost);
+                      Mailpit (email di prova) attivo solo con localhost, salvo --mail
   up                  avvia lo stack (esegue init se manca .env), attende la salute, stampa URL e credenziali
   down                ferma lo stack (i dati restano nei volumi)
   status              stato dei servizi
@@ -52,7 +53,7 @@ EOF
 
 # --- init -----------------------------------------------------------------------------------------
 cmd_init() {
-  local domain="localhost" https="" attach=0 mail=1 force=0
+  local domain="localhost" https="" attach=0 mail="" force=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --domain) domain="${2:?--domain richiede un valore}"; shift 2 ;;
@@ -73,6 +74,12 @@ cmd_init() {
 
   local local_host=0
   [[ "$domain" == "localhost" || "$domain" == "127.0.0.1" ]] && local_host=1
+  # Mailpit cattura TUTTE le email (reset password, codici 2FA, link di accesso) e ha un'interfaccia
+  # senza password: di default solo per le prove in locale, mai con un dominio pubblico
+  [[ -z "$mail" ]] && mail=$local_host
+  if [[ $mail -eq 1 && $local_host -eq 0 ]]; then
+    warn "--mail con un dominio pubblico: le email NON vengono consegnate ma restano in Mailpit (solo per prove)"
+  fi
   [[ -z "$https" ]] && { [[ $local_host -eq 1 ]] && https=off || https=auto; }
   case "$https" in auto|internal|off) ;; *) die "--https deve essere auto, internal oppure off" ;; esac
 

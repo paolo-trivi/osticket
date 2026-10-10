@@ -66,7 +66,28 @@ collaboratore in Cc classe C; `message_autoresponder` e reparto `message_auto_re
 KB: sola lettura, il PHP non registra visualizzazioni (nessuna colonna `faq.views`).
 
 ## Differenze rispetto al PHP (sicurezza, non replicate)
-- Strike per IP (in memoria) invece che per sessione: scartare il cookie non azzera il contatore.
+- Strike per IP (in memoria) invece che per sessione: scartare il cookie non azzera il contatore. Come
+  `UserAuthStrikeBackend` il login riuscito non lo azzera (solo lo scadere del blocco): prima Next lo azzerava, e un
+  proprio account permetteva tentativi illimitati su quelli altrui. Test: `portal-auth` ("il contatore … non si azzera").
+  L'IP è quello del reverse proxy (`X-Real-IP`, vedi area "people").
+- Cambio password obbligatorio (`REQUIRE_PASSWD_RESET`, anche dopo il login con il token di reset): come
+  `client.inc.php` si raggiungono solo il profilo e il logout. `currentClient` è null, le pagine (anche home, apertura,
+  knowledge base, login) rimandano a `/profile?pwchange=1`, le azioni da visitatore (apertura, registrazione, upload)
+  sono negate. Prima solo le pagine protette lo controllavano. Test: `test/unit/session-guards.test.ts`,
+  `test/unit/current-agent.test.ts`.
+- Help topic: il PHP accetta qualsiasi `topicId` dal POST, anche privato o disattivato (reparto, priorità, SLA,
+  assegnazione e numerazione di quel topic). `openPortalTicket` accetta solo i topic proposti dal menu (pubblici e attivi,
+  `publicTopics`), altrimenti errore `topicId` senza ticket (le bozze della sessione si eliminano comunque). Il PHP ha
+  lo stesso difetto. Test: `portal-open` ("help topic privato o disattivato").
+- Dopo il login, `next` accetta solo percorsi relativi interni normalizzati (niente `//`, `/\`, `%5C`, caratteri di
+  controllo, `/agent`, `/admin`): `server/actions/redirect-path.ts`, anche per gli agenti. Test:
+  `test/unit/security-helpers.test.ts`.
+- Login con il token di reset: utente sconosciuto e token errato danno lo stesso messaggio (il PHP mostra sempre
+  "Unknown user"); il login con password esegue bcrypt anche per un utente inesistente.
+- Logout: sessione revocata sul server e durata massima assoluta di 12 ore anche con `client_session_timeout = 0`
+  (vedi area "people").
+- Upload (`/api/portal/upload`, anche senza login): il corpo è limitato a `max_file_size` + margine prima di essere
+  letto (`server/http/limited-form.ts`), non dopo averlo caricato tutto in memoria.
 - `ClientAccount::update` con token di reset: il PHP non verifica scadenza del token (`&&` al posto di `||`),
   conferma e politica della password; qui token valido e non scaduto, conferma e politica obbligatorie.
 - Registrazione/apertura ospite: `Company` legge i propri campi da `$_POST` al primo uso, quindi `%{company.name}`

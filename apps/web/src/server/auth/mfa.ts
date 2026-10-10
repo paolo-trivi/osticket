@@ -8,6 +8,7 @@ import { phpJsonDecode } from "../format/php-json";
 import { loadStaffInfo, staffVar } from "../mail/objects";
 import { alertOrDefaultEmail, loadContentPage, sendContentMail } from "../domain/directory/content-mail";
 import { randNumber } from "../domain/sequence";
+import { BoundedStore } from "./bounded-store";
 
 /**
  * Secondo fattore via email per gli agenti (include/class.2fa.php, Email2FABackend "2fa-email").
@@ -15,10 +16,12 @@ import { randNumber } from "../domain/sequence";
  * Il PHP conserva codice, ora e tentativi in $_SESSION['_2fa'][id]; qui lo stato vive in memoria del
  * processo, indicizzato da una chiave casuale salvata nel cookie di sessione (mai il codice): stessa
  * scadenza (6 minuti) e stesso limite di tentativi (3). Un riavvio del server annulla i codici pendenti.
+ * Le voci si eliminano dopo il doppio della scadenza e sono al massimo MAX_PENDING (bounded-store.ts).
  */
 export const EMAIL_2FA = "2fa-email";
 const TIMEOUT_MIN = 6;
 const MAX_STRIKES = 3;
+const MAX_PENDING = 10_000;
 
 interface OtpState {
   staffId: number;
@@ -27,12 +30,7 @@ interface OtpState {
   strikes: number;
 }
 
-const store = new Map<string, OtpState>();
-
-function sweep(): void {
-  const limit = Date.now() / 1000 - TIMEOUT_MIN * 60 * 2;
-  for (const [k, v] of store) if (v.time < limit) store.delete(k);
-}
+const store = new BoundedStore<OtpState>(MAX_PENDING);
 
 export function newMfaKey(): string {
   return randomBytes(18).toString("base64url");
@@ -63,8 +61,8 @@ export async function prepare2faEmail(
   if (!email) return false;
   // Misc::randNumber(6): 6 cifre senza zeri iniziali, confrontato come stringa (strcmp)
   const otp = String(randNumber(6));
-  sweep();
-  store.set(key, { staffId: staff.id, otp, time: Math.floor(Date.now() / 1000), strikes: 0 });
+  const time = Math.floor(Date.now() / 1000);
+  store.set(key, { staffId: staff.id, otp, time, strikes: 0 }, time + TIMEOUT_MIN * 60 * 2);
   const page = await loadContentPage(executor, "email2fa-staff");
   const info = await loadStaffInfo(executor, staff.id);
   if (!page || !info) return false;
