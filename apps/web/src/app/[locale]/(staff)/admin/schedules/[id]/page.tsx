@@ -192,9 +192,9 @@ export default async function SchedulePage({ params, searchParams }: { params: P
           </span>
         }
       />
-      {sp.created && <AdminNotice ok="created" n="1" />}
-      {sp.entry_added && <AdminNotice ok="entry" n="1" />}
-      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} />
+      {sp.created && <AdminNotice ok="created" n="1" cs={sp.cs} />}
+      {sp.entry_added && <AdminNotice ok="entry" n="1" cs={sp.cs} />}
+      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} cs={sp.cs} />
       <AdminForm sections={scheduleSections.filter((s) => s.fields.length)} action={updateScheduleAction.bind(null, scheduleId)} />
       <ComponentCard title={t("entries")}>
         <form action={deleteEntriesAction.bind(null, scheduleId)} className="space-y-4">

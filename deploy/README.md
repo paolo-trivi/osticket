@@ -111,6 +111,7 @@ Opzioni utili di `.env`:
 | `./tailticket doctor` | controlli del collegamento a osTicket; codice d'uscita `1` se la scrittura è bloccata |
 | `./tailticket mode [readonly\|operational\|full]` | mostra o cambia la modalità di scrittura (vedi la modalità attach) |
 | `./tailticket readonly` | interruttore d'emergenza: TailTicket in sola lettura, senza conferme |
+| `./tailticket undo [--list \| <id> \| last] [--yes] [--force]` | elenca o annulla le modifiche dell'area admin (vedi "Annullare una modifica dell'area admin") |
 | `./tailticket rehearse --dump <file>` / `rehearse down` | prova generale su una copia del DB di produzione, in un progetto separato |
 
 Senza lo script funziona anche `docker compose up -d`: `COMPOSE_FILE` in `.env` sceglie i file giusti (ma senza l'avvio protetto della modalità attach).
@@ -127,7 +128,7 @@ Il pannello classico continua a funzionare. Dettagli: [docs/compatibility.md](..
 
 ## Collegare un osTicket esistente (modalità attach)
 
-Per chi ha già osTicket 1.18 in produzione e vuole aggiungere TailTicket accanto al pannello classico. Parte solo `tailticket` + `proxy`: il PHP esistente resta dov'è.
+Per chi ha già osTicket 1.17 o 1.18 in produzione e vuole aggiungere TailTicket accanto al pannello classico (versioni precedenti: solo consultazione, vedi [versioni supportate](../docs/compatibility.md)). Parte solo `tailticket` + `proxy`: il PHP esistente resta dov'è.
 
 > **Da provare prima su una copia.** Finché la modalità attach in scrittura non è stata collaudata sulla propria installazione, va provata con `./tailticket rehearse` (prova generale, sotto) prima di passare a `operational` in produzione.
 
@@ -243,7 +244,7 @@ Con il plugin storage-fs i file stanno in una cartella del server di produzione 
 Alza lo **stack integrato completo** (MariaDB, osTicket classico di `legacy/`, cron, TailTicket, Caddy, Mailpit) in un progetto compose separato, `tailticket-rehearsal`, con volumi, rete e porte propri, pubblicate solo su `127.0.0.1` (da un'altra macchina: `ssh -L 18080:127.0.0.1:18080 -L 18025:127.0.0.1:18025 server`). Non tocca lo stack attach né quello integrato.
 
 1. Importa il dump in un database vuoto, con il `SECRET_SALT` e il prefisso della produzione (dall'archivio di `backup` o dalla configurazione attach). Il container `osticket` non reinstalla (`TAILTICKET_INSTALL=off`: con un DB vuoto si ferma) e non aggiorna lo schema, salvo `--upgrade`.
-2. Confronta la firma di schema del dump con quella di `legacy/` (osTicket 1.18.4) e avvisa se è diversa: la prova non riprodurrebbe la produzione.
+2. Confronta la firma di schema del dump con quella di `legacy/` (osTicket 1.18.4) e avvisa se è diversa: la prova non riprodurrebbe la produzione. Con una produzione 1.17 conviene `--upgrade`: la copia passa a 1.18 e la prova resta fedele per TailTicket (le scritture sono le stesse sulle due versioni), non per il pannello classico 1.17.
 3. **Neutralizza la posta della copia** prima di avviare PHP e cron, dopo una conferma: caselle in entrata (IMAP/POP) disattivate e fetch spento, così nessuna email viene letta o cancellata dalle caselle reali; account SMTP reindirizzati a Mailpit (`mailpit:1025`, senza TLS né autenticazione); `mail()` del PHP e TailTicket senza account verso Mailpit. Se resta un account attivo verso l'esterno la prova non parte.
 4. Avvia tutto, esegue il doctor e stampa gli indirizzi: si entra con le credenziali degli agenti di produzione (i plugin, ad esempio LDAP, non ci sono).
 
@@ -260,6 +261,18 @@ TailTicket annota ogni transazione confermata in `/var/lib/tailticket/journal/wr
 ```bash
 docker compose exec tailticket sh -c 'tail -n 20 /var/lib/tailticket/journal/writes-*.jsonl'
 ```
+
+### Annullare una modifica dell'area admin
+
+Ogni salvataggio dell'area admin (form, azioni di massa, eliminazioni, tema) è una modifica registrata con le righe prima e dopo, in `/var/lib/tailticket/journal/changes/` (cartella `700`, file `600`: contengono i valori, anche hash delle password e credenziali cifrate, e non sono mai esposti via HTTP; si conservano 30 giorni, al massimo 200 modifiche). Il banner di conferma ha **Annulla modifica**; *Pannello › Modifiche recenti* le elenca con lo stato (annullabile, annullata, non annullabile, in conflitto).
+
+```bash
+./tailticket undo                 # elenco (anche --list)
+./tailticket undo last            # ultima modifica non annullata: riepilogo, conflitti, conferma con il nome del DB
+./tailticket undo 20261010-081530-3f9a --yes   # senza conferma (automazione)
+```
+
+L'annullamento riporta le righe ai valori precedenti in una sola transazione ed è a sua volta una modifica (si può rifare annullandola). È rifiutato se le stesse righe sono cambiate dopo, anche dal pannello classico: si annullano prima le modifiche più recenti, oppure `--force` (solo dal CLI) sovrascrive i cambiamenti successivi. Serve `TAILTICKET_MODE=full` con lo schema verificato; funziona anche quando il doctor ha bloccato le scritture, perché un'impostazione admin sbagliata (es. il fuso) è proprio il caso da correggere. Non sono annullabili le operazioni oltre 5000 righe (es. eliminare un reparto o un agente con molti ticket: lo dice il banner) né le scritture non registrabili; email inviate e file su disco restano.
 
 ### Emergenza e spegnimento
 

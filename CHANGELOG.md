@@ -89,8 +89,14 @@ Obiettivo: TailTicket non deve mai rompere un osTicket esistente.
   - privilegi dell'utente DB (niente DDL) e invio email: verifica SMTP senza inviare; blocca se non c'è un relay;
   - allegati su filesystem, plugin e backend LDAP (avvisi), autocron;
   - fonte dei dati di connessione.
+- **osTicket 1.17 supportato** (lettura e scrittura): l'harness differenziale passa per intero (351/351) sul codice e sullo schema di osTicket 1.17.8. Il doctor e le informazioni di sistema riconoscono le release dalla firma dello schema (1.10–1.18) e danno indicazioni: 1.18 e 1.17 supporto completo; 1.16 e precedenti sola lettura, da aggiornare; firma sconosciuta (1.19, 2.x, upgrade a metà) sola lettura finché non verificata. Matrice in [docs/compatibility.md](docs/compatibility.md#versioni-di-osticket).
 - **`/api/health`** pubblico, usato anche dall'healthcheck Docker.
 - **Registro delle scritture** (`TAILTICKET_JOURNAL_DIR`): tabelle e verbi per operazione, mai valori.
+- **Annullamento delle modifiche admin**: ogni salvataggio dell'area admin (form, azioni di massa, eliminazioni, tema) registra le righe prima e dopo. Il gate cattura le righe sulla stessa transazione, con valori esatti: datetime come stringhe, date zero, NULL, binari, DECIMAL e BIGINT.
+  - "Annulla modifica" nel banner di conferma, pagina *Pannello › Modifiche recenti* (stato: annullabile, annullata, non annullabile, in conflitto) e `./tailticket undo [--list | <id> | last] [--yes] [--force]`.
+  - Ripristino in una sola transazione, a sua volta annullabile; rifiutato se le righe sono cambiate dopo (anche dal pannello classico), `--force` solo dal CLI. Ammesso con `TAILTICKET_MODE=full` e schema verificato anche se il doctor ha bloccato le scritture.
+  - Non annullabili, con il motivo: operazioni oltre 5000 righe (es. eliminare un reparto con molti ticket) e scritture non registrabili. Le scritture SQL scritte a mano dell'area admin sono passate al query builder, tranne il clone di un set di template: resta un `INSERT … SELECT` come nel PHP, perché l'ordine degli id lo decide il server, e quindi non è annullabile.
+  - Changeset in `TAILTICKET_JOURNAL_DIR/changes/` (file `600`, 30 giorni, al massimo 200), mai esposti via HTTP (SECURITY.md).
 - **Configurazione da una sola fonte**:
   - con `ost-config.php` montato, DB, prefisso e SECRET_SALT vengono dal file e un valore diverso blocca l'avvio;
   - host, porta, utente e password possono differire, per un utente MySQL dedicato con soli privilegi DML.

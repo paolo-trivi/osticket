@@ -12,7 +12,7 @@ import type { WriteContextInfo } from "./write-mode";
  *    "op":"agent.login","tables":{"ost_config":["delete"],"ost_staff":["update"]}}
  *
  *  - ts: fine dell'operazione, ISO 8601 UTC;
- *  - scope: "operational" | "admin" | "none" (scrittura fuori da ogni scope);
+ *  - scope: "operational" | "admin" | "restore" (annullamento di una modifica admin) | "none" (scrittura fuori da ogni scope);
  *  - actor: tipo ("agent" | "client" | "system") e id, se noti; assente se sconosciuto;
  *  - op: nome dell'operazione, oppure "action:<id>" della server action o la route; assente se ignoto;
  *  - tables: tabelle reali (con prefisso) → verbi SQL in ordine alfabetico ("?" se non riconosciuta).

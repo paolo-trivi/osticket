@@ -1,7 +1,9 @@
 import type { CompiledQuery, DatabaseConnection, Dialect, Driver, Kysely, QueryCompiler, QueryResult, TransactionSettings } from "kysely";
 
-import { currentWriteContext, gateWriteMode, inModeProbe, ReadOnlyModeError, writeAllowed, type WriteContextInfo, type WriteMode } from "../system/write-mode";
+import { ChangeBatch, currentChangeRecorder, type ChangeRecorder } from "../system/changes/recorder";
 import { journalEnabled, journalWrite, type JournalTables } from "../system/write-journal";
+import { currentWriteContext, gateRestoreAllowed, gateWriteMode, inModeProbe, ReadOnlyModeError, writeAllowed, type WriteContextInfo, type WriteMode } from "../system/write-mode";
+import { captureWrite } from "./row-capture";
 
 /**
  * Gate unico delle scritture sul DB osTicket (TAILTICKET_MODE, src/server/system/write-mode.ts).
@@ -16,6 +18,11 @@ import { journalEnabled, journalWrite, type JournalTables } from "../system/writ
  * Lo stesso involucro raccoglie tabelle e verbi delle scritture di ogni transazione per il registro delle
  * scritture (write-journal.ts): una voce al commit (o subito per le scritture fuori transazione), nessuna
  * al rollback.
+ *
+ * Dentro una modifica admin (changes/changeset.ts → withChangeset) cattura anche le righe toccate da ogni
+ * scrittura (row-capture.ts), sulla stessa connessione e nella stessa transazione: un lotto per
+ * transazione, consegnato alla modifica al commit e scartato al rollback (o al rollback di un savepoint,
+ * che rende la modifica non annullabile).
  */
 
 interface QueryClass {
@@ -117,6 +124,8 @@ function classifyCompiled(q: CompiledQuery): QueryClass {
 interface WriteGateOptions {
   /** modalità da applicare alle scritture (null = nessun controllo); default gateWriteMode() */
   mode?: () => Promise<WriteMode | null>;
+  /** annullamento delle modifiche (scope "restore") consentito; default gateRestoreAllowed() */
+  restore?: () => Promise<boolean>;
   /** scrittura completata (commit o autocommit); default il registro delle scritture, se attivo */
   completed?: (entry: CompletedWrite) => void;
   /** raccolta delle tabelle attiva; default journalEnabled() */
@@ -132,11 +141,16 @@ const warnedUnscoped = new Set<string>();
 
 class WriteGate {
   readonly mode: () => Promise<WriteMode | null>;
+  readonly restore: () => Promise<boolean>;
   readonly completed: (entry: CompletedWrite) => void;
   readonly collect: () => boolean;
 
-  constructor(opts: WriteGateOptions) {
+  constructor(
+    opts: WriteGateOptions,
+    readonly compiler: QueryCompiler,
+  ) {
     this.mode = opts.mode ?? gateWriteMode;
+    this.restore = opts.restore ?? gateRestoreAllowed;
     this.completed = opts.completed ?? ((e) => journalWrite(e.context, e.tables));
     this.collect = opts.collect ?? journalEnabled;
   }
@@ -155,7 +169,9 @@ class WriteGate {
         console.warn(`[write-gate] scrittura senza scope (${key}): trattata come "admin"`);
       }
     }
-    if (!writeAllowed(mode, scope)) throw new ReadOnlyModeError(scope, mode);
+    if (writeAllowed(mode, scope)) return;
+    if (scope === "restore" && (await this.restore())) return;
+    throw new ReadOnlyModeError(scope, mode);
   }
 }
 
@@ -165,6 +181,8 @@ class GatedConnection implements DatabaseConnection {
     context: WriteContextInfo | undefined;
     tables: Map<string, Set<string>>;
   } | null = null;
+  /** righe catturate nella transazione in corso (modifica admin) */
+  #changes: ChangeBatch | null = null;
   cancelQuery?: DatabaseConnection["cancelQuery"];
   collectSessionInfo?: DatabaseConnection["collectSessionInfo"];
   killSession?: DatabaseConnection["killSession"];
@@ -182,7 +200,29 @@ class GatedConnection implements DatabaseConnection {
     const c = classifyCompiled(compiledQuery);
     if (!c.write) return this.inner.executeQuery<R>(compiledQuery, options);
     await this.gate.check(c);
-    const result = await this.inner.executeQuery<R>(compiledQuery, options);
+    const rec = currentChangeRecorder();
+    const run = () => this.inner.executeQuery<R>(compiledQuery, options);
+    if (!rec) {
+      const result = await run();
+      this.#recordWrite(c);
+      return result;
+    }
+    const batch = this.#batch(rec);
+    batch.touch(c.tables, c.verb);
+    let result: QueryResult<R>;
+    if (batch.capturing) {
+      const env = {
+        exec: (q: CompiledQuery) => this.inner.executeQuery<Record<string, unknown>>(q),
+        compiler: this.gate.compiler,
+        budget: batch.budget,
+        skipInsert: rec.skipInsert,
+      };
+      const captured = await captureWrite(env, compiledQuery, c.verb, run);
+      result = captured.result;
+      if ("fail" in captured.outcome) batch.fail({ reason: captured.outcome.fail, detail: captured.outcome.detail });
+      else batch.add(captured.outcome.entries);
+    } else result = await run();
+    if (!this.#inTx) rec.commit(batch);
     this.#recordWrite(c);
     return result;
   }
@@ -190,20 +230,43 @@ class GatedConnection implements DatabaseConnection {
   async *streamQuery<R>(compiledQuery: CompiledQuery, chunkSize: number, options?: Parameters<DatabaseConnection["streamQuery"]>[2]): AsyncIterableIterator<QueryResult<R>> {
     const c = classifyCompiled(compiledQuery);
     if (c.write) await this.gate.check(c);
+    const rec = c.write ? currentChangeRecorder() : undefined;
     yield* this.inner.streamQuery<R>(compiledQuery, chunkSize, options);
+    if (rec) {
+      const batch = this.#batch(rec);
+      batch.touch(c.tables, c.verb);
+      batch.fail({ reason: "stream", detail: c.verb });
+      if (!this.#inTx) rec.commit(batch);
+    }
     if (c.write) this.#recordWrite(c);
+  }
+
+  /** Lotto delle righe catturate: quello della transazione in corso, o uno nuovo per la singola query. */
+  #batch(rec: ChangeRecorder): ChangeBatch {
+    if (!this.#inTx) return new ChangeBatch(rec);
+    if (this.#changes?.recorder !== rec) this.#changes = new ChangeBatch(rec);
+    return this.#changes;
   }
 
   beginTx(): void {
     this.#inTx = true;
     this.#pending = null;
+    this.#changes = null;
   }
 
   endTx(committed: boolean): void {
     const p = this.#pending;
+    const changes = this.#changes;
     this.#inTx = false;
     this.#pending = null;
+    this.#changes = null;
     if (committed && p) this.#emit(p);
+    if (committed && changes) changes.recorder.commit(changes);
+  }
+
+  /** Rollback a un savepoint: le righe catturate non si possono più separare, modifica non annullabile. */
+  savepointRolledBack(): void {
+    this.#changes?.fail({ reason: "savepoint", detail: "rollback a un savepoint" });
   }
 
   #recordWrite(c: QueryClass): void {
@@ -292,6 +355,7 @@ class WriteGateDriver implements Driver {
   async rollbackToSavepoint(connection: DatabaseConnection, name: string, compileQuery: QueryCompiler["compileQuery"]): Promise<void> {
     if (!this.#inner.rollbackToSavepoint) throw new Error("savepoint non supportati dal driver");
     await this.#inner.rollbackToSavepoint(this.#unwrap(connection), name, compileQuery);
+    if (connection instanceof GatedConnection) connection.savepointRolledBack();
   }
 
   async releaseSavepoint(connection: DatabaseConnection, name: string, compileQuery: QueryCompiler["compileQuery"]): Promise<void> {
@@ -310,7 +374,8 @@ class WriteGateDriver implements Driver {
 
 /** Dialetto con il gate delle scritture attorno al driver del dialetto dato. */
 export function withWriteGate(dialect: Dialect, opts: WriteGateOptions = {}): Dialect {
-  const gate = new WriteGate(opts);
+  // compilatore del dialetto per le SELECT di cattura delle righe (compileQuery è sincrona e senza stato tra una chiamata e l'altra)
+  const gate = new WriteGate(opts, dialect.createQueryCompiler());
   return {
     createDriver: () => new WriteGateDriver(dialect.createDriver(), gate),
     createQueryCompiler: () => dialect.createQueryCompiler(),

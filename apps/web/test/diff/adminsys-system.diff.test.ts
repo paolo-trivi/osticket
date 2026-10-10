@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
@@ -8,7 +10,7 @@ import { massPlugins } from "@/server/domain/adminsys/plugin";
 import { massQueues, type QueueMassAction } from "@/server/domain/adminsys/queue";
 import { systemInfo } from "@/server/domain/adminsys/system-info";
 
-import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
+import { compareWorkingDatabases, execBoth, OST_ROOT, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
 
 /** Code, log di sistema, plugin, diagnostica email e informazioni di sistema: PHP vs TypeScript. */
@@ -91,7 +93,10 @@ describe("diagnostica: email di prova (Mailpit)", () => {
 describe("informazioni di sistema", () => {
   it("versione, database e fuso orario", async () => {
     const info = await systemInfo(db());
-    expect(info.osticketVersion).toMatch(/^1\.18/);
+    // la versione dell'osTicket su cui gira l'harness (legacy/ o un'altra release, es. 1.17.8): da bootstrap.php
+    const major = /define\('MAJOR_VERSION',\s*'([^']+)'\)/.exec(readFileSync(`${OST_ROOT}/bootstrap.php`, "utf8"))?.[1];
+    expect(major).toMatch(/^1\.\d+$/);
+    expect(info.osticketVersion?.startsWith(major ?? "?")).toBe(true);
     expect(info.dbVersion).toBeTruthy();
     expect(info.tablePrefix).toBe("ost_");
     expect(info.spaceUsedMiB).toBeGreaterThan(0);

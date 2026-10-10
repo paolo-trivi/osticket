@@ -43,7 +43,9 @@ export async function sendTestEmailAction(_prev: SysFormState, form: FormData): 
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => sendTestEmail(tx, vars));
   const state = await sysFormResult(r, { locale });
-  // è un invio, non un salvataggio: "Impossibile inviare" al posto di "Impossibile salvare"
+  // è un invio, non un salvataggio: nessun "Annulla modifica" (le bozze cancellate restano in Modifiche recenti)
+  delete state.change;
+  // "Impossibile inviare" al posto di "Impossibile salvare"
   if (state.status === "error" && !state.message) state.message = (await getTranslations("asys.diagnostic"))("fixErrors");
   return state;
 }

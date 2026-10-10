@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Callout from "@/components/common/Callout";
 
 /** Parametri d'esito passati in query string dalle server action (redirect con ?ok=…, ?created=1…). */
-const FLASH_PARAMS = ["ok", "n", "err", "created", "entry_added"];
+const FLASH_PARAMS = ["ok", "n", "err", "created", "entry_added", "cs"];
 
 /**
  * Esito di un'azione letto dall'URL: mostrato una volta sola. Al montaggio toglie i parametri

@@ -4,18 +4,18 @@ Cosa TailTicket è, cosa non è e dove vuole arrivare.
 
 ## In una frase
 
-TailTicket è **una nuova interfaccia completa per osTicket 1.18** (pannello agenti, area admin, portale clienti), che lavora sullo stesso database del PHP e ne riproduce fedelmente il comportamento, più un **pacchetto di deploy** che mette in piedi tutto con un comando.
+TailTicket è **una nuova interfaccia completa per osTicket 1.18** (compatibile anche con un osTicket 1.17 già in produzione) (pannello agenti, area admin, portale clienti), che lavora sullo stesso database del PHP e ne riproduce fedelmente il comportamento, più un **pacchetto di deploy** che mette in piedi tutto con un comando.
 
 ## Nello scope
 
 | Area | Cosa copre | Stato |
 |---|---|---|
-| Pannello agenti | code, ricerca, vista ticket, risposta/nota con allegati, assegna/claim/rilascio/trasferimento/referral, stati, modifica, collaboratori, merge/link, eliminazione, azioni di massa, export CSV, nuovo ticket, task, utenti e organizzazioni, KB e risposte predefinite, profilo, 2FA email | ✅ |
-| Area amministrazione | impostazioni (azienda, sistema, ticket, task, agenti, utenti, KB, email), reparti, help topic, SLA, orari, agenti, team, ruoli; account email, template, ban list, diagnostica, filtri, form, liste, pagine, code (attivazione), chiavi API, log, plugin (attivazione), tema e brand | ✅ |
-| Portale clienti | home e pagine di contenuto, KB pubblica, login/registrazione/reset, accesso ospite e link con token, i miei ticket, risposta, modifica dei campi, apertura ticket con allegati, profilo | ✅ |
-| Compatibilità DB | stesse righe ed email del PHP, verificate da 351 scenari differenziali; sola lettura su schemi non verificati | ✅ |
-| Deploy | Docker Compose con TailTicket, osTicket classico, cron, MariaDB, reverse proxy HTTPS; modalità "collega un osTicket esistente"; backup e aggiornamenti | ✅ |
-| Brand e UX | tema configurabile, chiaro/scuro, responsive, italiano e inglese | ✅ |
+| Pannello agenti | code, ricerca, vista ticket, risposta/nota con allegati, assegna/claim/rilascio/trasferimento/referral, stati, modifica, collaboratori, merge/link, eliminazione, azioni di massa, export CSV, nuovo ticket, task, utenti e organizzazioni, KB e risposte predefinite, profilo, 2FA email | fatto |
+| Area amministrazione | impostazioni (azienda, sistema, ticket, task, agenti, utenti, KB, email), reparti, help topic, SLA, orari, agenti, team, ruoli; account email, template, ban list, diagnostica, filtri, form, liste, pagine, code (attivazione), chiavi API, log, plugin (attivazione), tema e brand | fatto |
+| Portale clienti | home e pagine di contenuto, KB pubblica, login/registrazione/reset, accesso ospite e link con token, i miei ticket, risposta, modifica dei campi, apertura ticket con allegati, profilo | fatto |
+| Compatibilità DB | stesse righe ed email del PHP, verificate da 351 scenari differenziali; sola lettura su schemi non verificati | fatto |
+| Deploy | Docker Compose con TailTicket, osTicket classico, cron, MariaDB, reverse proxy HTTPS; modalità "collega un osTicket esistente" (sola lettura all'avvio, doctor, tre modalità di scrittura, prova generale, interruttore d'emergenza); backup e aggiornamenti | fatto |
+| Brand e UX | tema configurabile, chiaro/scuro, responsive, italiano e inglese | fatto |
 
 ## Fuori scope (per scelta)
 

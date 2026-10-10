@@ -132,7 +132,7 @@ Creazione/modifica (criteri, colonne, ordinamenti, esportazioni) al PHP. Massa: 
 (`flags` ± DISABLED, `updated=NOW()`), delete (solo la riga `queue`; non la coda predefinita).
 
 ## API key — `/admin/apikeys` (scp/apikeys.php)
-INSERT/UPDATE `api_key` con SQL diretto: `updated=NOW()`, isactive, can_create_tickets,
+INSERT/UPDATE `api_key` (SQL diretto nel PHP, query builder qui): `updated=NOW()`, isactive, can_create_tickets,
 can_exec_cron ('' se assenti → 0), notes; alla creazione `created`, `ipaddr` (IPv4/IPv6 valido),
 `apikey` casuale 48 caratteri [A-Z0-9]. Massa: enable/disable (UPDATE isactive), delete.
 

@@ -26,7 +26,7 @@ export default async function EditPage({ params, searchParams }: { params: Promi
   return (
     <div className="space-y-6">
       <PageHeader title={t("edit")} actions={<BackLink href="/admin/sla" label={t("back")} />} />
-      {sp.created && <AdminNotice ok="created" n="1" />}
+      {sp.created && <AdminNotice ok="created" n="1" cs={sp.cs} />}
       <AdminForm sections={sections} action={saveSlaAction.bind(null, objectId)} />
     </div>
   );

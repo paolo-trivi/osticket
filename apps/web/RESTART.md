@@ -93,18 +93,18 @@ CI GitHub Actions (`.github/workflows/ci.yml`):
 
 | Milestone | Stato | Scenari diff | Note |
 |---|---|---|---|
-| M0 Fondamenta | ✅ | 3 (login) | scaffold, DB Kysely, config, login agenti, harness, branding, tema da admin |
-| M1 Agenti sola lettura | ✅ | 10 (code, accesso) | code/contatori/visibilità, ricerca, vista ticket, utenti/org, KB, canned, task, profilo, dashboard |
-| M2.1/M2.2 Scritture base | ✅ | 9 + 2 SLA + 2 date | nota, risposta, stato, lock, eventi, `_search`, mailer, crypto, SLA, composer con allegati |
-| M2.3 A Azioni ticket ("actions") | ✅ | 47 | assegna/claim/rilascio/trasferimento/referral (anche rimozione)/stato/riapertura/segna risposto |
-| M2.3 B Modifica ticket ("ticketedit") | ✅ | 60 | update/editField/proprietario, collaboratori, merge/link, delete, scaduto, ban, massa, export CSV, modifica voce |
-| M3 A Creazione ticket ("create") | ✅ | 43 | `createTicket`/`openTicket`, filtri, numerazione, form dinamici, allegati, `/agent/tickets/new` |
-| M3 B Task/utenti/org/profilo ("people") | ✅ | 28 | task UI, CRUD utenti/org + import CSV + account, profilo, password, 2FA email, reset |
-| M4 Portale clienti ("portal") | ✅ | 37 | login/registrazione/reset/ospite/token, ticket, `postMessage`, apertura, KB, profilo |
-| M5 A Admin ("admin") | ✅ | 34 | impostazioni, reparti, topic, SLA, orari, agenti, team, ruoli, dashboard |
-| M5 B Admin di sistema ("adminsys") | ✅ | 30 | email/account/template/ban list/diagnostica, filtri, form, liste, pagine, code, API key, log, sistema, plugin |
-| M6 Deploy/CI/hardening | ✅ | — | CI verde, Dockerfile, basePath, CSP con nonce |
-| M7 Fork TailTicket | ✅ | — | `legacy/` + `apps/web/`, brand TailTicket, documentazione e presentazione, stack `deploy/` (Caddy, osTicket + cron, MariaDB, backup/update, modalità attach), guardia sulla firma dello schema (`src/server/system/schema-compat.ts`), workflow `images` |
+| M0 Fondamenta | fatto | 3 (login) | scaffold, DB Kysely, config, login agenti, harness, branding, tema da admin |
+| M1 Agenti sola lettura | fatto | 10 (code, accesso) | code/contatori/visibilità, ricerca, vista ticket, utenti/org, KB, canned, task, profilo, dashboard |
+| M2.1/M2.2 Scritture base | fatto | 9 + 2 SLA + 2 date | nota, risposta, stato, lock, eventi, `_search`, mailer, crypto, SLA, composer con allegati |
+| M2.3 A Azioni ticket ("actions") | fatto | 47 | assegna/claim/rilascio/trasferimento/referral (anche rimozione)/stato/riapertura/segna risposto |
+| M2.3 B Modifica ticket ("ticketedit") | fatto | 60 | update/editField/proprietario, collaboratori, merge/link, delete, scaduto, ban, massa, export CSV, modifica voce |
+| M3 A Creazione ticket ("create") | fatto | 43 | `createTicket`/`openTicket`, filtri, numerazione, form dinamici, allegati, `/agent/tickets/new` |
+| M3 B Task/utenti/org/profilo ("people") | fatto | 28 | task UI, CRUD utenti/org + import CSV + account, profilo, password, 2FA email, reset |
+| M4 Portale clienti ("portal") | fatto | 37 | login/registrazione/reset/ospite/token, ticket, `postMessage`, apertura, KB, profilo |
+| M5 A Admin ("admin") | fatto | 34 | impostazioni, reparti, topic, SLA, orari, agenti, team, ruoli, dashboard |
+| M5 B Admin di sistema ("adminsys") | fatto | 30 | email/account/template/ban list/diagnostica, filtri, form, liste, pagine, code, API key, log, sistema, plugin |
+| M6 Deploy/CI/hardening | fatto | — | CI verde, Dockerfile, basePath, CSP con nonce |
+| M7 Fork TailTicket | fatto | — | `legacy/` + `apps/web/`, brand TailTicket, documentazione e presentazione, stack `deploy/` (Caddy, osTicket + cron, MariaDB, backup/update, modalità attach), guardia sulla firma dello schema (`src/server/system/schema-compat.ts`), workflow `images` |
 
 Integrazioni fatte dal coordinatore: eliminazione definitiva agganciata allo stato "deleted" e all'eliminazione utente con ticket (`deleteTicketViaDeletedStatus`), link "Task (n)" nella vista ticket, `createTicket` nel portale, allegati nel composer, date dei template come ICU (`FormattedDate`), destinatari ordinati per nome e serializzati in ordine, `htmlChars` = `Format::htmlchars`, attributi obbligatori di htmLawed nel sanitizer, cifratura SMTP ricavata da host/porta come `class.mail.php`.
 

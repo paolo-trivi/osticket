@@ -1221,6 +1221,14 @@ non vengono aggiornati (dati orfani). In TS l'eliminazione viene **rifiutata sen
 Il riallineamento dei flag dei filtri al cambio di stato (FilterAction::setFilterFlags) nel PHP non scrive mai nulla
 (Filter::update fallisce per le regole mancanti): niente da replicare.
 
+#### Annullamento (solo TailTicket)
+Ogni invocazione di `adminWrite` (e il salvataggio del tema) registra le righe toccate prima e dopo (`src/server/system/changes/`,
+cattura nel gate: `src/server/db/row-capture.ts`); le righe scritte sono le stesse del PHP. Per poterle catturare le scritture SQL
+scritte a mano dell'area admin sono passate al query builder con lo stesso effetto: ordinamento dei topic (`INSERT … ON DUPLICATE KEY
+UPDATE`), API key, ban list, log, template (`INSERT … SELECT` come lettura + INSERT di più righe nello stesso ordine; `DELETE … JOIN`
+come `DELETE … WHERE object_id IN (SELECT …)`), bozze (`deleteDraftsForNamespace`). Gli INSERT in `syslog` non si registrano.
+L'annullamento (scope `restore`) riscrive i valori originali in una transazione, dopo il controllo dei conflitti.
+
 #### Permessi (differenze di sicurezza)
 - ajax.schedule.php (nuovo orario, voci) richiede solo un agente autenticato: qui tutte le scritture admin richiedono `isadmin`
   (pagine con `requireAdmin`, server action con `requireAdminAction`).
@@ -1367,7 +1375,7 @@ Creazione/modifica (criteri, colonne, ordinamenti, esportazioni) al PHP. Massa: 
 (`flags` ± DISABLED, `updated=NOW()`), delete (solo la riga `queue`; non la coda predefinita).
 
 #### API key — `/admin/apikeys` (scp/apikeys.php)
-INSERT/UPDATE `api_key` con SQL diretto: `updated=NOW()`, isactive, can_create_tickets,
+INSERT/UPDATE `api_key` (SQL diretto nel PHP, query builder qui): `updated=NOW()`, isactive, can_create_tickets,
 can_exec_cron ('' se assenti → 0), notes; alla creazione `created`, `ipaddr` (IPv4/IPv6 valido),
 `apikey` casuale 48 caratteri [A-Z0-9]. Massa: enable/disable (UPDATE isactive), delete.
 

@@ -13,7 +13,10 @@ import { withCurrentOption } from "@/lib/admin/current-value";
 import { IDLE, type AdminFormState, type FormField, type FormSection } from "@/lib/admin/form-schema";
 import { cn } from "@/utils";
 
+import { useUndoReload } from "./useUndoReload";
+
 import AccessEditor from "./AccessEditor";
+import UndoChange from "./UndoChange";
 import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 const control =
@@ -201,14 +204,16 @@ export default function AdminForm({
   }, [state]);
 
   const submit = submitKeepingValues(formAction);
+  const undo = useUndoReload();
+  const undoneTxt = useTranslations("admChanges")("undone");
 
   return (
-    // dopo un salvataggio riuscito il form si rimonta con i valori aggiornati dal server
-    <form onSubmit={submit} className="space-y-6" key={state.saved}>
+    <div className="space-y-6">
       <div ref={banner} tabIndex={-1} className="scroll-mt-24 outline-none empty:hidden">
         {state.status === "saved" && (
           <Callout tone="success" role="status">
-            {savedMessage ?? t("saved")}
+            {undo.isUndone(state.nonce) ? undoneTxt : (savedMessage ?? t("saved"))}
+            {state.change && !undo.isUndone(state.nonce) && <UndoChange key={state.nonce} change={state.change} inline onUndone={() => undo.reload(state.nonce)} />}
           </Callout>
         )}
         {state.status === "error" && (
@@ -224,21 +229,24 @@ export default function AdminForm({
           </Callout>
         )}
       </div>
-      <ReadOnlyNote scope="admin" />
-      {sections.map((s) => (
-        <ComponentCard key={s.title} title={s.title} desc={s.desc}>
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {s.fields.map((f) => (
-              <FieldView key={`${f.kind}-${f.name}`} field={f} error={errors[f.name.replace(/\[\]$/, "")]} />
-            ))}
-          </div>
-        </ComponentCard>
-      ))}
-      <div className="flex justify-end">
-        <Button type="submit" disabled={pending || !!readOnly} title={readOnly}>
-          {pending ? t("saving") : (submitLabel ?? t("save"))}
-        </Button>
-      </div>
-    </form>
+      {/* dopo un salvataggio riuscito il form si rimonta con i valori aggiornati dal server */}
+      <form onSubmit={submit} className="space-y-6" key={`${state.saved ?? ""}-${undo.formKey}`}>
+        <ReadOnlyNote scope="admin" />
+        {sections.map((s) => (
+          <ComponentCard key={s.title} title={s.title} desc={s.desc}>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              {s.fields.map((f) => (
+                <FieldView key={`${f.kind}-${f.name}`} field={f} error={errors[f.name.replace(/\[\]$/, "")]} />
+              ))}
+            </div>
+          </ComponentCard>
+        ))}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={pending || !!readOnly} title={readOnly}>
+            {pending ? t("saving") : (submitLabel ?? t("save"))}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

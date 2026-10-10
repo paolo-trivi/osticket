@@ -26,7 +26,7 @@ export default async function EditAgentPage({ params, searchParams }: { params: 
   return (
     <div className="space-y-6">
       <PageHeader title={t("edit")} actions={<BackLink href="/admin/agents" label={t("back")} />} />
-      {sp.created && <AdminNotice ok="created" n="1" />}
+      {sp.created && <AdminNotice ok="created" n="1" cs={sp.cs} />}
       <AdminForm sections={sections} action={saveAgentAction.bind(null, staffId)} />
       <AdminForm sections={await passwordSections()} action={agentPasswordAction.bind(null, staffId)} submitLabel={t("applyPassword")} savedMessage={t("passwordDone")} />
     </div>

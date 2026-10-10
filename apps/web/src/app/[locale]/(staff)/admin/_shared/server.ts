@@ -7,6 +7,7 @@ import { clientIp } from "@/server/auth/session";
 import { passwordChangeEnforced, sessionAgent, touchStaffSession } from "@/server/auth/staff-auth";
 import { db, type Tx } from "@/server/db";
 import type { Agent } from "@/server/domain/staff/staff";
+import { requestPathForChanges, withChange, withChangeset } from "@/server/system/changes/changeset";
 import { journalEnabled, requestOpForJournal } from "@/server/system/write-journal";
 import { canWrite, isReadOnlyError, readOnlyResult, withWriteScope, type ReadOnlyResult } from "@/server/system/write-mode";
 
@@ -34,25 +35,26 @@ export async function requireAdminAction(): Promise<{
 /**
  * Transazione di scrittura; gli invii email (send) partono dopo il commit. Scope di scrittura "admin"
  * (write-mode.ts): se la modalità non lo consente l'esito è readOnlyResult, senza query.
+ * Ogni invocazione è una modifica registrata (changes/changeset.ts), annullabile dall'interfaccia: il
+ * riferimento è associato all'esito (changeOf) e arriva al banner di conferma.
  */
 export async function adminWrite<T>(fn: (tx: Tx) => Promise<T>, op?: string): Promise<T | ReadOnlyResult> {
   if (!(await canWrite("admin"))) return readOnlyResult();
+  // attore del registro delle scritture e autore della modifica: l'agente della sessione (già letto da requireAdminAction)
+  const agent = journalEnabled() ? await sessionAgent().catch(() => null) : null;
+  const opName = op ?? (await requestOpForJournal());
   try {
-    return await withWriteScope("admin", () => adminTx(fn), {
-      actor: await adminActor(),
-      op: op ?? (await requestOpForJournal()),
-    });
+    const { result, change } = await withChangeset({ staff: agent ? { id: agent.id, username: agent.username } : null, op: opName, path: await requestPathForChanges() }, () =>
+      withWriteScope("admin", () => adminTx(fn), {
+        actor: agent ? { type: "agent", id: agent.id } : undefined,
+        op: opName,
+      }),
+    );
+    return withChange(result, change);
   } catch (err) {
     if (isReadOnlyError(err)) return readOnlyResult();
     throw err;
   }
-}
-
-/** Attore per il registro delle scritture: l'agente della sessione (già letto da requireAdminAction). */
-async function adminActor(): Promise<{ type: "agent"; id: number } | undefined> {
-  if (!journalEnabled()) return undefined;
-  const agent = await sessionAgent().catch(() => null);
-  return agent ? { type: "agent", id: agent.id } : undefined;
 }
 
 async function adminTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {

@@ -20,9 +20,14 @@ import { schemaStatus } from "./schema-compat";
  * Il controllo vero è nel gate delle query (src/server/db/write-gate.ts): ogni scrittura deve avvenire
  * dentro uno scope (withWriteScope; runWrite = operational, adminWrite = admin). Una scrittura senza
  * scope vale come "admin" (la più restrittiva).
+ *
+ * Lo scope "restore" è solo per l'annullamento di una modifica dell'area admin (changes/restore.ts):
+ * ammesso quando la modalità CONFIGURATA è "full" e lo schema è verificato, anche se la modalità
+ * effettiva è scesa a "readonly" per i problemi critici del doctor (un'impostazione admin sbagliata,
+ * es. il fuso, è proprio il caso in cui serve annullare). Mai con uno schema non verificato.
  */
 export type WriteMode = "readonly" | "operational" | "full";
-export type WriteScope = "operational" | "admin";
+export type WriteScope = "operational" | "admin" | "restore";
 
 const MODES: readonly WriteMode[] = ["readonly", "operational", "full"];
 const MODE_ENV = "TAILTICKET_MODE";
@@ -202,7 +207,23 @@ export async function gateWriteMode(): Promise<WriteMode | null> {
 
 /** Scrittura consentita nello scope? (modalità effettiva, con la cache breve) */
 export async function canWrite(scope: WriteScope): Promise<boolean> {
-  return writeAllowed((await cachedEffectiveWriteMode()).effective, scope);
+  const m = await cachedEffectiveWriteMode();
+  return writeAllowed(m.effective, scope) || (scope === "restore" && restoreAllowed(m));
+}
+
+/** Annullamento delle modifiche admin (scope "restore"): modalità configurata "full" e schema verificato. */
+export function restoreAllowed(m: EffectiveWriteMode): boolean {
+  return m.configured === "full" && !m.reasons.some((r) => r.startsWith("schema"));
+}
+
+/** Come gateWriteMode, per lo scope "restore": con un valore in cache non si attende. */
+export async function gateRestoreAllowed(): Promise<boolean> {
+  const c = g.__ttModeCache;
+  if (c) {
+    if (Date.now() - c.at >= CACHE_MS) refreshMode().catch(() => {});
+    return restoreAllowed(c.value);
+  }
+  return restoreAllowed(await refreshMode());
 }
 
 /**

@@ -8,6 +8,7 @@ import type { PeopleActionState } from "@/components/people/types";
 import { redirect } from "@/i18n/navigation";
 import type { AdminFormState } from "@/lib/admin/form-schema";
 import type { MassResult, SaveResult } from "@/server/domain/admin/common";
+import { changeOf } from "@/server/system/changes/changeset";
 
 /**
  * Esiti delle server action: stato restituito ai form (useActionState) e ritorno alle liste dopo le
@@ -23,17 +24,23 @@ export function peopleState(r: { ok: true } | { ok: false; error: string; fields
   return { error: r.error, fields: r.fields, nonce: nonce() };
 }
 
+/** `?cs=<id>`: modifica registrata da annullare dal banner d'esito (AdminNotice, SysNotice). */
+function withChangeParam(href: string, r: object): string {
+  const change = changeOf(r);
+  return change ? `${href}${href.includes("?") ? "&" : "?"}cs=${change.id}` : href;
+}
+
 /** Dopo un salvataggio admin riuscito: cache dell'area invalidata e, dopo una creazione, pagina dell'oggetto. */
 function afterAdminSave(r: SaveResult, opts: { locale: string; created?: (id: number) => string }): void {
   revalidatePath("/[locale]/admin", "layout");
-  if (opts.created && r.id) redirect({ href: opts.created(r.id), locale: opts.locale });
+  if (opts.created && r.id) redirect({ href: withChangeParam(opts.created(r.id), r), locale: opts.locale });
 }
 
-/** Esito di un salvataggio per AdminForm (codici d'errore del dominio, tradotti dal client). */
+/** Esito di un salvataggio per AdminForm (codici d'errore del dominio, tradotti dal client), con la modifica da annullare. */
 export async function adminFormResult(r: SaveResult, opts: { locale: string; created?: (id: number) => string }): Promise<AdminFormState> {
   if (!r.ok) return { status: "error", errors: Object.keys(r.errors).length ? r.errors : { err: "failed" }, nonce: nonce() };
   afterAdminSave(r, opts);
-  return { status: "saved", nonce: nonce() };
+  return { status: "saved", change: changeOf(r), nonce: nonce() };
 }
 
 /** Traduzione dei codici d'errore del dominio (i messaggi non codificati restano invariati). */
@@ -54,14 +61,14 @@ export async function sysFormResult(r: SaveResult, opts: { locale: string; creat
     return { status: "error", errors, message: general ?? (Object.keys(errors).length ? undefined : e("failed")), nonce: nonce() };
   }
   afterAdminSave(r, opts);
-  return { status: "saved", message: opts.message, nonce: nonce() };
+  return { status: "saved", message: opts.message, change: changeOf(r), nonce: nonce() };
 }
 
-/** Dopo un'azione di massa: ritorno alla lista con l'esito in query string (?ok=<azione>&n=<num> o ?err=<codice>). */
+/** Dopo un'azione di massa: ritorno alla lista con l'esito in query string (?ok=<azione>&n=<num>[&cs=<modifica>] o ?err=<codice>). */
 export function massRedirect(path: string, locale: string, r: MassResult, action: string): never {
   revalidatePath("/[locale]/admin", "layout");
   const sep = path.includes("?") ? "&" : "?";
   const q = r.ok ? `${sep}ok=${encodeURIComponent(action)}&n=${r.num}` : `${sep}err=${encodeURIComponent(r.error ?? "failed")}`;
-  redirect({ href: `${path}${q}`, locale });
+  redirect({ href: r.ok ? withChangeParam(`${path}${q}`, r) : `${path}${q}`, locale });
   throw new Error("redirect");
 }

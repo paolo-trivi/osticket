@@ -547,6 +547,7 @@
     "dashboard": "Dashboard",
     "logs": "System logs",
     "system": "Information",
+    "changes": "Recent changes",
     "company": "Company",
     "systemSettings": "System",
     "ticketsSettings": "Tickets",

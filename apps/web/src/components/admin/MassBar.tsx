@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 
 import { useReadOnlyHint } from "@/components/common/WriteGate";
 import { Modal } from "@/components/ui/modal";
+import { MAX_CHANGE_ROWS } from "@/lib/changes";
 import { useCheckedCount } from "@/lib/checked-ids";
 
 const IDS = 'input[name="ids[]"]';
@@ -16,10 +17,12 @@ const DANGER = `${BTN} text-error-600 ring-error-300 hover:bg-error-50 dark:text
 /**
  * Pulsanti delle azioni di massa (mass_process di scp/*.php) dentro il <form> della lista: ogni
  * pulsante invia `a=<azione>` con gli `ids[]` selezionati. Senza selezione i pulsanti sono
- * disattivati; le azioni pericolose chiedono conferma in una finestra modale.
+ * disattivati; le azioni pericolose chiedono conferma in una finestra modale, che ricorda come annullarle
+ * (Modifiche recenti) e il limite di righe oltre il quale non sono annullabili.
  */
 export default function MassBar({ actions }: { actions: { value: string; label: string; danger?: boolean }[] }) {
   const t = useTranslations("admUi");
+  const c = useTranslations("admChanges");
   const count = useCheckedCount(IDS);
   // amministrazione non scrivibile: tutte le azioni disattivate, il motivo nel tooltip
   const readOnly = useReadOnlyHint("admin");
@@ -66,6 +69,7 @@ export default function MassBar({ actions }: { actions: { value: string; label: 
         <div className="space-y-5">
           <h4 className="pe-12 text-title-sm font-semibold text-gray-800 dark:text-white/90">{t("confirmTitle")}</h4>
           <p className="text-theme-sm text-gray-700 dark:text-gray-300">{t("confirmAction", { action: pending?.label ?? "", n: count })}</p>
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">{c("massNote", { max: MAX_CHANGE_ROWS })}</p>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={close} className={NEUTRAL}>
               {t("cancel")}

@@ -145,7 +145,7 @@ Uso: ./tailticket <comando> [opzioni]
                       Mailpit (email di prova) attivo solo con localhost, salvo --mail
   init --attach [--config /percorso/ost-config.php] [--attachments CARTELLA] [--db-host H[:P]]
                 [--db-user UTENTE] [--classic-url URL] [--smtp URL] [--domain D] [--https …] [--force]
-                      collega TailTicket a un osTicket 1.18 esistente, in sola lettura (TAILTICKET_MODE=readonly);
+                      collega TailTicket a un osTicket 1.17 o 1.18 esistente, in sola lettura (TAILTICKET_MODE=readonly);
                       con --config DB e SECRET_SALT vengono da ost-config.php, montato in sola lettura (copiati in
                       .env e riconfrontati a ogni avvio se servono --db-host/--db-user o DBHOST è localhost)
   up                  avvia lo stack (esegue init se manca .env), attende la salute, stampa URL e credenziali;
@@ -160,6 +160,11 @@ Uso: ./tailticket <comando> [opzioni]
                       ricrea solo TailTicket. In attach, per scrivere: doctor senza blocchi, backup recente e
                       conferma con il nome del database (--yes per l'automazione; full vuole anche --confirm-admin)
   readonly            interruttore d'emergenza: TailTicket subito in sola lettura, senza conferme
+  undo [--list | <id> | last] [--yes] [--force]
+                      modifiche dell'area admin: senza argomento l'elenco; con un id (o last, l'ultima non annullata)
+                      mostra cosa ripristina, chiede il nome del database (--yes per l'automazione) e la annulla.
+                      Rifiuta se le stesse righe sono cambiate dopo (anche dal pannello classico): --force le
+                      sovrascrive. Funziona in full anche con la scrittura bloccata dal doctor
   backup [cartella]   archivio con dump del DB, file e .env (default: ./backups); in attach dump del DB di
                       produzione in sola lettura (gli allegati su disco restano del server di produzione)
   restore <archivio> [--with-env]
@@ -296,7 +301,7 @@ init_attach() {
   (umask 077; : >"$ENV_FILE")
   chmod 600 "$ENV_FILE"
   cat >"$ENV_FILE" <<EOF
-# TailTicket in modalità attach: collegato a un osTicket 1.18 già in produzione (./tailticket init --attach).
+# TailTicket in modalità attach: collegato a un osTicket 1.17 o 1.18 già in produzione (./tailticket init --attach).
 # Tutte le chiavi con il loro significato: .env.example; guida: README.md, "Collegare un osTicket esistente".
 TAILTICKET_ENV_VERSION=2
 COMPOSE_FILE=compose.attach.yaml
@@ -585,6 +590,75 @@ const fail = (m) => { console.error("doctor: " + m); process.exit(2); };
 JS
 )
 
+# annullamento delle modifiche admin (/api/doctor/changes, dall'interno del container come il doctor):
+# node -e "$UNDO_JS" list | resolve <id|last> | show <id> | apply <id> [--force]
+# uscita: 0 ok, 2 non disponibile, 3 non annullabile / non trovata, 4 conflitti
+UNDO_JS=$(cat <<'JS'
+const base = "http://127.0.0.1:3000" + (process.env.NEXT_BASE_PATH || "");
+const token = process.env.TAILTICKET_DOCTOR_TOKEN || "";
+const [cmd, id, flag] = process.argv.slice(1);
+const fail = (m, code = 2) => { console.error("undo: " + m); process.exit(code); };
+const STATE = { undoable: "annullabile", undone: "annullata", not_undoable: "non annullabile", conflict: "in conflitto" };
+// fuso esplicito nell'output: quello dell'helpdesk se il container lo conosce, altrimenti UTC
+const when = (ts) => {
+  const opt = { timeZone: process.env.TAILTICKET_TIMEZONE || process.env.TZ || "UTC", timeZoneName: "short" };
+  try { return new Date(ts).toLocaleString("it-IT", opt); } catch { return new Date(ts).toLocaleString("it-IT", { timeZone: "UTC", timeZoneName: "short" }); }
+};
+const who = (c) => (c.staff ? c.staff.username : "CLI");
+const what = (c) => (c.undoes ? "annullamento di " + c.undoes : c.path || c.op || "-");
+const tables = (c) => Object.entries(c.tables || {}).map(([t, n]) => `${t} (+${n.insert} ~${n.update} -${n.delete})`).join(", ") || Object.keys(c.touched || {}).join(", ");
+const state = (c) => (STATE[c.state] || c.state) + (c.reason ? " (" + c.reason + ")" : c.state === "not_undoable" && c.error ? " (" + c.error + ")" : "");
+const conflicts = (c) => {
+  if (!c.conflicts || !c.conflicts.length) return;
+  console.log("  righe cambiate dopo questa modifica (conflitti):");
+  for (const x of c.conflicts) console.log("    " + x);
+  if (c.conflictCount > c.conflicts.length) console.log(`    … e altre ${c.conflictCount - c.conflicts.length}`);
+};
+async function call(method, q, body) {
+  let r, j = null;
+  const headers = { "X-Doctor-Token": token, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) };
+  try { r = await fetch(base + "/api/doctor/changes" + q, { method, headers, body: body ? JSON.stringify(body) : undefined }); }
+  catch (e) { fail("TailTicket non risponde: " + e.message); }
+  try { j = await r.json(); } catch {}
+  if (r.status === 404 && !j) fail("/api/doctor/changes non disponibile (versione di TailTicket senza annullamento, o token rifiutato)");
+  return { status: r.status, j };
+}
+(async () => {
+  if (token.length < 24) fail("TAILTICKET_DOCTOR_TOKEN non è impostato nel container (./tailticket up lo genera e ricrea il container)");
+  if (cmd === "list") {
+    const { j } = await call("GET", "");
+    if (!j || !j.enabled) fail("registro delle modifiche non attivo (TAILTICKET_JOURNAL_DIR)", 3);
+    if (!j.changes.length) console.log("  nessuna modifica registrata");
+    for (const c of j.changes) console.log(`  ${c.id}  ${when(c.ts)}  ${who(c)}  ${state(c)}\n      ${what(c)}: ${c.rows} righe  ${tables(c)}`);
+    if (!j.restoreAllowed) console.log("  annullamento non consentito ora: serve TAILTICKET_MODE=full con lo schema verificato");
+    return;
+  }
+  if (cmd === "resolve" || cmd === "show") {
+    const { status, j } = await call("GET", "?id=" + encodeURIComponent(id || ""));
+    if (status !== 200 || !j) fail(j && j.error === "disabled" ? "registro delle modifiche non attivo (TAILTICKET_JOURNAL_DIR)" : "modifica non trovata: " + id, 3);
+    const c = j.change;
+    if (cmd === "resolve") { process.stdout.write(c.id); return; }
+    console.log(`  Modifica   ${c.id}\n  Quando     ${when(c.ts)}\n  Chi        ${who(c)}\n  Pagina     ${what(c)}\n  Righe      ${c.rows}: ${tables(c)}\n  Stato      ${state(c)}`);
+    conflicts(c);
+    if (c.state === "undone") fail("modifica già annullata", 3);
+    if (c.state === "not_undoable") fail("modifica non annullabile", 3);
+    if (!j.restoreAllowed) fail("annullamento non consentito: serve TAILTICKET_MODE=full con lo schema verificato", 3);
+    process.exit(c.state === "conflict" ? 4 : 0);
+  }
+  if (cmd === "apply") {
+    const { status, j } = await call("POST", "", { id, force: flag === "--force" });
+    if (j && j.ok) {
+      console.log(`  modifica ${j.id} annullata` + (j.change ? `; per rifarla: ./tailticket undo ${j.change.id}` : "") + (j.skipped ? ` (${j.skipped} righe non più presenti, saltate)` : ""));
+      return;
+    }
+    if (j && j.error === "conflict") { conflicts(j); fail("conflitti: nessuna modifica (--force per sovrascrivere le modifiche successive)", 4); }
+    fail("annullamento non riuscito: " + (j ? j.error : "HTTP " + status), 3);
+  }
+  fail("comando sconosciuto: " + cmd);
+})();
+JS
+)
+
 # modalità e schema da /api/health: "status<TAB>mode<TAB>configuredMode<TAB>schema"
 HEALTH_JS=$(cat <<'JS'
 const base = "http://127.0.0.1:3000" + (process.env.NEXT_BASE_PATH || "");
@@ -784,6 +858,42 @@ cmd_up() {
 cmd_down() { check_env; dc down; }
 cmd_status() { check_env; dc ps; }
 cmd_logs() { check_env; dc logs -f --tail=200 "$@"; }
+
+# --- annullamento delle modifiche admin -----------------------------------------------------------------
+# ./tailticket undo [--list | <id> | last] [--yes] [--force]: riepilogo, conflitti, conferma con il nome del
+# database (come mode), poi l'annullamento in una transazione (/api/doctor/changes nel container).
+cmd_undo() {
+  local target="" yes=0 force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list) target=""; shift ;;
+      --yes) yes=1; shift ;;
+      --force) force=1; shift ;;
+      -*) die "uso: ./tailticket undo [--list | <id> | last] [--yes] [--force]" ;;
+      *) target="$1"; shift ;;
+    esac
+  done
+  check_env
+  [[ -n "$(tailticket_id)" ]] || die "TailTicket non è in esecuzione: ./tailticket up"
+  if [[ -z "$target" ]]; then dc exec -T tailticket node -e "$UNDO_JS" list; return; fi
+  local id rc=0
+  id="$(dc exec -T tailticket node -e "$UNDO_JS" resolve "$target")" || exit $?
+  dc exec -T tailticket node -e "$UNDO_JS" show "$id" || rc=$?
+  case $rc in
+    0) ;;
+    4) [[ $force -eq 1 ]] || die "conflitti: nessuna modifica. Annulla prima le modifiche più recenti, oppure --force per sovrascriverle"
+       warn "--force: le righe in conflitto tornano ai valori di prima della modifica, perdendo i cambiamenti successivi" ;;
+    *) exit $rc ;;
+  esac
+  if [[ $yes -eq 0 ]]; then
+    local dbn
+    if attach_mode; then attach_db; dbn="$DB_NAME"; else dbn="$(envget TAILTICKET_DB_NAME)"; dbn="${dbn:-osticket}"; fi
+    echo "  Le righe elencate tornano ai valori di prima della modifica (una sola transazione)."
+    confirm_word "$dbn" "scrivi il nome del database per confermare ($dbn)"
+  fi
+  local args=(apply "$id"); [[ $force -eq 1 ]] && args+=(--force)
+  dc exec -T tailticket node -e "$UNDO_JS" "${args[@]}"
+}
 
 # --- DB di produzione (attach) ------------------------------------------------------------------------
 # Parametri come li vede la app: variabili OST_* di .env, altrimenti ost-config.php (OST_CONFIG_FILE).
@@ -1082,7 +1192,13 @@ EOF
   [[ -n "$sig" ]] || die "nel dump non c'è un osTicket con prefisso '$P' nel database $name: ./tailticket rehearse down"
   if [[ -n "$want_sig" && "$sig" != "$want_sig" ]]; then
     warn "firma di schema del dump $sig diversa da quella di legacy/ ($want_sig): la prova NON riproduce la produzione"
-    warn "aggiorna osTicket in produzione alla stessa versione, oppure ripeti con --upgrade (upgrade della sola copia)"
+    if [[ "$sig" == 83a22ba22b1a6a624fcb1da03882ac1b ]]; then
+      # 1.17 e 1.18 danno a TailTicket le stesse scritture (harness completo su entrambe): la copia aggiornata è una prova fedele di TailTicket
+      warn "la produzione è su osTicket 1.17, supportata da TailTicket; la prova usa il PHP 1.18 di legacy/:"
+      warn "ripeti con --upgrade (aggiorna a 1.18 solo la copia): prova fedele di TailTicket, non del pannello classico 1.17"
+    else
+      warn "aggiorna osTicket in produzione alla stessa versione, oppure ripeti con --upgrade (upgrade della sola copia)"
+    fi
   else
     say "firma di schema $sig, uguale a legacy/"
   fi
@@ -1138,6 +1254,7 @@ case "${1:-help}" in
   doctor) shift; cmd_doctor ;;
   mode) shift; cmd_mode "$@" ;;
   readonly) shift; cmd_readonly ;;
+  undo) shift; cmd_undo "$@" ;;
   backup) shift; cmd_backup "$@" ;;
   restore) shift; cmd_restore "$@" ;;
   update) shift; cmd_update "$@" ;;

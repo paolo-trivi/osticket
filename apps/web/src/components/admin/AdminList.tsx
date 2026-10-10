@@ -32,13 +32,13 @@ export default function AdminList({
   columns: DataColumn[];
   rows: { id: number; label: string; cells: Record<string, ReactNode> }[];
   empty: string;
-  notice: { ok?: string; n?: string; err?: string };
+  notice: { ok?: string; n?: string; err?: string; cs?: string };
   extra?: ReactNode;
 }) {
   return (
     <div className="space-y-6">
       <PageHeader title={title} subtitle={subtitle} actions={newHref ? <NewLink href={newHref} label={newLabel ?? ""} /> : undefined} />
-      <AdminNotice ok={notice.ok} n={notice.n} err={notice.err} />
+      <AdminNotice ok={notice.ok} n={notice.n} err={notice.err} cs={notice.cs} />
       <form action={action} className="space-y-4">
         <MassBar actions={actions} />
         <DataTable

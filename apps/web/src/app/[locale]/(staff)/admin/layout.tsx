@@ -38,7 +38,7 @@ export default async function AdminLayout({ children, params }: { children: Reac
           key: "dashboard",
           label: n("dashboard"),
           icon: <ChartPie />,
-          children: [link("logs", "/admin/logs"), link("system", "/admin/system")],
+          children: [link("logs", "/admin/logs"), link("changes", "/admin/changes"), link("system", "/admin/system")],
         },
         {
           key: "settings",

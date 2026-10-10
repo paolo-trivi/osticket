@@ -1,10 +1,9 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-
 import { NextResponse } from "next/server";
 
 import { runDoctor } from "@/server/system/doctor";
 import { formatReportText } from "@/server/system/doctor/format";
 import { isWritable } from "@/server/system/doctor/types";
+import { internalTokenOk } from "@/server/system/internal-token";
 
 /**
  * Diagnostica del collegamento a osTicket per il CLI di installazione:
@@ -16,23 +15,10 @@ import { isWritable } from "@/server/system/doctor/types";
  */
 export const dynamic = "force-dynamic";
 
-const MIN_TOKEN_LENGTH = 24;
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** Confronto a tempo costante (sugli hash: lunghezze diverse non escono prima). */
-function tokenMatches(given: string | null, expected: string): boolean {
-  const a = createHash("sha256")
-    .update(given ?? "", "utf8")
-    .digest();
-  const b = createHash("sha256").update(expected, "utf8").digest();
-  return timingSafeEqual(a, b) && given !== null;
-}
-
 export async function GET(request: Request) {
-  const expected = process.env.TAILTICKET_DOCTOR_TOKEN ?? "";
-  if (expected.length < MIN_TOKEN_LENGTH || !tokenMatches(request.headers.get("x-doctor-token"), expected)) {
-    return new NextResponse(null, { status: 404, headers: NO_STORE });
-  }
+  if (!internalTokenOk(request)) return new NextResponse(null, { status: 404, headers: NO_STORE });
   const report = await runDoctor();
   if (new URL(request.url).searchParams.get("format") === "text") {
     return new NextResponse(formatReportText(report), {

@@ -140,10 +140,18 @@
 
   /* perforazione del biglietto: separatore tra le sezioni */
   .perf { position: relative; height: 24px; }
-  .perf::before { content: ""; position: absolute; left: 20px; right: 20px; top: 50%; border-top: 2px dashed var(--line); }
+  /* la linea lascia uno spazio al centro per l'icona delle forbici (Lucide "scissors", come maschera) */
+  .perf::before {
+    content: ""; position: absolute; left: 20px; right: 20px; top: 50%; border-top: 2px dashed var(--line);
+    -webkit-mask: linear-gradient(90deg, #000 calc(50% - 20px), transparent 0 calc(50% + 20px), #000 0);
+    mask: linear-gradient(90deg, #000 calc(50% - 20px), transparent 0 calc(50% + 20px), #000 0);
+  }
   .perf::after {
-    content: "✂"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -54%);
-    background: var(--bg); color: var(--muted); padding-inline: 10px; font-size: 1rem;
+    content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; transform: translate(-50%, -50%);
+    background: var(--muted);
+    -webkit-mask: var(--scissors) center / contain no-repeat;
+    mask: var(--scissors) center / contain no-repeat;
+    --scissors: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Cpath d='M8.12 8.12 12 12'/%3E%3Cpath d='M20 4 8.12 15.88'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M14.8 14.8 20 20'/%3E%3C/svg%3E");
   }
 
   /* perché */
@@ -303,6 +311,7 @@
       <a href="#soluzione">Soluzione</a>
       <a href="#funzioni">Funzioni</a>
       <a href="#compatibilita">Compatibilità</a>
+      <a href="#produzione">In produzione</a>
       <a href="#deploy">Deploy</a>
       <a href="#struttura">Struttura</a>
     </nav>
@@ -326,6 +335,7 @@
           <li>351 test differenziali PHP vs TypeScript</li>
           <li>0 righe di DDL</li>
           <li>Deploy Docker con HTTPS</li>
+          <li>Collegabile a un osTicket in produzione</li>
         </ul>
       </div>
       <div class="shot">
@@ -473,7 +483,7 @@
             <p class="no">TEST DIFFERENZIALE · CI</p>
             <h3>PHP originale contro TailTicket</h3>
             <dl class="rows">
-              <div><dt>Versione osTicket</dt><dd>1.18.4</dd></div>
+              <div><dt>Versioni osTicket</dt><dd>1.17.8 · 1.18.4</dd></div>
               <div><dt>Scenari di scrittura</dt><dd>351</dd></div>
               <div><dt>Confronto</dt><dd>tutte le tabelle + email</dd></div>
               <div><dt>DDL sul database</dt><dd>0</dd></div>
@@ -494,6 +504,49 @@
 
   <div class="perf" aria-hidden="true"></div>
 
+  <section id="produzione">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">In produzione</p>
+        <h2>Hai già osTicket? Collegalo senza rischi</h2>
+        <p class="lead">TailTicket si affianca a un osTicket 1.17 o 1.18 esistente e lavora sul suo database. Parte in sola lettura e scrive solo quando lo decidi tu, un passo alla volta, dopo i controlli. Il PHP resta dov'è e continua a gestire cron, email in entrata, API e plugin.</p>
+      </div>
+      <div class="deploy">
+        <div class="term" role="region" aria-label="Terminale di esempio: collegamento a un osTicket esistente">
+          <div class="term-bar"><i></i><i></i><i></i></div>
+<pre><span class="p"># 1. configurazione, in sola lettura</span>
+<span class="p">$</span> ./tailticket init --attach \
+    --config <span class="hl">/var/www/osticket/include/ost-config.php</span> \
+    --db-user tailticket
+<span class="p">$</span> ./tailticket up
+<span class="p"># 2. controlli: schema, SECRET_SALT, fuso, permessi, cron</span>
+<span class="p">$</span> ./tailticket doctor
+<span class="p"># 3. backup e prova generale su una copia</span>
+<span class="p">$</span> ./tailticket backup
+<span class="p">$</span> ./tailticket rehearse --dump <span class="hl">backups/….tar.gz</span>
+<span class="p"># 4. scrittura, un passo alla volta</span>
+<span class="p">$</span> ./tailticket mode operational
+<span class="p">$</span> ./tailticket mode full --confirm-admin
+<span class="p"># annulla l'ultima modifica dell'area admin</span>
+<span class="p">$</span> ./tailticket undo last
+<span class="p"># in qualsiasi momento: sola lettura subito</span>
+<span class="p">$</span> ./tailticket readonly</pre>
+        </div>
+        <ol class="steps">
+          <li><div><h3>Sola lettura all'avvio, e quando qualcosa non torna</h3><p>Si parte consultando e basta. Con una versione di osTicket non verificata (1.16 o precedenti, o una release futura) si resta in consultazione. Anche dopo, se lo schema non è verificato o se <code>SECRET_SALT</code>, fuso orario o prefisso delle tabelle non coincidono con quelli del PHP, TailTicket smette di scrivere da solo.</p></div></li>
+          <li><div><h3>Un controllo unico su ogni scrittura</h3><p>Tutte le query che modificano dati passano dallo stesso punto del driver, comprese quelle di login, lock e upload. Nessuna può aggirarlo.</p></div></li>
+          <li><div><h3>Il doctor prima di scrivere</h3><p>Verifica schema, configurazione, permessi dell'utente MySQL (niente DDL), invio delle email, allegati su disco, plugin, autenticazione LDAP e cron. Con un blocco la scrittura non si attiva.</p></div></li>
+          <li><div><h3>Tre modalità, un passo alla volta</h3><p><code>readonly</code>, poi <code>operational</code> per il lavoro di agenti e clienti, poi <code>full</code> per l'amministrazione. Per salire servono doctor senza blocchi, un backup recente e una conferma esplicita.</p></div></li>
+          <li><div><h3>Ogni modifica dell'amministrazione si annulla</h3><p>Prima di ogni salvataggio dell'area admin TailTicket registra le righe che cambia. "Annulla modifica" le rimette com'erano, in una transazione, anche quando TailTicket è sceso in sola lettura per un'impostazione sbagliata. Se nel frattempo il pannello classico ha cambiato le stesse righe, l'annullamento si ferma e lo dice.</p></div></li>
+          <li><div><h3>Prova generale e via d'uscita</h3><p>La prova generale gira su una copia del DB, con la posta catturata. In produzione un registro annota ogni scrittura senza dati personali. L'interruttore d'emergenza riporta TailTicket in sola lettura e il pannello classico continua a funzionare.</p></div></li>
+        </ol>
+      </div>
+      <p class="muted" style="margin-top:24px">Tutti i dettagli, dall'utente MySQL minimo agli allegati su disco: <a href="https://github.com/paolo-trivi/tailticket/blob/main/deploy/README.md#collegare-un-osticket-esistente-modalità-attach">deploy/README.md</a>.</p>
+    </div>
+  </section>
+
+  <div class="perf" aria-hidden="true"></div>
+
   <section id="deploy">
     <div class="wrap">
       <div class="sec-head">
@@ -507,15 +560,15 @@
 <pre><span class="p">$</span> git clone https://github.com/paolo-trivi/tailticket tailticket
 <span class="p">$</span> cd tailticket/deploy
 <span class="p">$</span> ./tailticket init --domain <span class="hl">helpdesk.example.com</span>
-<span class="ok">▸</span> creato .env (dominio helpdesk.example.com, HTTPS auto)
+<span class="ok">&gt;</span> creato .env (dominio helpdesk.example.com, HTTPS auto)
 <span class="p">$</span> ./tailticket up
-<span class="ok">▸</span> avvio dello stack
+<span class="ok">&gt;</span> avvio dello stack
 <span class="p">  attendo db</span> <span class="ok">ok</span>
 <span class="p">  attendo osticket</span> <span class="ok">ok</span>   <span class="p"># installa osTicket nel DB vuoto</span>
 <span class="p">  attendo tailticket</span> <span class="ok">ok</span>
 <span class="p">  attendo proxy</span> <span class="ok">ok</span>
 
-<span class="ok">▸</span> TailTicket è pronto
+<span class="ok">&gt;</span> TailTicket è pronto
   Portale clienti        <span class="hl">https://helpdesk.example.com/</span>
   Pannello agenti        <span class="hl">https://helpdesk.example.com/agent</span>
   Amministrazione        <span class="hl">https://helpdesk.example.com/admin</span>
@@ -531,7 +584,7 @@
             <li><code>/classic/</code><span class="arrow">→</span><span class="who legacy">osTicket<small>pannello classico, stessi utenti e dati</small></span></li>
             <li><code>/classic/api/</code><span class="arrow">→</span><span class="who legacy">osTicket<small>API REST e pipe delle email</small></span></li>
           </ul>
-          <p class="muted">Hai già osTicket in produzione? Con <code>./tailticket init --attach</code> parte solo TailTicket, collegato al database esistente. Il PHP resta dov'è e continua a gestire cron, email e API.</p>
+          <p class="muted">Hai già osTicket in produzione? Con <code>./tailticket init --attach</code> parte solo TailTicket, collegato al database esistente, in sola lettura: <a href="#produzione">come ci si collega senza rischi</a>.</p>
           <p class="muted">Immagini pronte su GHCR: <code>ghcr.io/paolo-trivi/tailticket</code> e <code>tailticket-legacy</code>.</p>
         </div>
       </div>

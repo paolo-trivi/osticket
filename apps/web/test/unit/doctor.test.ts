@@ -9,7 +9,10 @@ import { formatReportText, sortChecks, verdictLine, wrapText } from "@/server/sy
 import { analyzeGrants, parseGrantLine, recommendedGrant, schemaPatternMatches } from "@/server/system/doctor/grants";
 import { extractOsTicketMessageIds, saltVerdict, tallyCredentials, tallyMessageIds } from "@/server/system/doctor/salt";
 import { fsStoragePath } from "@/server/domain/file/storage";
+import { schemaVerdict } from "@/server/system/doctor/schema";
 import { compareOffsets, formatOffset, zoneOffsetMinutes } from "@/server/system/doctor/timezone";
+import { ConfigNamespace } from "@/server/config/config";
+import { schemaStatus } from "@/server/system/schema-compat";
 import { summarize, type DoctorCheck } from "@/server/system/doctor/types";
 
 const USER = "TO `tt`@`%`";
@@ -297,5 +300,40 @@ describe("doctor: report testuale", () => {
   it("a capo sulle parole", () => {
     expect(wrapText("uno due tre quattro", 8)).toEqual(["uno due", "tre", "quattro"]);
     expect(wrapText("riga1\nriga2", 80)).toEqual(["riga1", "riga2"]);
+  });
+});
+
+describe("doctor: versione di osTicket dalla firma dello schema", () => {
+  const status = (signature: string, env: Record<string, string> = {}) => schemaStatus(new ConfigNamespace("core", new Map([["schema_signature", signature]]), {}), env);
+
+  it("1.18 e 1.17: supporto completo", () => {
+    const v = schemaVerdict(status("5fb92bef17f3b603659e024c01cc7a59"));
+    expect(v.level).toBe("ok");
+    expect(v.detail).toContain("osTicket 1.18.x (verificato su 1.18.4) rilevato");
+    expect(v.hint).toBeUndefined();
+    expect(schemaVerdict(status("83a22ba22b1a6a624fcb1da03882ac1b"))).toMatchObject({ level: "ok", detail: expect.stringContaining("osTicket 1.17.x (verificato su 1.17.8) rilevato") });
+  });
+
+  it("release precedente nota (1.16): versione rilevata, sola lettura, aggiornare osTicket", () => {
+    const v = schemaVerdict(status("c37e165651dc289240fee7d244990ac1"));
+    expect(v.level).toBe("block");
+    expect(v.detail).toContain("osTicket 1.16 rilevato");
+    expect(v.detail).toContain("sola lettura");
+    expect(v.hint).toContain("Aggiorna osTicket");
+  });
+
+  it("firma sconosciuta (versione più recente o upgrade a metà) e firma assente: sola lettura finché non verificata", () => {
+    const unknown = schemaVerdict(status("0123456789abcdef0123456789abcdef"));
+    expect(unknown.level).toBe("block");
+    expect(unknown.detail).toContain("sconosciuta");
+    expect(unknown.detail).toContain("1.19 o 2.x");
+    expect(unknown.hint).toContain("scp/upgrade.php");
+    expect(schemaVerdict(status("")).detail).toContain("Firma dello schema assente");
+  });
+
+  it("override esplicito: le scritture sono forzate, il doctor resta bloccante e lo dice", () => {
+    const v = schemaVerdict(status("0123456789abcdef0123456789abcdef", { TAILTICKET_ALLOW_UNVERIFIED_SCHEMA: "1" }));
+    expect(v.level).toBe("block");
+    expect(v.detail).toContain("TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1");
   });
 });

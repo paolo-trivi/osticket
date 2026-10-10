@@ -110,6 +110,9 @@ async function saveGroup(executor: DbOrTx, id: number, vars: PhpVars, errors: Er
     .executeTakeFirst();
   const newId = Number(res.insertId);
   if (source) {
+    // INSERT … SELECT come il PHP (class.template.php): l'ordine degli id lo decide il server (non è quello
+    // della PK), quindi né una lettura ordinata + INSERT né un ORDER BY lo riproducono. Il clone di un set
+    // non è annullabile (la cattura delle modifiche non segue gli INSERT … SELECT): fedeltà prima di tutto.
     await sql`INSERT INTO ${table("email_template")} (created, updated, tpl_id, code_name, subject, body)
       SELECT NOW() as created, NOW() as updated, ${newId} as tpl_id, code_name, subject, body
       FROM ${table("email_template")} WHERE tpl_id=${source.tpl_id}`.execute(executor);
@@ -145,7 +148,7 @@ export async function massTemplateGroups(executor: DbOrTx, action: TemplateMassA
   if (action === "enable") {
     // db_affected_rows() di mysqli: righe cambiate
     const n = await executor.selectFrom("email_template_group").select((eb) => eb.fn.countAll<number>().as("n")).where("tpl_id", "in", ids).where("isactive", "<>", 1).executeTakeFirstOrThrow();
-    await sql`UPDATE ${table("email_template_group")} SET isactive=1 WHERE tpl_id IN (${sql.join(ids)})`.execute(executor);
+    await executor.updateTable("email_template_group").set({ isactive: 1 }).where("tpl_id", "in", ids).execute();
     num = Number(n.n);
   } else {
     for (const id of ids) {
@@ -158,7 +161,12 @@ export async function massTemplateGroups(executor: DbOrTx, action: TemplateMassA
       } else {
         await executor.deleteFrom("email_template_group").where("tpl_id", "=", id).execute();
         await executor.updateTable("department").set({ tpl_id: 0 }).where("tpl_id", "=", id).execute();
-        await sql`DELETE a.* FROM ${table("attachment")} a JOIN ${table("email_template")} t ON (a.object_id=t.id AND a.type='T') WHERE t.tpl_id=${id}`.execute(executor);
+        // DELETE a.* … JOIN email_template del PHP, come DELETE con sottoquery (annullabile: changes/)
+        await executor
+          .deleteFrom("attachment")
+          .where("type", "=", "T")
+          .where("object_id", "in", executor.selectFrom("email_template").select("id").where("tpl_id", "=", id))
+          .execute();
         await executor.deleteFrom("email_template").where("tpl_id", "=", id).execute();
         num++;
       }

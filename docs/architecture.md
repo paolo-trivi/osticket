@@ -56,7 +56,9 @@ test/
 
 Principi del codice:
 - **l'accesso al DB passa solo dai servizi `src/server/domain/`**;
-- **ogni scrittura** usa `runWrite`: una transazione, il contesto dell'attore, le email inviate dopo il commit, il controllo della firma di schema;
+- **ogni scrittura** usa `runWrite` (lavoro di agenti e clienti) o `adminWrite` (area admin): una transazione, il contesto dell'attore, le email inviate dopo il commit;
+- **il gate delle scritture** (`src/server/db/write-gate.ts`) avvolge il driver del DB: ogni query che modifica dati passa solo se la modalità effettiva (`TAILTICKET_MODE`, firma di schema, controlli critici del doctor) ammette il suo scope;
+- **le scritture dell'area admin** vengono catturate dal gate (righe prima e dopo, `src/server/system/changes/`) e si possono annullare in una transazione, con il controllo dei conflitti;
 - **le pagine protette** ricontrollano sessione e permessi, così come ogni server action;
 - regole complete per chi sviluppa: [apps/web/AGENTS.md](../apps/web/AGENTS.md).
 
@@ -65,9 +67,9 @@ Principi del codice:
 1. L'agente invia il form, cioè una server action Next.
 2. La server action ricontrolla la sessione e i permessi (`TicketPerm`, ruoli, reparto).
 3. `runWrite`:
-   - verifica la firma di schema;
-   - apre la transazione;
+   - apre la transazione nello scope `operational`;
    - chiama il servizio di dominio, per esempio `postReply`.
+   Ogni query passa dal gate delle scritture, che la rifiuta se la modalità effettiva non lo consente (sola lettura, schema non verificato, problema critico del doctor) e annota tabelle e verbi nel registro delle scritture.
 4. Il servizio scrive le stesse righe del PHP, nello stesso ordine:
    - `thread_entry`, `thread_event`, `_search`, `ticket`;
    - eventuali `lock`, `draft`, `attachment`.
@@ -89,5 +91,7 @@ Lo stack di riferimento è in [deploy/](../deploy/README.md):
 - `osticket` e `cron`: PHP 8.3 con il codice di `legacy/`;
 - `tailticket`: Next standalone;
 - `proxy`: Caddy con HTTPS automatico, che manda `/classic` al PHP e il resto a TailTicket.
+
+Con un osTicket già in produzione (modalità attach) partono solo `tailticket` e `proxy`, collegati al DB esistente: [deploy/README.md](../deploy/README.md#collegare-un-osticket-esistente-modalità-attach).
 
 Vincolo attuale: **una sola istanza** di TailTicket, perché 2FA e contatori dei tentativi stanno in memoria.

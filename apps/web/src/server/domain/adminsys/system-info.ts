@@ -8,7 +8,7 @@ import { sql } from "kysely";
 import { type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
 import { installConfig } from "../../env";
-import { VERIFIED_SCHEMAS } from "../../system/schema-compat";
+import { schemaVersionLabel } from "../../system/schema-compat";
 
 /**
  * Informazioni di sistema (scp/system.php, include/staff/system.inc.php). Il PHP non gira dentro
@@ -86,8 +86,8 @@ export async function systemInfo(executor: DbOrTx): Promise<SystemInfo> {
     .select((eb) => eb.fn.countAll<number>().as("n"))
     .executeTakeFirstOrThrow();
   return {
-    // il container web di norma non vede bootstrap.php: stessa fonte del Pannello (firma verificata)
-    osticketVersion: osticketVersion() ?? VERIFIED_SCHEMAS.find((v) => v.signature === signature)?.osticket ?? null,
+    // il container web di norma non vede bootstrap.php: versione dalla firma (release nota, verificata o no)
+    osticketVersion: osticketVersion() ?? schemaVersionLabel(signature),
     nodeVersion: process.version,
     nextVersion: nextVersion(),
     dbVersion: version.rows[0]?.v ?? "",

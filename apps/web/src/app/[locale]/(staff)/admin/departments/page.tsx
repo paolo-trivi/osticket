@@ -44,7 +44,7 @@ export default async function DepartmentsPage({ params, searchParams }: { params
   return (
     <div className="space-y-6">
       <PageHeader title={t("title")} subtitle={t("subtitle")} actions={<NewLink href="/admin/departments/new" label={t("new")} />} />
-      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} />
+      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} cs={sp.cs} />
       <form action={massDeptAction} className="space-y-4">
         <MassBar
           actions={[

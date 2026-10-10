@@ -16,6 +16,7 @@ import { loadSystemEmail, localDelivery, smtpRoutesFor, type SmtpRoute } from ".
 import { schemaStatus } from "../schema-compat";
 import { analyzeGrants, recommendedGrant } from "./grants";
 import { extractOsTicketMessageIds, saltVerdict, tallyCredentials, tallyMessageIds, type StoredCredential } from "./salt";
+import { schemaVerdict } from "./schema";
 import { compareOffsets, formatOffset } from "./timezone";
 import { errorText, type DoctorCheck, type DoctorLevel } from "./types";
 
@@ -50,18 +51,8 @@ export function checkSchema(): Promise<DoctorCheck> {
     const { rows } = await sql<{ v: string }>`SELECT VERSION() AS v`.execute(db());
     const st = schemaStatus(await loadConfigNamespace("core", db()));
     const where = `Database ${ic.dbName} su ${ic.dbHost}:${ic.dbPort} (${rows[0]?.v ?? "versione sconosciuta"}).`;
-    if (st.verified)
-      return {
-        level: "ok",
-        detail: `${where} Firma dello schema ${st.signature}: ${st.verified.osticket}.`,
-      };
-    return {
-      level: "block",
-      detail:
-        `${where} Firma dello schema ${st.signature || "assente"} non verificata da TailTicket.` +
-        (st.override ? " È impostato TAILTICKET_ALLOW_UNVERIFIED_SCHEMA=1, ma il doctor la considera comunque non sicura." : ""),
-      hint: "Usa una versione di TailTicket che supporta questa versione di osTicket (core.schema_signature), oppure riporta osTicket alla versione verificata.",
-    };
+    const verdict = schemaVerdict(st);
+    return { ...verdict, detail: `${where} ${verdict.detail}` };
   });
 }
 

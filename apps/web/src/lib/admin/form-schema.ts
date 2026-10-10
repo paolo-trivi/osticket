@@ -1,3 +1,5 @@
+import type { ChangeRef } from "@/lib/changes";
+
 /**
  * Schema serializzabile dei form dell'area admin: la pagina (server component) descrive i campi con
  * i nomi del POST di scp/*.php, il componente client AdminForm li disegna e invia un FormData che la
@@ -46,6 +48,8 @@ export interface AdminFormState {
   status: "idle" | "saved" | "error";
   /** codici d'errore per campo (chiavi come nel PHP), `err` per l'errore generale */
   errors?: Record<string, string>;
+  /** modifica registrata dal salvataggio, da annullare dal banner */
+  change?: ChangeRef;
   nonce?: number;
 }
 

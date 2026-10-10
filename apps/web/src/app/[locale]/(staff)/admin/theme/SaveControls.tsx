@@ -1,5 +1,6 @@
 "use client";
 
+import UndoChange from "@/components/admin/UndoChange";
 import { ReadOnlyNote, useReadOnlyHint } from "@/components/common/WriteGate";
 import Alert from "@/components/ui/alert/Alert";
 import Button from "@/components/ui/button/Button";
@@ -28,6 +29,8 @@ export default function SaveControls({ state, dirty, pending, canSave, onSave, o
     <div className="space-y-3">
       <ReadOnlyNote scope="admin" />
       {state.status === "saved" && <Alert variant="success" title={t("saved")} message="" />}
+      {/* il tema è nel layout radice: dopo l'annullamento si ricarica la pagina */}
+      {state.status === "saved" && state.change && <UndoChange change={state.change} inline onUndone={() => window.location.reload()} />}
       {state.status === "error" && <Alert variant="error" title={t("error")} message={state.message === "read_only" ? te("read_only") : (state.message ?? "")} />}
       <div className="flex gap-3">
         <Button onClick={onSave} disabled={!dirty || pending || !canSave || !!readOnly} title={readOnly} className="flex-1">
