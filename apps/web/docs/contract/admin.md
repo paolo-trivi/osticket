@@ -26,13 +26,18 @@ I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di rese
 | Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
 | Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
 | Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr), Validator::is_username (`usernameError`) |
-| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
+| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings, updateSystemSettings, updatePagesSettings, updateKBSettings), `settingsValues` |
+| Dominio | `src/server/domain/admin/{settings-tickets,settings-people,settings-util}.ts` | updateTicketsSettings (con updateAutoresponderSettings e updateAlertsSettings), updateTasksSettings; updateAgentsSettings, updateUsersSettings; helper comuni (`v`, `isset1`, `needRecipients`) |
+| Dominio | `src/server/domain/admin/languages.ts` | `installedLanguages` (Internationalization::availableLanguages) |
 | Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
 | Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |
-| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `deleteTopic`, `massTopics`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic-mass.ts` | `deleteTopic`, `massTopics` |
 | Dominio | `src/server/domain/admin/sla.ts` | `saveSla`, `deleteSla`, `massSla` |
-| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `processEntryForm`, `effectiveTimezone` |
-| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff`, `setAgentPassword`, `sendAgentResetEmail`, `deleteStaff`, `massStaff`, `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `effectiveTimezone` |
+| Dominio | `src/server/domain/admin/schedule-entry-form.ts` | `processEntryForm` (ScheduleEntryForm), `FREQUENCIES` |
+| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff` (Staff::update), `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/{staff-password,staff-mass,staff-row}.ts` | `setAgentPassword`, `sendAgentResetEmail`, `setPassword`; `deleteStaff`, `massStaff`; riga staff e accessi estesi (`loadStaffRow`, `setDepartmentId`, `loadAccess`) |
 | Dominio | `src/server/domain/admin/team.ts` | `saveTeam`, `deleteTeam`, `massTeams` |
 | Dominio | `src/server/domain/admin/role.ts` | `saveRole`, `massRoles`, `roleInUse`, `ALL_PERMISSIONS`, `rebuildPermissions` |
 | Dominio | `src/server/domain/admin/filters.ts` | `filterActionsReferencing` (vedi "Filtri") |

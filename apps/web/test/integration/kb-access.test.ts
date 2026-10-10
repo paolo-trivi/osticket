@@ -2,7 +2,10 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { closeDb, db, NOW, type Tx } from "@/server/db";
 import { agentFileRef } from "@/server/domain/file/agent-access";
-import { getCanned, getCategory, getFaq, searchFaqs } from "@/server/domain/kb/kb";
+import { getCanned } from "@/server/domain/kb/canned";
+import { getCategory } from "@/server/domain/kb/categories";
+import { getFaq } from "@/server/domain/kb/faq";
+import { searchFaqs } from "@/server/domain/kb/search";
 import { loadAgent, type Agent } from "@/server/domain/staff/staff";
 
 /**

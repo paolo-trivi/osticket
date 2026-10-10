@@ -14,7 +14,8 @@ import { massUserAction, registerAccount, sendUserConfirmEmail, sendUserResetEma
 import { defaultFormOf } from "@/server/domain/forms/answers";
 import { createOrg } from "@/server/domain/directory/orgs";
 import { formSource } from "@/server/domain/directory/ui";
-import { createUser, deleteUser, importUsers, setUserOrganization, updateUser } from "@/server/domain/directory/users";
+import { createUser, deleteUser, setUserOrganization, updateUser } from "@/server/domain/directory/users";
+import { importUsers } from "@/server/domain/directory/users-import";
 import { GlobalPerm, type Agent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { deleteTicketViaDeletedStatus } from "@/server/domain/ticket/delete";

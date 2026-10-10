@@ -7,7 +7,8 @@ import FaqList from "@/components/kb/FaqList";
 import KbSearchForm from "@/components/kb/KbSearchForm";
 import SubcategoryList from "@/components/kb/SubcategoryList";
 import { redirect } from "@/i18n/navigation";
-import { kbSearchFilters, listTopCategories, searchFaqs } from "@/server/domain/kb/kb";
+import { listTopCategories } from "@/server/domain/kb/categories";
+import { kbSearchFilters, searchFaqs } from "@/server/domain/kb/search";
 
 import { requireAgent } from "../../guard";
 

@@ -4,7 +4,7 @@ import DataTable, { PageHeader, type DataColumn } from "@/components/common/Data
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { PaperclipIcon } from "@/icons";
-import { CANNED_SORTS, listCanned, type CannedSort } from "@/server/domain/kb/kb";
+import { CANNED_SORTS, listCanned, type CannedSort } from "@/server/domain/kb/canned";
 import { GlobalPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 

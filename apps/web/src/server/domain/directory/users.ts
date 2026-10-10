@@ -1,13 +1,11 @@
 import "server-only";
 
-import { sql } from "kysely";
-
 import { UserModel } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
 
 import { NOW, type DbOrTx } from "../../db";
 import { searchable } from "../../format/text";
-import { phpLooseEquals, str, truthy } from "../../php/values";
+import { phpLooseEquals } from "../../php/values";
 import { deleteSearchRow, replaceSearchRow } from "../search/index-writer";
 import { GlobalPerm } from "../staff/staff";
 import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
@@ -21,18 +19,16 @@ import {
   entriesFor,
   entriesSearchable,
   saveEntryAnswers,
-  toDatabase,
   validateInput,
   type FormEntry,
 } from "../forms/answers";
 import { currentDates, FormInstance } from "../forms/entry";
-import { hasAnswerRow, isEditableToStaff, isRequiredForStaff, isVisibleToStaff, parseField, parseFieldValue, type DateFormatOptions, type FieldDef } from "../forms/fields";
-import { isEmail } from "../forms/validator";
+import { hasAnswerRow, isEditableToStaff, isRequiredForStaff, isVisibleToStaff, parseField, type DateFormatOptions, type FieldDef } from "../forms/fields";
 
 /**
  * Utenti finali (include/class.user.php, scp/users.php, include/ajax.users.php) con le stesse righe
  * del PHP: user, user_email, form_entry(_values), user__cdata, _search (Signal user.created /
- * model.updated / model.deleted del MysqlSearchBackend).
+ * model.updated / model.deleted del MysqlSearchBackend). L'importazione CSV è in users-import.ts.
  */
 
 export type DirError =
@@ -136,8 +132,11 @@ async function saveUser(
   await reindexUser(executor, user.id, cachedEmails, dates);
 }
 
-/** User::getForms($vars, $isEditable) + validazione isValidForStaff(true) */
-async function userEntries(executor: DbOrTx, userId: number): Promise<FormEntry[]> {
+/**
+ * User::getDynamicData($create=true): entry dei form dell'utente, con l'entry vuota del form utente
+ * creata se manca (User::getForms, anche dal portale).
+ */
+export async function userEntries(executor: DbOrTx, userId: number): Promise<FormEntry[]> {
   const entries = await entriesFor(executor, "U", userId);
   if (!entries.length) {
     // getDynamicData($create=true): entry vuota del form utente
@@ -156,7 +155,8 @@ export async function updateUser(ctx: WriteContext, userId: number, input: Recor
   return updateUserInfo(ctx, userId, input);
 }
 
-async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<string, unknown>): Promise<DirResult> {
+/** User::updateInfo($vars, $errors, $staff=true) senza controllo dei permessi (anche dall'importazione CSV). */
+export async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<string, unknown>): Promise<DirResult> {
   const { tx } = ctx;
   const user = await loadUserCore(tx, userId, true);
   if (!user) return { ok: false, error: "not_found" };
@@ -262,139 +262,3 @@ export async function deleteUser(
   await deleteSearchRow(tx, "U", userId);
   return { ok: true };
 }
-
-/* ------------------------------------------------------------------ import CSV */
-
-class ImportFailure extends Error {}
-
-/** fgetcsv($stream, n, ",", "\"", ""): una riga CSV (virgolette doppie, nessun carattere di escape). */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-  let i = 0;
-  let any = false;
-  while (i < text.length) {
-    const c = text[i];
-    if (quoted) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        quoted = false;
-      } else field += c;
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      quoted = true;
-      any = true;
-    } else if (c === ",") {
-      row.push(field);
-      field = "";
-      any = true;
-    } else if (c === "\n" || c === "\r") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      any = false;
-      if (c === "\r" && text[i + 1] === "\n") i++;
-    } else {
-      field += c;
-      any = true;
-    }
-    i++;
-  }
-  if (any || field) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows;
-}
-
-/**
- * User::importFromPost / importCsv (scp/users.php do=import-users, ajax.*:importUsers, scp/orgs.php):
- * intestazione "name, email" aggiunta al testo incollato, mappatura dei campi per nome o etichetta,
- * User::fromVars($data, true, true) per riga (utenti esistenti aggiornati con updateInfo). Tutto o niente.
- * Restituisce il numero di utenti importati o il messaggio d'errore (come il PHP).
- */
-export async function importUsers(
-  ctx: WriteContext,
-  pasted: string,
-  extra: { orgId?: number } = {},
-  opts: { checkPerm?: boolean; file?: boolean } = {},
-): Promise<{ ok: true; count: number } | { ok: false; error: DirError; detail?: string }> {
-  const { agent } = ctx;
-  if (opts.checkPerm !== false && (!agent || !agent.hasGlobalPerm(GlobalPerm.USER_CREATE))) return { ok: false, error: "forbidden" };
-  // importFromPost: al testo incollato si antepone l'intestazione "name, email"; un file caricato la contiene già
-  const stream = opts.file ? pasted : `name, email\n${pasted}`;
-  // db_autocommit(false) … db_rollback(): savepoint dentro la transazione dell'operazione
-  await sql`SAVEPOINT people_import`.execute(ctx.tx);
-  try {
-    const count = await doImport(ctx, stream, extra);
-    await sql`RELEASE SAVEPOINT people_import`.execute(ctx.tx);
-    return { ok: true, count };
-  } catch (e) {
-    if (e instanceof ImportFailure) {
-      await sql`ROLLBACK TO SAVEPOINT people_import`.execute(ctx.tx);
-      return { ok: false, error: "import", detail: e.message };
-    }
-    throw e;
-  }
-}
-
-async function doImport(ctx: WriteContext, stream: string, extra: { orgId?: number }): Promise<number> {
-  const { tx } = ctx;
-  const form = await defaultFormOf(tx, "U");
-  if (!form) throw new ImportFailure("Unable to parse submitted csv");
-  const rows = parseCsv(stream);
-  const named = form.fields.filter((f) => f.name);
-  if (!rows.length) throw new ImportFailure("Whoops. Perhaps you meant to send some CSV records");
-  const first = rows[0];
-  let headers: FieldDef[] = [];
-  let hasHeader = true;
-  for (const raw of first) {
-    const h = raw.trim().toLowerCase();
-    const f = form.fields.find((x) => [x.name.toLowerCase(), x.label.toLowerCase()].includes(h));
-    if (f) {
-      if (!f.name) throw new ImportFailure(`${raw.trim()}: Field must have \`variable\` set to be imported`);
-      headers.push(f);
-      continue;
-    }
-    hasHeader = false;
-    if (first.length === named.length) {
-      headers = [...named];
-      break;
-    }
-    throw new ImportFailure(`${raw.trim()}: Unable to map header to the object field`);
-  }
-  const data = hasHeader ? rows.slice(1) : rows;
-  let imported = 0;
-  for (const csv of data) {
-    if (csv.length === 1 && csv[0] === "") continue;
-    if (csv.length !== headers.length) throw new ImportFailure(`Bad data. Expected: ${headers.map((h) => h.label).join(", ")}`);
-    const rec: Record<string, unknown> = {};
-    if (extra.orgId !== undefined) rec.org_id = extra.orgId;
-    // CsvImportIterator: $f->parse(trim($csv[$i])) (senza widget), poi to_database
-    headers.forEach((f, i) => {
-      rec[f.name] = toDatabase(f, parseFieldValue(f, csv[i].trim()));
-    });
-    const email = str(rec.email as string | null);
-    if (!isEmail(email) || !truthy(rec.name as string | null)) throw new ImportFailure("Both `name` and `email` fields are required");
-    const existing = await lookupUserByEmail(tx, email);
-    if (existing) {
-      // fromVars($vars, true, $update=true) → updateInfo($vars, $errors, true): errori ignorati
-      await updateUserInfo(ctx, existing.id, rec);
-    } else {
-      const u = await userFromVars(tx, ctx.cfg, rec, { dates: await currentDates(ctx) });
-      if (!u) throw new ImportFailure(`Unable to import user: ${JSON.stringify(rec)}`);
-    }
-    imported++;
-  }
-  return imported;
-}
-

@@ -5,7 +5,9 @@ import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { checkPasswordPolicy } from "@/server/domain/directory/accounts";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str, truthy, type PhpVars } from "@/server/php/values";
-import { massStaff, saveStaff, setAgentPassword, type StaffMassAction } from "@/server/domain/admin/staff-admin";
+import { saveStaff } from "@/server/domain/admin/staff-admin";
+import { massStaff, type StaffMassAction } from "@/server/domain/admin/staff-mass";
+import { setAgentPassword } from "@/server/domain/admin/staff-password";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";
 

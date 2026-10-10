@@ -3,7 +3,8 @@ import "server-only";
 import { AttachmentType, ObjectType } from "@/lib/osticket/object-types";
 
 import { db, type DbOrTx } from "../../db";
-import { cannedAccessible, faqVisibleToAgent } from "../kb/kb";
+import { cannedAccessible } from "../kb/canned";
+import { faqVisibleToAgent } from "../kb/faq";
 import type { Agent } from "../staff/staff";
 import { checkTaskPerm, loadTask } from "../task/tasks";
 import { checkStaffPerm, loadTicket } from "../ticket/ticket";

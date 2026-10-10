@@ -4,7 +4,8 @@ import { comparePassword } from "@/server/auth/passwd";
 import { closeDb, db } from "@/server/db";
 import { massUserAction, registerAccount, sendUserConfirmEmail, sendUserResetEmail, updateAccount } from "@/server/domain/directory/accounts";
 import { addOrgUser, createOrg, deleteOrg, removeOrgUsers, updateOrg, updateOrgProfile } from "@/server/domain/directory/orgs";
-import { createUser, deleteUser, importUsers, setUserOrganization, updateUser } from "@/server/domain/directory/users";
+import { createUser, deleteUser, setUserOrganization, updateUser } from "@/server/domain/directory/users";
+import { importUsers } from "@/server/domain/directory/users-import";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { deleteTicketViaDeletedStatus } from "@/server/domain/ticket/delete";
 import type { WriteContext } from "@/server/domain/ticket/context";
@@ -108,6 +109,20 @@ describe("utenti: PHP vs TypeScript", () => {
     const bad = "Senza Email, non-una-email";
     expect(typeof (await runPhp<{ status: unknown }>({ op: "user.import", args: { agent: 1, pasted: bad } })).status).toBe("string");
     expect(await asAgent(1, (ctx) => importUsers(ctx, bad))).toMatchObject({ ok: false, error: "import" });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("import CSV: righe lette come fgetcsv (virgolette nei campi, riga vuota, \\r isolato)", async () => {
+    // virgolette letterali in un campo senza virgolette, spazi davanti alle virgolette; la riga vuota
+    // ripropone il record precedente (CsvImportIterator): il PHP conta 3 utenti importati
+    const pasted = 'Anna "Nina" Bianchi, anna.bianchi@ospedale.example\n\n  "Rossi, Luca", luca.rossi@ospedale.example';
+    const php = await runPhp<{ status: number }>({ op: "user.import", args: { agent: 1, pasted } });
+    const ts = await asAgent(1, (ctx) => importUsers(ctx, pasted));
+    expect(ts).toEqual({ ok: true, count: php.status });
+    // "\r" isolato: non chiude la riga (tre campi → "Bad data"), nessuna scrittura
+    const cr = "Uno Due, uno.due@ospedale.example\rTre Quattro, tre.quattro@ospedale.example";
+    expect(typeof (await runPhp<{ status: unknown }>({ op: "user.import", args: { agent: 1, pasted: cr } })).status).toBe("string");
+    expect(await asAgent(1, (ctx) => importUsers(ctx, cr))).toMatchObject({ ok: false, error: "import" });
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

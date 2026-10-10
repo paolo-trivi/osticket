@@ -3,7 +3,8 @@
 import type { SysFormState } from "@/components/adminsys/SysForm";
 import { massRedirect, sysFormResult } from "@/server/actions/result";
 import { str } from "@/server/php/values";
-import { addList, addListItem, deleteLists, massListItems, updateList, updateListItem, type ItemMassAction } from "@/server/domain/adminsys/list";
+import { addList, deleteLists, updateList } from "@/server/domain/adminsys/list";
+import { addListItem, massListItems, updateListItem, type ItemMassAction } from "@/server/domain/adminsys/list-items";
 
 import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 

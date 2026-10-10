@@ -23,12 +23,14 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 | Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
 | Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
 | Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
-| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
+| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `reindexUser`, `userEntries` |
+| Dominio | `src/server/domain/directory/users-import.ts` | `importUsers` (User::importFromPost / CsvImporter); il testo è letto con `parseCsv` di `src/server/php/csv.ts` (fgetcsv di PHP 8, test `test/unit/php-csv.test.ts` con valori del PHP) |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
 | Dominio | `src/server/domain/directory/content-mail.ts` | email da pagine di contenuto (`Page::lookupByType` + `replaceTemplateVariables` + `Email::send`) |
 | Dominio | `src/server/domain/directory/ui.ts` | campi dei form per la UI (`toDynFields`, `editFormFields`, `formSource`) |
-| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword`, `sendStaffResetEmail`, `verifyStaffResetToken`, `setup2faEmail`, `verify2faSetup`, `updateStaffConfig` |
+| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword` |
+| Dominio | `src/server/domain/staff/{password-reset,two-factor,staff-write}.ts` | `sendStaffResetEmail`, `staffIdForResetToken`, `verifyStaffResetToken`; `setup2faEmail`, `verify2faSetup`, `setDefault2fa`; `updateStaffConfig`, `saveStaffChanges` |
 | Auth | `src/server/auth/mfa.ts` | backend 2FA email (`prepare2faEmail`, `validateOtp`, `staff2faConfig`) |
 | Auth | `src/server/auth/staff-recovery.ts` | verifica 2FA al login, reset password (richiesta, login con token), sessione dopo cambio password |
 | Auth (core, additivo) | `src/server/auth/staff-auth.ts`, `session.ts` | 2FA al login, avviso admin sui tentativi falliti, campi `mfk`/`rst` della sessione |
@@ -71,7 +73,7 @@ la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `set
 | Organizzazione (`setOrganization`) | `user.org_id`, `updated`, `_search` |
 | Rimozione dall'org (`Organization::removeUser`) | `user.org_id = 0` (NULL convertito da MySQL), bit `PRIMARY_ORG_CONTACT` tolto, `updated`, `_search` |
 | Eliminazione (`User::delete`) | rifiutata con ticket; `user_account`, `user_email`, `form_entry(_values)` (cdata restano), `user`, `_search` |
-| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato; per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT) |
+| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato (`"name, email\n "`, con lo spazio del PHP); per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT); righe lette come `fgetcsv` di PHP (riga chiusa solo da `\n`, virgolette letterali nei campi senza virgolette, spazi saltati solo davanti alle virgolette); stranezza replicata: una riga vuota ripropone il record precedente (il `continue` di CsvImportIterator::next esce dal `do … while (false)`) e lo conta di nuovo |
 | Registrazione account (`UserAccount::register`) | `user_account` (`user_id`, `timezone` o NULL, `backend`, `username` sanificato se diverso da `"Nome" <email>`, `passwd` bcrypt, `status` CONFIRMED [+ REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET]); con `sendemail` nessuna password, `status` 0 ed email di attivazione |
 | Gestione account (`UserAccount::update`) | `timezone`, `username` (sanificato), `passwd` + CONFIRMED, bit LOCKED/REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET da flag; UPDATE solo se cambia qualcosa |
 | Blocco/sblocco (massa) | `user_account.status` bit LOCKED |

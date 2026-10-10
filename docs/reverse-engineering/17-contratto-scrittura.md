@@ -788,12 +788,14 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 | Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
 | Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
 | Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
-| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
+| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `reindexUser`, `userEntries` |
+| Dominio | `src/server/domain/directory/users-import.ts` | `importUsers` (User::importFromPost / CsvImporter); il testo è letto con `parseCsv` di `src/server/php/csv.ts` (fgetcsv di PHP 8, test `test/unit/php-csv.test.ts` con valori del PHP) |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
 | Dominio | `src/server/domain/directory/content-mail.ts` | email da pagine di contenuto (`Page::lookupByType` + `replaceTemplateVariables` + `Email::send`) |
 | Dominio | `src/server/domain/directory/ui.ts` | campi dei form per la UI (`toDynFields`, `editFormFields`, `formSource`) |
-| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword`, `sendStaffResetEmail`, `verifyStaffResetToken`, `setup2faEmail`, `verify2faSetup`, `updateStaffConfig` |
+| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword` |
+| Dominio | `src/server/domain/staff/{password-reset,two-factor,staff-write}.ts` | `sendStaffResetEmail`, `staffIdForResetToken`, `verifyStaffResetToken`; `setup2faEmail`, `verify2faSetup`, `setDefault2fa`; `updateStaffConfig`, `saveStaffChanges` |
 | Auth | `src/server/auth/mfa.ts` | backend 2FA email (`prepare2faEmail`, `validateOtp`, `staff2faConfig`) |
 | Auth | `src/server/auth/staff-recovery.ts` | verifica 2FA al login, reset password (richiesta, login con token), sessione dopo cambio password |
 | Auth (core, additivo) | `src/server/auth/staff-auth.ts`, `session.ts` | 2FA al login, avviso admin sui tentativi falliti, campi `mfk`/`rst` della sessione |
@@ -836,7 +838,7 @@ la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `set
 | Organizzazione (`setOrganization`) | `user.org_id`, `updated`, `_search` |
 | Rimozione dall'org (`Organization::removeUser`) | `user.org_id = 0` (NULL convertito da MySQL), bit `PRIMARY_ORG_CONTACT` tolto, `updated`, `_search` |
 | Eliminazione (`User::delete`) | rifiutata con ticket; `user_account`, `user_email`, `form_entry(_values)` (cdata restano), `user`, `_search` |
-| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato; per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT) |
+| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato (`"name, email\n "`, con lo spazio del PHP); per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT); righe lette come `fgetcsv` di PHP (riga chiusa solo da `\n`, virgolette letterali nei campi senza virgolette, spazi saltati solo davanti alle virgolette); stranezza replicata: una riga vuota ripropone il record precedente (il `continue` di CsvImportIterator::next esce dal `do … while (false)`) e lo conta di nuovo |
 | Registrazione account (`UserAccount::register`) | `user_account` (`user_id`, `timezone` o NULL, `backend`, `username` sanificato se diverso da `"Nome" <email>`, `passwd` bcrypt, `status` CONFIRMED [+ REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET]); con `sendemail` nessuna password, `status` 0 ed email di attivazione |
 | Gestione account (`UserAccount::update`) | `timezone`, `username` (sanificato), `passwd` + CONFIRMED, bit LOCKED/REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET da flag; UPDATE solo se cambia qualcosa |
 | Blocco/sblocco (massa) | `user_account.status` bit LOCKED |
@@ -938,9 +940,9 @@ performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (rese
 performConfirm({token, ip})                          → ConfirmOutcome                          // auth-confirm.ts
 lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(executor, cfg, token, userId) (auth-reset.ts)
 
-// Account (src/server/domain/client/account.ts)
-registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})
-updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg, userId, input)
+// Account (src/server/domain/client/{account,profile-info,password-reset}.ts)
+registerClientAccount(vars, guest?)  updateClientProfile(client, vars, resetToken?)
+updateUserInfoForClient(tx, cfg, userId, input)  requestClientPasswordReset(userid, {pad?})
 
 // Ticket (src/server/domain/ticket/message.ts, domain/client/*)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
@@ -1030,13 +1032,18 @@ I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di rese
 | Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
 | Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
 | Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr), Validator::is_username (`usernameError`) |
-| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
+| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings, updateSystemSettings, updatePagesSettings, updateKBSettings), `settingsValues` |
+| Dominio | `src/server/domain/admin/{settings-tickets,settings-people,settings-util}.ts` | updateTicketsSettings (con updateAutoresponderSettings e updateAlertsSettings), updateTasksSettings; updateAgentsSettings, updateUsersSettings; helper comuni (`v`, `isset1`, `needRecipients`) |
+| Dominio | `src/server/domain/admin/languages.ts` | `installedLanguages` (Internationalization::availableLanguages) |
 | Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
 | Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |
-| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `deleteTopic`, `massTopics`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic-mass.ts` | `deleteTopic`, `massTopics` |
 | Dominio | `src/server/domain/admin/sla.ts` | `saveSla`, `deleteSla`, `massSla` |
-| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `processEntryForm`, `effectiveTimezone` |
-| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff`, `setAgentPassword`, `sendAgentResetEmail`, `deleteStaff`, `massStaff`, `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `effectiveTimezone` |
+| Dominio | `src/server/domain/admin/schedule-entry-form.ts` | `processEntryForm` (ScheduleEntryForm), `FREQUENCIES` |
+| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff` (Staff::update), `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/{staff-password,staff-mass,staff-row}.ts` | `setAgentPassword`, `sendAgentResetEmail`, `setPassword`; `deleteStaff`, `massStaff`; riga staff e accessi estesi (`loadStaffRow`, `setDepartmentId`, `loadAccess`) |
 | Dominio | `src/server/domain/admin/team.ts` | `saveTeam`, `deleteTeam`, `massTeams` |
 | Dominio | `src/server/domain/admin/role.ts` | `saveRole`, `massRoles`, `roleInUse`, `ALL_PERMISSIONS`, `rebuildPermissions` |
 | Dominio | `src/server/domain/admin/filters.ts` | `filterActionsReferencing` (vedi "Filtri") |

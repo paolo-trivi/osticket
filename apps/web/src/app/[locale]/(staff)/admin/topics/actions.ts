@@ -4,7 +4,8 @@ import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str } from "@/server/php/values";
-import { massTopics, saveTopic, type TopicMassAction } from "@/server/domain/admin/topic";
+import { saveTopic } from "@/server/domain/admin/topic";
+import { massTopics, type TopicMassAction } from "@/server/domain/admin/topic-mass";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";
 

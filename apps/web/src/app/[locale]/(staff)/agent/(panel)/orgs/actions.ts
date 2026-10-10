@@ -13,7 +13,7 @@ import { db } from "@/server/db";
 import { defaultFormOf } from "@/server/domain/forms/answers";
 import { addOrgUser, createOrg, deleteOrg, massDeleteOrgs, removeOrgUsers, updateOrg, updateOrgProfile } from "@/server/domain/directory/orgs";
 import { formSource } from "@/server/domain/directory/ui";
-import { importUsers } from "@/server/domain/directory/users";
+import { importUsers } from "@/server/domain/directory/users-import";
 import { GlobalPerm, type Agent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { runWrite } from "@/server/domain/write";

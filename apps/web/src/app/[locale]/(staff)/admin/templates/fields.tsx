@@ -3,7 +3,7 @@ import "server-only";
 import { getTranslations } from "next-intl/server";
 
 import { Hidden, InfoText, RadioField, Section, SelectField, TextAreaField, TextField } from "@/components/adminsys/fields";
-import { installedLanguages } from "@/server/domain/admin/settings";
+import { installedLanguages } from "@/server/domain/admin/languages";
 
 /** Campi del set di template (include/staff/template.inc.php). */
 export async function TemplateGroupFields({ group, sets }: { group: { tpl_id: number; name: string; isactive: number; lang: string; notes: string | null } | null; sets: { value: string; label: string }[] }) {

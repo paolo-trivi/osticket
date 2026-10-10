@@ -4,7 +4,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { comparePassword } from "@/server/auth/passwd";
 import { closeDb, db, type Tx } from "@/server/db";
 import type { PhpVars } from "@/server/php/values";
-import { massStaff, saveStaff, setAgentPassword, type StaffMassAction } from "@/server/domain/admin/staff-admin";
+import { saveStaff } from "@/server/domain/admin/staff-admin";
+import { massStaff, type StaffMassAction } from "@/server/domain/admin/staff-mass";
+import { setAgentPassword } from "@/server/domain/admin/staff-password";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";

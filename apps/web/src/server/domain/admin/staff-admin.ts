@@ -4,31 +4,25 @@ import { sql } from "kysely";
 
 import { Dept, StaffDeptAccess, TeamMember } from "@/lib/osticket/flags";
 
-import { hashPassword } from "../../auth/passwd";
-import type { ConfigNamespace } from "../../config/config";
 import { loadConfigNamespace } from "../../config/config";
-import { NOW, table, type DbOrTx } from "../../db";
+import { table, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
-import { randCode } from "../../mail/message-id";
-import { loadStaffInfo, staffVar } from "../../mail/objects";
 import { at, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
-import { logSystem } from "../../system/syslog";
-import { MISC_RAND_CHARS, checkPasswordPolicy, type PasswordError } from "../directory/accounts";
-import { alertOrDefaultEmail, baseUrl, loadContentPage, sendContentMail } from "../directory/content-mail";
+import { checkPasswordPolicy, type PasswordError } from "../directory/accounts";
 import { formatPhone } from "../forms/fields";
 import { isPhone, isValidEmail } from "../forms/validator";
-import { exists, idOf, type MassResult, type SaveResult } from "./common";
-import { FILTER_REFS, filterActionsReferencing } from "./filters";
+import { exists, idOf, type SaveResult } from "./common";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { ALL_PERMISSIONS, rebuildPermissions } from "./role";
+import { ALL_PERMISSIONS } from "./role";
+import { sendAgentResetEmail, setPassword } from "./staff-password";
+import { loadAccess, loadStaffRow, setDepartmentId, staffPermissions, STAFF_OPTS } from "./staff-row";
 import { usernameError } from "./validator";
 
 /**
- * Agenti: scp/staff.php → Staff::update / Staff::create / Staff::delete / mass_process
- * (include/class.staff.php) e ajax.staff.php:setPassword (reset password via email o password
- * impostata dall'amministratore).
+ * Agenti: scp/staff.php → Staff::update / Staff::create (include/class.staff.php). Password e reset
+ * sono in staff-password.ts, eliminazione e azioni di massa in staff-mass.ts.
  *
  * Stranezze del PHP replicate:
  * - il form di modifica non ha il campo "isvisible": ogni salvataggio dall'admin imposta isvisible = 0;
@@ -37,7 +31,6 @@ import { usernameError } from "./validator";
  * Differenze: una password che non rispetta la politica genera un'eccezione non gestita nel PHP;
  * qui è un errore di validazione (nessuna scrittura).
  */
-const STAFF_OPTS = { touchUpdated: true };
 
 interface StaffSaveOptions {
   /** id dell'amministratore che opera (thisstaff) */
@@ -50,62 +43,12 @@ interface StaffSaveResult extends SaveResult {
   send?: () => Promise<void>;
 }
 
-/** Staff::lookup($id) come riga con dirty tracking. */
-async function loadStaffRow(executor: DbOrTx, staffId: number): Promise<OrmRow | null> {
-  return OrmRow.load(executor, "staff", "staff_id", { staff_id: staffId }, STAFF_OPTS);
-}
-
-/** Staff::updatePerms($vars): '' se nessun permesso, altrimenti JSON di RolePermission. */
-function staffPermissions(row: OrmRow, perms: PhpVal): string {
-  if (!truthy(perms)) return "";
-  return rebuildPermissions(row.get("permissions") as string | null, perms);
-}
-
 /** Staff::setExtraAttr($attr, $value): JSON di `extra` con la chiave aggiornata (ordine conservato). */
 function setExtraAttr(row: OrmRow, attr: string, value: unknown): void {
   const cur = phpJsonDecode<Record<string, unknown> | null>((row.get("extra") as string | null) ?? "", null);
   const extra: Record<string, unknown> = cur && typeof cur === "object" && !Array.isArray(cur) ? { ...cur } : {};
   extra[attr] = value;
   row.set("extra", phpJsonEncode(extra));
-}
-
-/** Staff::setPassword($new, null) con osTicketStaffAuthentication: hash, change_passwd 0, token annullati. */
-async function setPassword(executor: DbOrTx, row: OrmRow, passwd: string): Promise<void> {
-  row.set("passwd", hashPassword(passwd));
-  row.set("change_passwd", 0);
-  // cancelResetTokens(): eseguito subito (anche prima del salvataggio dell'agente)
-  if (row.get("staff_id")) await executor.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", str(row.get("staff_id") as PhpVal)).execute();
-  row.set("passwdreset", SQL_NOW);
-}
-
-/**
- * Staff::setDepartmentId($dept_id, $eavesdrop): nuovo reparto primario, eventuale accesso esteso al
- * vecchio reparto (eavesdrop, avvisi attivi), rimozione dell'accesso esteso al nuovo reparto.
- */
-async function setDepartmentId(executor: DbOrTx, row: OrmRow, deptId: PhpVal, eavesdrop: boolean, access: OrmRow[]): Promise<OrmRow[]> {
-  const staffId = row.num("staff_id");
-  const old = row.get("dept_id");
-  if (eavesdrop) {
-    const da = OrmRow.create("staff_dept_access", ["staff_id", "dept_id"]);
-    da.set("dept_id", old);
-    da.set("role_id", row.get("role_id"));
-    setFlag(da, StaffDeptAccess.ALERTS, true);
-    da.set("staff_id", staffId);
-    access.push(da);
-  }
-  row.set("dept_id", str(deptId));
-  const idx = access.findIndex((a) => phpLooseEquals(a.get("dept_id"), deptId as never));
-  if (idx >= 0) {
-    const [da] = access.splice(idx, 1);
-    if (!da.isNew) await da.delete(executor);
-  }
-  await row.save(executor);
-  return access;
-}
-
-async function loadAccess(executor: DbOrTx, staffId: number): Promise<OrmRow[]> {
-  const rows = await executor.selectFrom("staff_dept_access").selectAll().where("staff_id", "=", staffId).execute();
-  return rows.map((r) => OrmRow.from("staff_dept_access", ["staff_id", "dept_id"], r));
 }
 
 /** Staff::update($vars, $errors) — creazione se staffId è null (Staff::create()). */
@@ -256,158 +199,5 @@ async function updateTeams(executor: DbOrTx, staffId: number, membership: [PhpVa
   if (noErr() && dropped.size) await executor.deleteFrom("team_member").where("staff_id", "=", staffId).where("team_id", "in", [...dropped]).execute();
 }
 
-/**
- * Staff::sendResetEmail($template, $log): pagina di contenuto (registration-staff per il benvenuto,
- * pwreset-staff per il reset), token in config "pwreset", syslog "Agent Password Reset" se $log.
- * Restituisce l'invio da eseguire dopo il commit.
- */
-async function sendAgentResetEmail(
-  executor: DbOrTx,
-  cfg: ConfigNamespace,
-  staffId: number,
-  template: "registration-staff" | "pwreset-staff",
-  opts: { log: boolean; ip: string },
-): Promise<(() => Promise<void>) | undefined> {
-  const page = await loadContentPage(executor, template);
-  if (!page) return undefined;
-  const token = randCode(48, MISC_RAND_CHARS);
-  const info = await loadStaffInfo(executor, staffId);
-  const email = await alertOrDefaultEmail(executor, cfg);
-  if (!info || !email) return undefined;
-  const v = staffVar(info, cfg);
-  const link = `${baseUrl(cfg)}/scp/pwreset.php?token=${token}`;
-  if (opts.log)
-    // $_POST['userid'] non esiste nelle richieste dell'admin: Requested-User-Id vuoto
-    await logSystem(
-      "Warning",
-      "Agent Password Reset",
-      sanitizeText(`Password reset was attempted for agent: ${v.asVar(null as never)}<br><br>
-                Requested-User-Id: <br>
-                Source-Ip: ${opts.ip}<br>
-                Email-Sent-To: ${info.email ?? ""}<br>
-                Email-Sent-Via: ${email.email}`),
-      opts.ip,
-      { executor },
-    );
-  await executor.insertInto("config").values({ namespace: "pwreset", key: token, value: String(staffId), updated: NOW }).execute();
-  return sendContentMail(executor, cfg, {
-    email,
-    page,
-    vars: { token, staff: v, recipient: v, reset_link: link, link },
-    to: { name: "", address: info.email ?? "" },
-  });
-}
-
-/**
- * ajax.staff.php:setPassword per un agente esistente (PasswordResetForm): email di reset
- * (Staff::sendResetEmail con syslog) oppure nuova password con eventuale cambio obbligatorio.
- */
-export async function setAgentPassword(
-  executor: DbOrTx,
-  staffId: number,
-  vars: { welcome_email?: boolean; passwd1?: string; passwd2?: string; change_passwd?: boolean },
-  ip: string,
-): Promise<{ ok: boolean; errors: Record<string, string>; send?: () => Promise<void> }> {
-  const staff = await loadStaffRow(executor, staffId);
-  if (!staff) return { ok: false, errors: { err: "not_found" } };
-  const errors: Record<string, string> = {};
-  if (!vars.welcome_email) {
-    if (!vars.passwd1) errors.passwd1 = "required";
-    else {
-      const pe = checkPasswordPolicy(vars.passwd1, null);
-      if (pe) errors.passwd1 = pe;
-    }
-    if (!vars.passwd2) errors.passwd2 = "required";
-    else if (!errors.passwd1 && vars.passwd1 !== vars.passwd2) errors.passwd1 = "mismatch";
-  }
-  if (Object.keys(errors).length) return { ok: false, errors };
-  const cfg = await loadConfigNamespace("core", executor);
-  let send: (() => Promise<void>) | undefined;
-  if (vars.welcome_email) {
-    send = await sendAgentResetEmail(executor, cfg, staffId, "pwreset-staff", { log: true, ip });
-  } else {
-    await setPassword(executor, staff, vars.passwd1!);
-    if (vars.change_passwd) staff.set("change_passwd", 1);
-  }
-  await staff.save(executor);
-  return { ok: true, errors: {}, send };
-}
-
-/**
- * Staff::delete(): non se stessi; ticket non più assegnati, voci del thread con il nome dell'agente
- * come poster, iscrizioni ai team e accessi estesi eliminati. I task assegnati restano (come nel PHP).
- */
-async function deleteStaff(executor: DbOrTx, staffId: number, actorId: number): Promise<{ ok: boolean; error?: string }> {
-  if (staffId === actorId) return { ok: false, error: "self" };
-  const s = await executor.selectFrom("staff").select(["staff_id", "firstname", "lastname"]).where("staff_id", "=", staffId).executeTakeFirst();
-  if (!s) return { ok: false };
-  if (await filterActionsReferencing(executor, FILTER_REFS.staff, staffId)) return { ok: false, error: "filter" };
-  await executor.deleteFrom("staff").where("staff_id", "=", staffId).execute();
-  await executor.updateTable("ticket").set({ staff_id: 0 }).where("staff_id", "=", staffId).execute();
-  await executor
-    .updateTable("thread_entry")
-    .set({ staff_id: 0, poster: `${s.firstname ?? ""} ${s.lastname ?? ""}` })
-    .where("staff_id", "=", staffId)
-    .execute();
-  await executor.deleteFrom("team_member").where("staff_id", "=", staffId).execute();
-  await executor.deleteFrom("staff_dept_access").where("staff_id", "=", staffId).execute();
-  return { ok: true };
-}
-
-export type StaffMassAction = "enable" | "disable" | "delete" | "permissions" | "department";
-
-/** scp/staff.php mass_process. `post`: perms[] per "permissions"; dept_id, role_id, eavesdrop per "department". */
-export async function massStaff(executor: DbOrTx, action: StaffMassAction, ids: number[], actorId: number, post: PhpVars = {}): Promise<MassResult> {
-  if (!ids.length) return { ok: false, num: 0, error: "select" };
-  if ((action === "disable" || action === "delete") && ids.includes(actorId)) return { ok: false, num: 0, error: "self" };
-  let num = 0;
-  switch (action) {
-    case "enable":
-    case "disable": {
-      const res = await executor.updateTable("staff").set({ isactive: action === "enable" ? 1 : 0 }).where("staff_id", "in", ids).executeTakeFirst();
-      num = Number(res.numUpdatedRows);
-      return { ok: num > 0, num };
-    }
-    case "delete": {
-      const rows = await executor.selectFrom("staff").select("staff_id").where("staff_id", "in", ids).execute();
-      for (const r of rows) {
-        if (r.staff_id === actorId) continue;
-        const d = await deleteStaff(executor, r.staff_id, actorId);
-        if (d.error === "filter") return { ok: num > 0, num, error: "filter" };
-        num++;
-      }
-      return { ok: num > 0, num };
-    }
-    case "permissions": {
-      const rows = await executor.selectFrom("staff").selectAll().where("staff_id", "in", ids).execute();
-      for (const r of rows) {
-        const s = OrmRow.from("staff", "staff_id", r, STAFF_OPTS);
-        // updatePerms senza permessi: permissions = '' e nessun "successo" (return senza valore)
-        s.set("permissions", staffPermissions(s, post.perms));
-        if (!truthy(post.perms)) continue;
-        await s.save(executor);
-        num++;
-      }
-      return { ok: num > 0, num };
-    }
-    case "department": {
-      if (!truthy(post.dept_id) || !truthy(post.role_id) || !(await exists(executor, "department", post.dept_id)) || !(await exists(executor, "role", post.role_id)))
-        return { ok: false, num: 0, error: "internal" };
-      const rows = await executor.selectFrom("staff").selectAll().where("staff_id", "in", ids).execute();
-      for (const r of rows) {
-        const s = OrmRow.from("staff", "staff_id", r, STAFF_OPTS);
-        let access = await loadAccess(executor, s.num("staff_id"));
-        access = await setDepartmentId(executor, s, String(idOf(post.dept_id)), truthy(post.eavesdrop), access);
-        s.set("role_id", idOf(post.role_id));
-        await s.save(executor);
-        for (const a of access) await a.save(executor);
-        num++;
-      }
-      return { ok: num > 0, num };
-    }
-  }
-}
-
 /** Permessi "primari" (globali dell'agente) mostrati nel form agente, nell'ordine del PHP. */
 export const AGENT_PERMISSIONS = ALL_PERMISSIONS.filter((p) => p.primary);
-

@@ -25,9 +25,9 @@ performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (rese
 performConfirm({token, ip})                          → ConfirmOutcome                          // auth-confirm.ts
 lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(executor, cfg, token, userId) (auth-reset.ts)
 
-// Account (src/server/domain/client/account.ts)
-registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})
-updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg, userId, input)
+// Account (src/server/domain/client/{account,profile-info,password-reset}.ts)
+registerClientAccount(vars, guest?)  updateClientProfile(client, vars, resetToken?)
+updateUserInfoForClient(tx, cfg, userId, input)  requestClientPasswordReset(userid, {pad?})
 
 // Ticket (src/server/domain/ticket/message.ts, domain/client/*)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage

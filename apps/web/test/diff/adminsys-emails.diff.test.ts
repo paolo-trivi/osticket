@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { decrypt } from "@/server/crypto/crypto";
 import { closeDb, db, type Tx } from "@/server/db";
 import type { PhpVars } from "@/server/php/values";
-import { massDeleteEmails, saveBasicAuth, saveEmail } from "@/server/domain/adminsys/email";
+import { massDeleteEmails, saveEmail } from "@/server/domain/adminsys/email";
+import { saveBasicAuth } from "@/server/domain/adminsys/email-account";
 import { installConfig } from "@/server/env";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
