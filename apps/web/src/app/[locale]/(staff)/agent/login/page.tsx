@@ -2,7 +2,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import AuthLayout from "@/components/shell/AuthLayout";
 import { redirect } from "@/i18n/navigation";
-import { currentAgent } from "@/server/auth/staff-auth";
+import { sessionAgent } from "@/server/auth/staff-auth";
 import { loadTheme } from "@/server/theme/theme";
 
 import LoginForm from "./LoginForm";
@@ -20,7 +20,7 @@ export default async function AgentLoginPage({
   setRequestLocale(locale);
   const { next, expired } = await searchParams;
 
-  if (await currentAgent()) redirect({ href: "/agent", locale });
+  if (await sessionAgent()) redirect({ href: "/agent", locale });
 
   const t = await getTranslations("auth");
   const theme = await loadTheme();

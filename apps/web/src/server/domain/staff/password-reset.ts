@@ -1,5 +1,7 @@
 import "server-only";
 
+import { sql } from "kysely";
+
 import { NOW, type DbOrTx } from "../../db";
 import type { ConfigNamespace } from "../../config/config";
 import { sanitizeText } from "../../format/text";
@@ -86,6 +88,13 @@ export async function staffIdForResetToken(executor: DbOrTx, token: string): Pro
   return Number(row.value);
 }
 
+/** Token di reset (config "pwreset", colonna updated) più vecchio di pw_reset_window minuti? */
+export async function staffResetTokenExpired(executor: DbOrTx, cfg: ConfigNamespace, updated: string | null): Promise<boolean> {
+  if (!updated) return true;
+  const { rows } = await sql<{ age: number }>`SELECT TIMESTAMPDIFF(SECOND, ${updated}, NOW()) AS age`.execute(executor);
+  return cfg.int("pw_reset_window") * 60 < Number(rows[0]?.age ?? 0);
+}
+
 /**
  * PasswordResetTokenBackend::signOn: utente e token coincidenti, token entro pw_reset_window,
  * poi forcePasswdRest (change_passwd = 1, updated). Il login che segue non annulla il token
@@ -101,8 +110,7 @@ export async function verifyStaffResetToken(
   if (!staffId) return { ok: false, error: "invalid_user" };
   const row = await executor.selectFrom("config").select(["value", "updated"]).where("namespace", "=", "pwreset").where("key", "=", token).executeTakeFirst();
   if (!row || row.value !== String(staffId)) return { ok: false, error: "invalid_token" };
-  const { rows } = await (await import("kysely")).sql<{ age: number }>`SELECT TIMESTAMPDIFF(SECOND, ${row.updated}, NOW()) AS age`.execute(executor);
-  if (!row.updated || cfg.int("pw_reset_window") * 60 < Number(rows[0]?.age ?? 0)) return { ok: false, error: "invalid_token" };
+  if (await staffResetTokenExpired(executor, cfg, row.updated)) return { ok: false, error: "invalid_token" };
   const agent = await loadAgent(staffId, executor);
   if (!agent) return { ok: false, error: "invalid_user" };
   await saveStaffChanges(executor, agent, { change_passwd: 1 });

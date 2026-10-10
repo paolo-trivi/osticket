@@ -8,6 +8,7 @@ import { checkPasswordPolicy, type PasswordError } from "../directory/accounts";
 import { formatPhone } from "../forms/fields";
 import { isPhone, isValidEmail } from "../forms/validator";
 import type { WriteContext } from "../ticket/context";
+import { staffResetTokenExpired } from "./password-reset";
 import { loadAgent } from "./staff";
 import { saveStaffChanges, updateStaffConfig } from "./staff-write";
 
@@ -137,8 +138,10 @@ export async function changeStaffPassword(
   if (Object.keys(fields).length) return { ok: false, error: "invalid", fields };
   if (withToken) {
     const tok = await tx.selectFrom("config").select(["value", "updated"]).where("namespace", "=", "pwreset").where("key", "=", input.resetToken!).executeTakeFirst();
-    // Il PHP controlla la finestra di validità con una condizione sempre falsa (&& invece di ||): replicato
     if (!tok || tok.value !== String(agent.id)) return { ok: false, error: "token" };
+    // Differenza voluta (doc 17 §3): il PHP controlla la finestra pw_reset_window con una condizione
+    // sempre falsa (&& invece di ||) e il token resta usabile per tutta la sessione; qui scade
+    if (await staffResetTokenExpired(tx, cfg, tok.updated)) return { ok: false, error: "token" };
   }
   // Staff::setPassword → politiche onSet($new, $current)
   const pol = checkPasswordPolicy(input.passwd1, withToken ? null : input.current);
@@ -146,6 +149,5 @@ export async function changeStaffPassword(
   await cancelResetTokens(tx, agent.id);
   await saveStaffChanges(tx, agent, { passwd: hashPassword(input.passwd1), change_passwd: 0, passwdreset: NOW });
   const fresh = await tx.selectFrom("staff").select("passwdreset").where("staff_id", "=", agent.id).executeTakeFirstOrThrow();
-  void cfg;
   return { ok: true, passwdreset: String(fresh.passwdreset ?? "") };
 }

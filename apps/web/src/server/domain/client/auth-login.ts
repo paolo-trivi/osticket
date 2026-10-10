@@ -1,9 +1,8 @@
 import "server-only";
 
-import { checkPassword } from "../../auth/passwd";
-import { resetStrikes } from "../../auth/strikes";
+import { burnPasswordCheck, checkPassword } from "../../auth/passwd";
 import { db } from "../../db";
-import { type ClientAuthOutcome, denied, lockedOut, loginWrites, prepare, REALM } from "./auth";
+import { type ClientAuthOutcome, denied, lockedOut, loginWrites, prepare } from "./auth";
 import { isUserId, lookupAccountByUsername } from "./identity";
 
 /** Login dei clienti con nome utente (o email) e password (osTicketClientAuthentication). */
@@ -23,6 +22,7 @@ export async function performClientLogin(input: { login: string; password: strin
 
   const acct = await lookupAccountByUsername(db(), username);
   if (acct?.backend && acct.backend !== "client") return { ok: false, error: "backend" };
+  if (!acct) burnPasswordCheck(input.password.slice(0, 128));
   const check = acct ? checkPassword(input.password.slice(0, 128), acct.passwd) : ({ ok: false } as const);
   if (!acct || !check.ok) return denied(cfg, username, ip, "invalid");
 
@@ -30,6 +30,7 @@ export async function performClientLogin(input: { login: string; password: strin
     .transaction()
     .execute((tx) => loginWrites(tx, cfg, acct.user_id, { ip, interactive: true, rehash: check.rehash }));
   if (!r.ok) return denied(cfg, username, ip, r.error);
-  resetStrikes(REALM, ip, "");
+  // Il login riuscito NON azzera il contatore dell'IP: come UserAuthStrikeBackend (azzerato solo allo
+  // scadere del blocco), altrimenti un proprio account permetterebbe tentativi illimitati su quelli altrui
   return { ok: true, userId: acct.user_id, pwv: r.pwv, guest: null };
 }

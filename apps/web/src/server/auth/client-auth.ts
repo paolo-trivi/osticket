@@ -5,6 +5,8 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
+import { UserAccountStatus } from "@/lib/osticket/flags";
+
 import { coreConfig } from "../config/config";
 import { db } from "../db";
 import { detectDbTimezone } from "../db/time";
@@ -36,7 +38,7 @@ async function readClientSession(): Promise<ClientSessionPayload | null> {
 /** Apre la sessione del cliente dopo un login riuscito */
 export async function startClientSession(login: ClientLogin): Promise<void> {
   const ip = await clientIp();
-  const payload: ClientSessionPayload = {
+  const payload: Omit<ClientSessionPayload, "sid" | "born"> = {
     realm: "client",
     uid: login.userId,
     pwv: login.pwv,
@@ -49,8 +51,11 @@ export async function startClientSession(login: ClientLogin): Promise<void> {
   await writeSession(payload);
 }
 
-/** Cliente della richiesta corrente, o null */
-export const currentClient = cache(async (): Promise<ClientIdentity | null> => {
+/**
+ * Cliente della sessione, o null. NON controlla il cambio password obbligatorio: da usare solo per il
+ * profilo (cambio password), il logout e l'intestazione del portale.
+ */
+export const sessionClient = cache(async (): Promise<ClientIdentity | null> => {
   const s = await readClientSession();
   if (!s) return null;
   const cfg = await coreConfig();
@@ -74,6 +79,27 @@ export const currentClient = cache(async (): Promise<ClientIdentity | null> => {
   }
   return client;
 });
+
+/** Account con il cambio password obbligatorio (UserAccount::isPasswdResetForced). */
+export function clientMustChangePassword(client: ClientIdentity): boolean {
+  return !!client.account && (client.account.status & UserAccountStatus.REQUIRE_PASSWD_RESET) !== 0;
+}
+
+/**
+ * Cliente della richiesta corrente per pagine, server action e route handler: come sessionClient, ma
+ * null finché l'account deve cambiare la password (client.inc.php: in quello stato si serve solo
+ * profile.php, anche dopo il login con il token di reset).
+ */
+export const currentClient = cache(async (): Promise<ClientIdentity | null> => {
+  const client = await sessionClient();
+  return client && !clientMustChangePassword(client) ? client : null;
+});
+
+/** Sessione aperta ma bloccata dal cambio password obbligatorio (le azioni da visitatore vanno negate). */
+export async function passwordChangePending(): Promise<boolean> {
+  const client = await sessionClient();
+  return !!client && clientMustChangePassword(client);
+}
 
 /** Rinnova il timestamp di attività (Server Actions e route handler) */
 export async function touchClientSession(): Promise<void> {
@@ -102,7 +128,7 @@ export async function refreshClientSession(pwv: string): Promise<void> {
 
 /** logout.php → UserAuthenticationBackend::signOut: syslog "User logout" (Debug) e cookie eliminato */
 export async function clientLogout(): Promise<void> {
-  const client = await currentClient();
+  const client = await sessionClient();
   if (client) {
     const ip = await clientIp();
     await logSystem("Debug", "User logout", `${client.email} logged out [${ip}]`, ip);

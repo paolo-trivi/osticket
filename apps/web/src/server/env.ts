@@ -2,6 +2,8 @@ import "server-only";
 
 import { readFileSync } from "node:fs";
 
+import { sessionSecretProblem } from "./session-secret";
+
 /**
  * Impostazioni di installazione condivise con osTicket PHP.
  * Fonte primaria: include/ost-config.php dell'installazione osTicket (OST_CONFIG_PATH, in sola lettura);
@@ -64,11 +66,13 @@ export function installConfig(): OstInstallConfig {
   return config;
 }
 
-/** Chiave per firmare i cookie di sessione della app Next (indipendente da osTicket). */
+/**
+ * Chiave per firmare i cookie di sessione della app Next (indipendente da osTicket). Valori di esempio
+ * o deboli rifiutati (session-secret.ts); il controllo si fa anche all'avvio (instrumentation.ts).
+ */
 export function sessionSecret(): Uint8Array {
   const secret = process.env.APP_SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error("APP_SESSION_SECRET mancante o più corto di 32 caratteri");
-  }
+  const problem = sessionSecretProblem(secret);
+  if (problem) throw new Error(problem);
   return new TextEncoder().encode(secret);
 }

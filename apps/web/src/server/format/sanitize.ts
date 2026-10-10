@@ -15,14 +15,32 @@ import { htmlDecode } from "./html";
  */
 const HREF_SCHEMES = ["aim", "feed", "file", "ftp", "gopher", "http", "https", "irc", "mailto", "news", "nntp", "sftp", "ssh", "telnet"];
 
+/**
+ * Nome di proprietà CSS come lo interpreta il browser: escape CSS decodificati (`\70 osition`, `\p`),
+ * spazi tolti, minuscole. I commenti sono già stati rimossi dalla dichiarazione.
+ */
+function cssPropertyName(prop: string): string {
+  return prop
+    .replace(/\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?/g, (_m, hex: string) => String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd))
+    .replace(/\\(.)/g, "$1")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
 function cleanStyle(style: string): string | null {
   const props = new Set<string>();
   const out: string[] = [];
-  for (const raw of htmlDecode(style).split(/;\s*/)) {
+  // Commenti CSS tolti prima di dividere le dichiarazioni: possono nascondere ";" o spezzare un nome
+  // (`/*;*/position:fixed`, `posi/**/tion:fixed`)
+  for (const raw of htmlDecode(style).replace(/\/\*[\s\S]*?(\*\/|$)/g, "").split(/;\s*/)) {
     const idx = raw.indexOf(":");
     if (idx < 0) continue;
     const prop = raw.slice(0, idx).trim();
     let val = raw.slice(idx + 1);
+    // Posizionamenti CSS (Format::safe_html li toglie con una regex sensibile a maiuscole e spazi,
+    // aggirabile con `POSITION:fixed` o `position :fixed`): qualsiasi dichiarazione position si scarta,
+    // così nessun elemento del messaggio può sovrapporsi all'interfaccia (fixed/absolute/sticky)
+    if (cssPropertyName(prop) === "position") continue;
     if (/\burl\s*\(/i.test(val)) continue;
     if (props.has(prop)) continue;
     props.add(prop);

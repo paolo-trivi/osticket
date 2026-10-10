@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import PortalHeader, { type PortalNavItem } from "@/components/portal/PortalHeader";
-import { currentClient } from "@/server/auth/client-auth";
+import { sessionClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { clientDisplayName } from "@/server/domain/client/identity";
 import { kbEnabled } from "@/server/domain/client/kb";
@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
 export default async function PortalLayout({ children, params }: { children: ReactNode; params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [client, cfg, theme, t] = await Promise.all([currentClient(), coreConfig(), loadTheme(), getTranslations("portal")]);
+  // anche con il cambio password obbligatorio: l'intestazione mostra l'utente e il logout
+  const [client, cfg, theme, t] = await Promise.all([sessionClient(), coreConfig(), loadTheme(), getTranslations("portal")]);
   const registration = cfg.str("client_registration");
   const items: PortalNavItem[] = [{ key: "home", href: "/" }];
   if (await kbEnabled(cfg, client)) items.push({ key: "kb", href: "/kb" });

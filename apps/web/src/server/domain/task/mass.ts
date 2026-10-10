@@ -1,6 +1,7 @@
 import "server-only";
 
 import { TaskPerm } from "../staff/staff";
+import { selectableDepts } from "../ticket/assignees";
 import type { WriteContext } from "../ticket/context";
 import { loadTaskRow } from "./model";
 import { checkTaskPerm, loadTask } from "./tasks";
@@ -23,6 +24,8 @@ export type TaskMassAction =
 export async function massTaskAction(ctx: WriteContext, ids: number[], op: TaskMassAction): Promise<number> {
   const agent = ctx.agent;
   if (!agent) return 0;
+  // TransferForm (DepartmentField) del PHP: solo reparti attivi selezionabili dall'agente
+  if (op.action === "transfer" && !(await selectableDepts(ctx.tx, agent, null)).some((d) => d.id === op.deptId)) return 0;
   let done = 0;
   for (const id of ids) {
     const row = await loadTask(id, ctx.tx);

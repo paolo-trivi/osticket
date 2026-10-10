@@ -38,8 +38,8 @@ Funzioni presenti in osTicket ma non ancora in TailTicket. Si usano dal pannello
 
 ## Limiti tecnici noti
 
-- **Una sola istanza di TailTicket**: codici 2FA e contatori dei tentativi falliti stanno in memoria.
-- **Reverse proxy e HTTPS obbligatori**: l'IP del client si legge da `X-Forwarded-For` e i cookie sono `Secure`.
+- **Una sola istanza di TailTicket**: codici 2FA, contatori dei tentativi falliti e sessioni revocate al logout stanno in memoria.
+- **Reverse proxy e HTTPS obbligatori**: l'IP del client si legge da `X-Real-IP` impostato dal proxy (o dal valore più a destra di `X-Forwarded-For`, vedi [SECURITY.md](../SECURITY.md)) e i cookie sono `Secure`.
 - **Testo alternativo delle email** (text/plain): l'impaginazione può differire da quella del PHP; HTML, header e Message-ID sono identici.
 - **Testo semplice con rich text disattivato**: la chiusura dei tag sbilanciati di `html_balance` non è replicata.
 

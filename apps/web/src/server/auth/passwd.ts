@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import bcrypt from "bcryptjs";
 
@@ -80,4 +80,15 @@ export function checkPassword(password: string, hash: string | null | undefined)
   const md5 = createHash("md5").update(password, "utf8").digest("hex");
   if (!safeEqual(md5, hash)) return { ok: false };
   return { ok: true, rehash: hashPassword(password) };
+}
+
+let dummyHash: string | undefined;
+
+/**
+ * Verifica a vuoto per un utente inesistente: stesso costo di bcrypt di un utente esistente, così il
+ * tempo di risposta del login non rivela quali utenti esistono (il PHP esegue bcrypt solo se l'utente c'è).
+ */
+export function burnPasswordCheck(password: string): void {
+  dummyHash ??= hashPassword(randomBytes(16).toString("hex"));
+  comparePassword(password || "x", dummyHash);
 }

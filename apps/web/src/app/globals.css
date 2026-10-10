@@ -534,6 +534,8 @@ span.flatpickr-weekday,
 /* Sidebar Five */
 
 /* Corpo dei messaggi di thread (HTML proveniente da osTicket) */
+/* contenimento: niente del messaggio (fixed, transform, margini negativi) può disegnare fuori dal riquadro */
+.thread-body { contain: paint; }
 .thread-body p { margin: 0 0 0.75em; }
 .thread-body ul { list-style: disc; padding-inline-start: 1.5em; margin-bottom: 0.75em; }
 .thread-body ol { list-style: decimal; padding-inline-start: 1.5em; margin-bottom: 0.75em; }

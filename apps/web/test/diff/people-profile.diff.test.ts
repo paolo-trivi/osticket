@@ -124,6 +124,11 @@ describe("profilo agente: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases({ ignore: ["staff.passwd"] })).toEqual([]);
     expect(comparePassword("Reimpostata1", await staffPasswd(TS_DB, 2))).toBe(true);
 
+    // Differenza voluta (doc 17 §3): token scaduto (oltre pw_reset_window) rifiutato anche al cambio password
+    await execBoth("INSERT INTO {p}config (namespace, `key`, value, updated) VALUES ('pwreset', 'TOKEN-OLD', '2', NOW() - INTERVAL 1 DAY)");
+    expect(await asAgent(2, (ctx) => changeStaffPassword(ctx, { passwd1: "Scaduta123", passwd2: "Scaduta123", resetToken: "TOKEN-OLD" }))).toEqual({ ok: false, error: "token" });
+    expect(comparePassword("Reimpostata1", await staffPasswd(TS_DB, 2))).toBe(true);
+
     // token errato e utente sconosciuto
     expect(await performResetTokenLogin({ userid: "mrossi", token: "nope", ip: IP })).toEqual({ ok: false, error: "invalid_token" });
     expect((await db().transaction().execute((tx) => sendStaffResetEmail(tx, cfg, "nessuno", IP))).sent).toBe(false);

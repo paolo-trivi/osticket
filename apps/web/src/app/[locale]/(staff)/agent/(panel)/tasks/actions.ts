@@ -215,9 +215,13 @@ export async function taskMassAction(_prev: PeopleActionState, form: FormData): 
     case "delete":
       op = { action, comments: formHtml(form, "comments") };
       break;
-    case "transfer":
-      op = { action: "transfer", deptId: formNum(form, "dept") };
+    case "transfer": {
+      // TransferForm (DepartmentField): solo reparti attivi selezionabili dall'agente, come l'azione singola
+      const deptId = formNum(form, "dept");
+      if (!deptId || !(await selectableDepts(db(), agent, null)).some((d) => d.id === deptId)) return { error: "dept_required", fields: { dept: "required" }, nonce: nonce() };
+      op = { action: "transfer", deptId };
       break;
+    }
     case "assign": {
       const m = /^([st])(\d+)$/.exec(formStr(form, "assignee"));
       if (!m) return { error: "unknown_assignee", nonce: nonce() };

@@ -8,7 +8,7 @@ import { detectDbTimezone } from "../db/time";
 import { findStaffIdForLogin, loadAgent, type Agent } from "../domain/staff/staff";
 import { phpJsonDecode, phpJsonEncode } from "../format/php-json";
 import { logSystem } from "../system/syslog";
-import { checkPassword } from "./passwd";
+import { burnPasswordCheck, checkPassword } from "./passwd";
 import { clearSession, clientIp, readSession, writeSession } from "./session";
 import { addStrike, isLockedOut, resetStrikes } from "./strikes";
 import { EMAIL_2FA, newMfaKey, prepare2faEmail } from "./mfa";
@@ -65,6 +65,7 @@ export async function performStaffLogin(input: {
     return { ok: false, error: "backend" };
   }
 
+  if (!row) burnPasswordCheck(password);
   const check = row ? checkPassword(password, row.passwd) : { ok: false as const };
   if (!row || !check.ok) {
     return failed(username, ip, cfg.int("staff_max_logins"), cfg.int("staff_login_timeout"));
@@ -187,10 +188,11 @@ async function failed(
 }
 
 /**
- * Agente della richiesta corrente (StaffAuthenticationBackend::getUser + controlli di staff.inc.php):
- * account attivo, password non cambiata dopo il login, timeout di inattività, binding IP.
+ * Agente della sessione (StaffAuthenticationBackend::getUser + controlli di staff.inc.php): account
+ * attivo, password non cambiata dopo il login, timeout di inattività, binding IP. NON controlla il
+ * cambio password obbligatorio: da usare solo per il profilo (cambio password) e il logout.
  */
-export const currentAgent = cache(async (): Promise<Agent | null> => {
+export const sessionAgent = cache(async (): Promise<Agent | null> => {
   const session = await readSession("staff");
   if (!session || session.mfa) return null;
   const cfg = await coreConfig();
@@ -207,6 +209,16 @@ export const currentAgent = cache(async (): Promise<Agent | null> => {
   return agent;
 });
 
+/**
+ * Agente della richiesta corrente per pagine, server action e route handler: come sessionAgent, ma null
+ * finché l'agente deve cambiare la password (staff.change_passwd, anche dopo il login con il token di
+ * reset): scp/staff.inc.php in questo stato mostra solo profile.php (forcePasswdChange).
+ */
+export const currentAgent = cache(async (): Promise<Agent | null> => {
+  const agent = await sessionAgent();
+  return agent && !agent.mustChangePassword ? agent : null;
+});
+
 /** Rinnova il timestamp di attività (da chiamare nelle Server Actions / route handler). */
 export async function touchStaffSession(): Promise<void> {
   const session = await readSession("staff");
@@ -214,7 +226,7 @@ export async function touchStaffSession(): Promise<void> {
 }
 
 export async function staffLogout(): Promise<void> {
-  const agent = await currentAgent();
+  const agent = await sessionAgent();
   if (agent) {
     const ip = await clientIp();
     await logSystem("Debug", "Agent logout", `${agent.username} logged out [${ip}]`, ip);

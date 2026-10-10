@@ -6,14 +6,17 @@ import { getLocale } from "next-intl/server";
 
 import { redirect } from "@/i18n/navigation";
 import type { DynamicFormView } from "@/lib/forms/dynamic-field";
-import { UserAccountStatus } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
 import { formNum, formStr, formStrs } from "@/server/actions/form-data";
+import { isPortalPath, safeRedirectPath } from "@/server/actions/redirect-path";
 import {
   clientLogout,
+  clientMustChangePassword,
   clientResetToken,
   currentClient,
+  passwordChangePending,
   refreshClientSession,
+  sessionClient,
   startClientSession,
   touchClientSession,
   visitorKey,
@@ -36,13 +39,9 @@ import { formDataToVars, topicFormsView } from "@/server/domain/ticket/create-ui
 
 /**
  * Server Actions del portale clienti. Ogni azione ricontrolla la sessione del cliente; i redirect
- * accettano solo percorsi interni del portale.
+ * accettano solo percorsi interni del portale. Con il cambio password obbligatorio (client.inc.php)
+ * sono ammessi solo il profilo e il logout: currentClient è null e le azioni da visitatore sono negate.
  */
-
-/** Percorso interno sicuro (niente open redirect) */
-function safeNext(next: string, fallback: string): string {
-  return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/agent") && !next.startsWith("/admin") ? next : fallback;
-}
 
 export interface PortalLoginState {
   error?: ClientAuthError;
@@ -57,9 +56,9 @@ export async function portalLoginAction(_prev: PortalLoginState, fd: FormData): 
   await startClientSession(res);
   const locale = await getLocale();
   // client.inc.php: cambio password obbligatorio prima di continuare
-  const client = await currentClient();
-  if (client?.account && client.account.status & UserAccountStatus.REQUIRE_PASSWD_RESET) redirect({ href: "/profile?pwchange=1", locale });
-  redirect({ href: safeNext(formStr(fd, "next"), "/tickets"), locale });
+  const client = await sessionClient();
+  if (client && clientMustChangePassword(client)) redirect({ href: "/profile?pwchange=1", locale });
+  redirect({ href: safeRedirectPath(formStr(fd, "next"), "/tickets", isPortalPath), locale });
   return {};
 }
 
@@ -113,6 +112,7 @@ function plainValues(fd: FormData): Record<string, string> {
 
 /** account.php do=create */
 export async function registerAction(_prev: RegisterState, fd: FormData): Promise<RegisterState> {
+  if (await passwordChangePending()) return { error: "already" };
   const client = await currentClient();
   if (client && !client.guest) return { error: "already" };
   const vars = await accountVars(fd);
@@ -138,7 +138,8 @@ export async function pwresetRequestAction(_prev: ResetState, fd: FormData): Pro
 /** pwreset.php do=reset (nome utente + token del link) */
 export async function pwresetLoginAction(_prev: ResetState, fd: FormData): Promise<ResetState> {
   const res = await performResetTokenLogin({ userid: formStr(fd, "userid"), token: formStr(fd, "token"), ip: await clientIp() });
-  if (!res.ok) return { error: res.error };
+  // un solo errore per utente o token sbagliati (il PHP risponde sempre "Unknown user"): niente enumerazione
+  if (!res.ok) return { error: res.error === "invalid_user" ? "invalid_token" : res.error };
   await startClientSession(res);
   redirect({ href: "/profile?pwchange=1", locale: await getLocale() });
   return {};
@@ -153,7 +154,8 @@ export interface ProfileState {
 
 /** profile.php POST */
 export async function profileAction(_prev: ProfileState, fd: FormData): Promise<ProfileState> {
-  const client = await currentClient();
+  // ammessa anche con il cambio password obbligatorio (è il suo scopo)
+  const client = await sessionClient();
   if (!client) return { error: "session" };
   if (client.guest) return { error: "guest" };
   const vars = await accountVars(fd);
@@ -221,6 +223,7 @@ export interface OpenState {
 
 /** open.php POST: Ticket::create 'Web' per il cliente o un ospite */
 export async function openTicketAction(_prev: OpenState, fd: FormData): Promise<OpenState> {
+  if (await passwordChangePending()) return { error: "session", nonce: Date.now() };
   const client = await currentClient();
   const cfg = await coreConfig();
   const topicId = formNum(fd, "topicId") || 0;

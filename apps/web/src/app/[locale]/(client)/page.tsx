@@ -3,10 +3,11 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { RICH_CLASS } from "@/components/portal/rich";
 import { Link } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
-import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { contentPage, featuredCategories, kbEnabled } from "@/server/domain/client/kb";
 import { safeHtml } from "@/server/format/sanitize";
+
+import { portalVisitor } from "./guard";
 
 export async function generateMetadata() {
   const t = await getTranslations("portal.home");
@@ -21,7 +22,7 @@ export default async function PortalHome({ params }: { params: Promise<{ locale:
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("portal.home");
-  const [cfg, client] = await Promise.all([coreConfig(), currentClient()]);
+  const [cfg, client] = await Promise.all([coreConfig(), portalVisitor(locale)]);
   const kb = await kbEnabled(cfg, client);
   const landing = await contentPage(cfg.int("landing_page_id"));
   const featured = kb ? await featuredCategories() : [];

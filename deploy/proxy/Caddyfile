@@ -2,10 +2,16 @@
 #   /classic/…  → pannello classico osTicket (PHP): scp/, api/ (REST e pipe email), asset
 #   tutto il resto → TailTicket (portale clienti, /agent, /admin)
 # Variabili (da deploy/.env): TAILTICKET_SITE (indirizzo del sito Caddy), TAILTICKET_HTTPS (auto|off|internal),
-# TAILTICKET_CLASSIC_PORTAL (redirect|keep).
+# TAILTICKET_CLASSIC_PORTAL (redirect|keep), TAILTICKET_TRUSTED_PROXIES, TAILTICKET_MAX_BODY.
+#
+# IP del client: Caddy è l'ingresso pubblico e NON si fida degli X-Forwarded-For ricevuti, salvo dai proxy
+# elencati in TAILTICKET_TRUSTED_PROXIES (CIDR di un CDN o bilanciatore davanti a Caddy; il default
+# 127.0.0.1/32 equivale a nessuno). {client_ip} è quindi l'indirizzo reale e arriva alle app in X-Real-IP,
+# che sovrascrive qualsiasi valore mandato dal client (vedi SECURITY.md, "Reverse proxy e IP del client").
 {
 	servers {
-		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:private_ranges}
+		trusted_proxies static {$TAILTICKET_TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
 	}
 }
 
@@ -47,6 +53,10 @@
 	import tls_{$TAILTICKET_HTTPS:off}
 	encode zstd gzip
 	header -Server
+	# corpo delle richieste limitato (allegati: max_file_size di osTicket, upload_max_filesize di PHP 32M)
+	request_body {
+		max_size {$TAILTICKET_MAX_BODY:40MB}
+	}
 
 	# senza slash finale Apache risponderebbe con un redirect assoluto in http://
 	redir /classic /classic/ 308
@@ -56,10 +66,14 @@
 	import portal_{$TAILTICKET_CLASSIC_PORTAL:redirect}
 
 	handle /classic/* {
-		reverse_proxy osticket:80
+		reverse_proxy osticket:80 {
+			header_up X-Real-IP {client_ip}
+		}
 	}
 
 	handle {
-		reverse_proxy tailticket:3000
+		reverse_proxy tailticket:3000 {
+			header_up X-Real-IP {client_ip}
+		}
 	}
 }

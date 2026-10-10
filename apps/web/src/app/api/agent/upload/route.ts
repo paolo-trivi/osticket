@@ -4,6 +4,7 @@ import { currentAgent } from "@/server/auth/staff-auth";
 import { loadConfigNamespace } from "@/server/config/config";
 import { db } from "@/server/db";
 import { signUploadToken, threadUploadRules, uploadFile } from "@/server/domain/file/upload";
+import { readLimitedFormData } from "@/server/http/limited-form";
 
 /**
  * Upload di un allegato per agenti (equivalente di ajax.php/form/upload/attach: FileUploadField::ajaxUpload
@@ -19,16 +20,12 @@ export async function POST(request: Request) {
   const rules = threadUploadRules(cfg);
   if (!rules) return NextResponse.json({ error: "disabled" }, { status: 403 });
 
-  let file: File | null = null;
-  try {
-    const form = await request.formData();
-    const f = form.get("file");
-    file = f instanceof File ? f : null;
-  } catch {
-    file = null;
-  }
+  // Limite di dimensione controllato prima di leggere tutto il corpo, poi sul file
+  const body = await readLimitedFormData(request, rules.size);
+  if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.error === "size" ? 413 : 400 });
+  const f = body.form.get("file");
+  const file = f instanceof File ? f : null;
   if (!file) return NextResponse.json({ error: "invalid" }, { status: 400 });
-  // Limite di dimensione controllato prima di leggere tutto il contenuto
   if (file.size > rules.size) return NextResponse.json({ error: "size" }, { status: 413 });
 
   const data = Buffer.from(await file.arrayBuffer());

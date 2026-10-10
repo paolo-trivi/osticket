@@ -36,7 +36,7 @@ const LOCALES = [
 export default async function ProfilePage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ pwchange?: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const agent = await requireAgent(locale);
+  const agent = await requireAgent(locale, { passwordChange: true });
   const t = await getTranslations("profile");
   const tp = await getTranslations("peopleProfile");
   const sp = await searchParams;

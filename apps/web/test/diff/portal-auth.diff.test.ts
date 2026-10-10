@@ -278,6 +278,18 @@ describe("registrazione, conferma e reset password (account.php, pwreset.php)", 
     expect(await compareWorkingDatabases({ ignore: ["config.key"] })).toEqual([]);
   });
 
+  // Come UserAuthStrikeBackend: il login riuscito non azzera il contatore (solo lo scadere del blocco)
+  it("login riuscito con il proprio account: il contatore dei tentativi dell'IP non si azzera", async () => {
+    await execBoth(accountSql(3), accountSql(4, { username: "scolombo" }), cfgSql("client_max_logins", 2), cfgSql("send_login_errors", 0));
+    const ip = nextIp();
+    const res = [];
+    for (let i = 0; i < 2; i++) res.push(await performClientLogin({ login: "l.ferrari@ospedale.example", password: "sbagliata", ip }));
+    res.push(await performClientLogin({ login: "scolombo", password: PASSWORD, ip }));
+    res.push(await performClientLogin({ login: "l.ferrari@ospedale.example", password: "sbagliata", ip }));
+    res.push(await performClientLogin({ login: "l.ferrari@ospedale.example", password: PASSWORD, ip }));
+    expect(res.map((r) => (r.ok ? "ok" : r.error))).toEqual(["invalid", "invalid", "ok", "invalid", "locked_out"]);
+  });
+
   it("accesso con il token di reset: cambio password obbligatorio; token errato = strike", async () => {
     await execBoth(accountSql(3), tokenSql("resetabc0000000000000000000000000000000000000000", 3), cfgSql("log_level", 3));
     const ip = nextIp();

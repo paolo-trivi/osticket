@@ -3,7 +3,6 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import OpenTicketForm from "@/components/portal/OpenTicketForm";
 import Alert from "@/components/ui/alert/Alert";
 import { redirect } from "@/i18n/navigation";
-import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { clientDisplayName } from "@/server/domain/client/identity";
@@ -11,6 +10,8 @@ import { portalOpenAllowed } from "@/server/domain/client/open";
 import { publicTopics } from "@/server/domain/client/ui";
 import { threadUploadRules } from "@/server/domain/file/upload";
 import { baseForms, topicFormsView } from "@/server/domain/ticket/create-ui";
+
+import { portalVisitor } from "../guard";
 
 export async function generateMetadata() {
   const t = await getTranslations("portal.open");
@@ -27,7 +28,7 @@ export default async function OpenTicketPage({ params, searchParams }: { params:
   setRequestLocale(locale);
   const sp = await searchParams;
   const cfg = await coreConfig();
-  const client = await currentClient();
+  const client = await portalVisitor(locale);
   if (cfg.bool("clients_only")) {
     if (cfg.str("client_registration") === "disabled") redirect({ href: "/login#access", locale });
     if (!client || client.guest) redirect({ href: "/login?next=/open", locale });

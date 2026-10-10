@@ -339,7 +339,7 @@
       "reset_disabled": "Il reset della password è disattivato.",
       "reset_unavailable": "Impossibile reimpostare la password: contatta l'amministratore.",
       "invalid_user": "Utente non valido",
-      "invalid_token": "Token di reset non valido",
+      "invalid_token": "Utente o token di reset non validi",
       "inactive": "Account non attivo"
     }
   }

@@ -19,7 +19,8 @@ export default async function AgentPanelLayout({
   const { locale } = await params;
   setRequestLocale(locale);
 
-  const agent = await requireAgent(locale);
+  // il layout contiene anche il profilo: il cambio password obbligatorio lo controlla ogni pagina
+  const agent = await requireAgent(locale, { passwordChange: true });
 
   const t = await getTranslations();
   const legacyUrl = process.env.OST_PHP_URL;
