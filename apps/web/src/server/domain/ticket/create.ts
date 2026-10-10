@@ -3,61 +3,43 @@ import "server-only";
 import { sql } from "kysely";
 import { DateTime } from "luxon";
 
-import { Collaborator, Dept, DynamicFormField, OrganizationModel, Team, ThreadEntry, Topic, UserModel } from "@/lib/osticket/flags";
+import { OrganizationModel, ThreadEntry, Topic, UserModel } from "@/lib/osticket/flags";
 import { FormType, ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
 
-import { NOW, table, type DbOrTx } from "../../db";
-import { phpJsonEncode } from "../../format/php-json";
+import { NOW } from "../../db";
 import { PersonsName } from "../../format/persons-name";
-import type { MailContact } from "../../mail/mailer";
 import { isNumeric, truthy as phpTruthy, type PhpVal } from "../../php/values";
 import { logSystem } from "../../system/syslog";
 import { attachFilesToEntry, type AttachInput } from "../file/upload";
-import {
-  actionEventData,
-  applyFilterActions,
-  filterInput,
-  loadActiveFilters,
-  originToTarget,
-  prepareSupportedMatches,
-  TicketRejected,
-  type FilterAction,
-  type TicketVars,
-} from "../filter/ticket-filter";
+import { TicketRejected, type TicketVars } from "../filter/ticket-filter";
 import { currentTimezone, FormInstance, saveFormEntry } from "../forms/entry";
-import {
-  cleanFromDb,
-  fieldToString,
-  hasFlag,
-  isRequiredFor,
-  isVisibleTo,
-  type DateFormatOptions,
-  type FieldDef,
-  type FieldErrorCode,
-} from "../forms/fields";
-import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
-import { isEmail } from "../forms/validator";
-import { loadAgent, TicketPerm } from "../staff/staff";
+import { isRequiredFor, isVisibleTo, type DateFormatOptions, type FieldDef, type FieldErrorCode } from "../forms/fields";
+import { loadFormDef, type FormDef } from "../forms/load";
 import { createThreadEntry, type EntryRecipients } from "../thread/write";
-import { deleteDraftsFor, isEmailBanned } from "./collab";
-import { agentDisplayName, type WriteContext } from "./context";
-import { onAssignAlert, onNewTicket, onOpenLimit, sendFilterEmail, sendNewTicketNotice } from "./create-alerts";
+import type { WriteContext } from "./context";
+import { onNewTicket, onOpenLimit } from "./create-alerts";
+import { assignFromForm, autoAssignToStaff, autoAssignToTeam } from "./create-assign";
 import { postCannedReply } from "./create-canned";
+import { addCollaborator, recipientsJson, ticketRecipients } from "./create-collab";
+import { filterTicketData } from "./create-filter";
 import { newTicketNumber } from "./create-number";
-import { loadOrganization, lookupUser, lookupUserByEmail, organizationForDomain, userEmail, userFromVars, type UserRow } from "./create-user";
+import { loadTopic, prioritySelection, topicFormInstances, topicFullName, type TopicRow } from "./create-topic";
+import { loadOrganization, lookupUser, lookupUserByEmail, numOpenTickets, userEmail, userFromVars, type UserRow } from "./create-user";
 import { logTicketEvent, type Actor } from "./events";
-import { postNote, postReply } from "./post";
+import { postNote } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
 import { isSelectableStatus, loadStatus, setTicketStatus, stateOf, updateEstDueDate } from "./status";
 
 /**
- * Creazione dei ticket (Ticket::create / Ticket::open, include/class.ticket.php): validazione dei form
- * dinamici, utente, filtri, limite dei ticket aperti, numerazione, primo messaggio con allegati,
- * SLA, stato, assegnazione, eventi, indice, notifiche. Servizio riusabile dal pannello agenti
- * (origine "staff") e dal portale clienti (origine "web").
+ * Creazione dei ticket (Ticket::create, include/class.ticket.php): validazione dei form dinamici, utente,
+ * filtri, limite dei ticket aperti, numerazione, primo messaggio con allegati, SLA, stato, assegnazione,
+ * eventi, indice, notifiche. Servizio riusabile dal pannello agenti (origine "staff", vedi create-open.ts
+ * per Ticket::open) e dal portale clienti (origine "web").
+ * Responsabilità secondarie nei moduli vicini: argomento e default (create-topic), filtri (create-filter),
+ * assegnazione (create-assign), collaboratori e destinatari (create-collab), utente (create-user).
  */
 
-type CreateOrigin = "staff" | "web";
+export type CreateOrigin = "staff" | "web";
 
 /**
  * Dati della richiesta come `$vars` del PHP. Campi noti:
@@ -94,327 +76,6 @@ export const TICKET_SOURCES = ["Phone", "Email", "Web", "API", "Other"] as const
 const isNum = (v: unknown) => isNumeric(v as PhpVal);
 const truthy = (v: unknown) => phpTruthy(v as PhpVal);
 
-interface TopicRow {
-  topic_id: number;
-  topic_pid: number;
-  flags: number;
-  noautoresp: number;
-  sequence_id: number;
-  number_format: string | null;
-  priority_id: number;
-  dept_id: number;
-  staff_id: number;
-  team_id: number;
-  sla_id: number;
-  status_id: number;
-  topic: string;
-}
-
-async function loadTopic(executor: DbOrTx, id: number): Promise<TopicRow | null> {
-  if (!id) return null;
-  const t = await executor
-    .selectFrom("help_topic")
-    .select(["topic_id", "topic_pid", "flags", "noautoresp", "sequence_id", "number_format", "priority_id", "dept_id", "staff_id", "team_id", "sla_id", "status_id", "topic"])
-    .where("topic_id", "=", id)
-    .executeTakeFirst();
-  return t ? { ...t, flags: t.flags ?? 0 } : null;
-}
-
-/** Topic::getFullName: percorso "Padre / Figlio" */
-async function topicFullName(executor: DbOrTx, t: TopicRow): Promise<string> {
-  const all = await executor.selectFrom("help_topic").select(["topic_id", "topic_pid", "topic"]).execute();
-  const byId = new Map(all.map((r) => [r.topic_id, r]));
-  const parts: string[] = [];
-  const seen = new Set<number>();
-  let cur: { topic_id: number; topic_pid: number; topic: string } | undefined = byId.get(t.topic_id);
-  while (cur && !seen.has(cur.topic_id)) {
-    seen.add(cur.topic_id);
-    parts.unshift(cur.topic);
-    cur = cur.topic_pid ? byId.get(cur.topic_pid) : undefined;
-  }
-  return parts.join(" / ") || t.topic;
-}
-
-async function deptIsActive(executor: DbOrTx, id: number): Promise<boolean> {
-  const d = await executor.selectFrom("department").select("flags").where("id", "=", id).executeTakeFirst();
-  return !!d && (d.flags & Dept.ACTIVE) !== 0;
-}
-
-async function topicIsActive(executor: DbOrTx, id: number): Promise<boolean> {
-  const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", id).executeTakeFirst();
-  return !!t && ((t.flags ?? 0) & Topic.ACTIVE) !== 0;
-}
-
-/** Risposte salvate di un oggetto (utente/organizzazione) come dati per i filtri: field.<id> → testo */
-async function entryFilterData(
-  ctx: WriteContext,
-  objectType: "U" | "O",
-  objectId: number,
-  special: Record<string, string>,
-  dates: DateFormatOptions,
-): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  const entries = await ctx.tx.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", objectType).where("object_id", "=", objectId).orderBy("sort").orderBy("id").execute();
-  for (const e of entries) {
-    const def = await loadFormDef(ctx.tx, ctx.cfg, { id: e.form_id });
-    if (!def) continue;
-    const values = await ctx.tx.selectFrom("form_entry_values").select(["field_id", "value", "value_id"]).where("entry_id", "=", e.id).execute();
-    const local: Record<string, string> = {};
-    for (const v of values) {
-      const f = def.fields.find((x) => x.id === v.field_id);
-      if (!f) continue;
-      const s = fieldToString(f, cleanFromDb(f, v.value, v.value_id), dates);
-      if (s) local[`field.${f.id}`] = s;
-    }
-    if (def.type === objectType) {
-      for (const [name, val] of Object.entries(special)) {
-        const f = def.fields.find((x) => x.name === name);
-        if (f) local[`field.${f.id}`] = val;
-      }
-    }
-    for (const [k, v] of Object.entries(local)) if (!(k in out)) out[k] = v;
-  }
-  return out;
-}
-
-const addMissing = (vars: TicketVars, data: Record<string, unknown>) => {
-  for (const [k, v] of Object.entries(data)) if (!(k in vars)) vars[k] = v;
-};
-
-/**
- * Ticket::filterTicketData: dati dei form e dell'utente/organizzazione, banlist, filtri.
- * Prima della creazione può lanciare TicketRejected; dopo la creazione registra gli eventi "edited".
- */
-async function filterTicketData(
-  ctx: WriteContext,
-  origin: CreateOrigin,
-  input: TicketVars,
-  forms: FormInstance[],
-  user: UserRow | null,
-  post: { rec: TicketRecord; threadId: number } | null,
-  dates: DateFormatOptions,
-): Promise<TicketVars> {
-  const vars: TicketVars = {};
-  for (const [k, v] of Object.entries(input)) if (!k.startsWith("field.")) vars[k] = v;
-  for (const F of forms) addMissing(vars, { ...F.filterData(), ...(await F.listFilterData(ctx.tx)) });
-
-  let userForm: FormInstance | null = null;
-  if (!user) {
-    const def = await loadFormDef(ctx.tx, ctx.cfg, { type: FormType.USER });
-    if (def) {
-      userForm = new FormInstance(def, vars, 1, null, { dates });
-      for (const n of ["name", "email"]) {
-        const f = userForm.field(n);
-        if (f) vars[n] = fieldToString(f, userForm.values.get(f.id) ?? null, dates);
-      }
-    }
-    user = await lookupUserByEmail(ctx.tx, String(vars.email ?? ""));
-  }
-  if (user) {
-    const email = await userEmail(ctx.tx, user);
-    addMissing(vars, await entryFilterData(ctx, "U", user.id, { name: user.name, email }, dates));
-    vars.email = email;
-    vars.name = user.name;
-    const org = await loadOrganization(ctx.tx, user.org_id);
-    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }, dates));
-  } else {
-    if (userForm) for (const f of userForm.fields) vars[`field.${f.id}`] = fieldToString(f, userForm.values.get(f.id) ?? null, dates);
-    const domain = String(vars.email ?? "").split("@")[1] ?? "";
-    const org = await organizationForDomain(ctx.tx, domain);
-    if (org) addMissing(vars, await entryFilterData(ctx, "O", org.id, { name: org.name }, dates));
-  }
-
-  if (await isEmailBanned(ctx.tx, String(vars.email ?? ""))) throw new TicketRejected("SYSTEM BAN LIST", String(vars.email ?? ""));
-
-  await prepareSupportedMatches(ctx.tx);
-  const filters = await loadActiveFilters(ctx.tx, originToTarget(origin), Number(vars.emailId ?? 0));
-  const checks = { isActive: (id: number) => deptIsActive(ctx.tx, id), topicIsActive: (id: number) => topicIsActive(ctx.tx, id) };
-  const submitter = { name: String(vars.name ?? ""), email: String(vars.email ?? "") };
-  const sendEmail = post ? (a: FilterAction) => sendFilterEmail(ctx, post.rec.id, a.config, submitter) : undefined;
-  const applied = await applyFilterActions(filters, filterInput(vars), vars, !!post, checks, sendEmail);
-  if (post) {
-    for (const f of applied) {
-      for (const a of f.actions) {
-        const data = await actionEventData(ctx.tx, a, f.name);
-        if (data) await logTicketEvent(ctx.tx, post.rec.row, post.threadId, ctx.actor, "edited", data, "Ticket Filter");
-      }
-    }
-  }
-  return vars;
-}
-
-/** Numero di ticket aperti dell'utente (TicketUser::getNumOpenTickets, inclusi quelli da collaboratore) */
-async function numOpenTickets(ctx: WriteContext, userId: number): Promise<number> {
-  const collab = ctx.cfg.bool("collaborator_ticket_visibility");
-  const { rows } = await sql<{ n: number }>`SELECT COUNT(DISTINCT T.ticket_id) AS n FROM ${table("ticket")} T
-    JOIN ${table("ticket_status")} S ON (S.id = T.status_id)
-    LEFT JOIN ${table("thread")} TH ON (TH.object_type = 'T' AND TH.object_id = T.ticket_id)
-    LEFT JOIN ${table("thread_collaborator")} C ON (C.thread_id = TH.id)
-    WHERE S.state = 'open' AND (T.user_id = ${userId} ${collab ? sql`OR C.user_id = ${userId}` : sql``})`.execute(ctx.tx);
-  return Number(rows[0]?.n ?? 0);
-}
-
-/** Contatti di Ticket::getRecipients($who, $whitelist) con ids come MailingList::getEmailAddresses */
-async function ticketRecipients(ctx: WriteContext, ownerId: number, threadId: number, who: string, whitelist?: number[]) {
-  const nameOf = (name: string, email: string) => new PersonsName(name || email.split("@")[0], ctx.cfg.str("client_name_format")).toString();
-  const to: { listId: number; userId: number; name: string; email: string }[] = [];
-  const cc: { listId: number; userId: number; name: string; email: string }[] = [];
-  const w = who.toLowerCase();
-  if (!["user", "all", "collabs"].includes(w)) return null;
-  const contact = async (uid: number) =>
-    ctx.tx
-      .selectFrom("user as u")
-      .leftJoin("user_email as e", "e.id", "u.default_email_id")
-      .select(["u.id", "u.name", "e.address"])
-      .where("u.id", "=", uid)
-      .executeTakeFirst();
-  if (w === "user" || w === "all") {
-    const o = await contact(ownerId);
-    if (o) to.push({ listId: o.id, userId: o.id, name: nameOf(o.name, o.address ?? ""), email: o.address ?? "" });
-  }
-  if (w === "all" || w === "collabs") {
-    // Thread::getCollaborators: order_by('user__name')
-    const collabs = await ctx.tx
-      .selectFrom("thread_collaborator as c")
-      .innerJoin("user as u", "u.id", "c.user_id")
-      .select(["c.id", "c.user_id", "c.flags"])
-      .where("c.thread_id", "=", threadId)
-      .orderBy("u.name")
-      .orderBy("c.id")
-      .execute();
-    for (const c of collabs) {
-      if (!(c.flags & Collaborator.ACTIVE)) continue;
-      if (whitelist?.length && !whitelist.includes(c.user_id)) continue;
-      const u = await contact(c.user_id);
-      if (u) cc.push({ listId: c.id, userId: c.user_id, name: nameOf(u.name, u.address ?? ""), email: u.address ?? "" });
-    }
-  }
-  return { to, cc };
-}
-
-function recipientsJson(r: { to: { listId: number; name: string; email: string }[]; cc: { listId: number; name: string; email: string }[] }): EntryRecipients {
-  const out: EntryRecipients = {};
-  for (const [k, list] of [["to", r.to], ["cc", r.cc]] as const) {
-    if (!list.length) continue;
-    out[k] = list.map((c): [string, string] => [String(c.listId), `${c.name} <${c.email}>`]);
-  }
-  return out;
-}
-
-/** Thread::addCollaborator + Ticket::addCollaborator (flag ACTIVE|CC) con evento collab */
-async function addCollaborator(ctx: WriteContext, rec: TicketRecord, threadId: number, userId: number, logEvent = true): Promise<boolean> {
-  if (userId === rec.get("user_id")) return false;
-  const exists = await ctx.tx.selectFrom("thread_collaborator").select("id").where("thread_id", "=", threadId).where("user_id", "=", userId).executeTakeFirst();
-  if (exists) return false;
-  const user = await lookupUser(ctx.tx, userId);
-  if (!user) return false;
-  let flags = Collaborator.ACTIVE | Collaborator.CC;
-  // disable_agent_collabs per i ticket creati dai clienti: collaboratore inattivo se l'email è di un agente
-  if (!ctx.agent && ctx.cfg.bool("disable_agent_collabs")) {
-    const email = await userEmail(ctx.tx, user);
-    const staff = email ? await ctx.tx.selectFrom("staff").select("staff_id").where("email", "=", email).executeTakeFirst() : undefined;
-    if (staff) flags = Collaborator.CC;
-  }
-  await ctx.tx.insertInto("thread_collaborator").values({ flags, thread_id: threadId, user_id: userId, role: "M", created: NOW, updated: NOW }).execute();
-  if (logEvent) await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "collab", { add: { [String(userId)]: { name: user.name } } });
-  return true;
-}
-
-/** Ticket::assignToStaff (auto-assegnazione di topic/filtri/organizzazione) */
-async function assignToStaff(ctx: WriteContext, rec: TicketRecord, threadId: number, staffId: number, alert: boolean, who: string): Promise<boolean> {
-  const staff = await loadAgent(staffId, ctx.tx);
-  if (!staff || !staff.isAvailable) return false;
-  rec.set("staff_id", staff.id);
-  await rec.save();
-  if (alert) await onAssignAlert(ctx, { ticketId: rec.id, deptId: rec.get("dept_id") }, { kind: "staff", id: staff.id }, "", null);
-  const data = ctx.agent && ctx.agent.id === staff.id ? { claim: true } : { staff: staff.id };
-  await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", data, who);
-  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.STAFF).where("object_id", "=", staff.id).execute();
-  return true;
-}
-
-/** Ticket::assignToTeam */
-async function assignToTeam(ctx: WriteContext, rec: TicketRecord, threadId: number, teamId: number, alert: boolean, who: string): Promise<boolean> {
-  const team = await ctx.tx.selectFrom("team").select(["team_id", "flags"]).where("team_id", "=", teamId).executeTakeFirst();
-  if (!team || !(team.flags & Team.ENABLED)) return false;
-  rec.set("team_id", team.team_id);
-  await rec.save();
-  if ((await stateOf(ctx.tx, rec.row)) === "closed") {
-    rec.set("staff_id", 0);
-    await rec.save();
-  }
-  if (alert) await onAssignAlert(ctx, { ticketId: rec.id, deptId: rec.get("dept_id") }, { kind: "team", id: team.team_id }, "", null);
-  await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", { team: team.team_id }, who);
-  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.TEAM).where("object_id", "=", team.team_id).execute();
-  return true;
-}
-
-/** Dept::canAssign per un agente */
-async function deptCanAssignStaff(ctx: WriteContext, deptId: number, staffId: number): Promise<boolean> {
-  const d = await ctx.tx.selectFrom("department").select(["id", "flags", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
-  const staff = await loadAgent(staffId, ctx.tx);
-  if (!d || !staff) return false;
-  if (d.flags & Dept.ASSIGN_PRIMARY_ONLY && staff.deptId !== d.id) return false;
-  if (d.flags & Dept.ASSIGN_MEMBERS_ONLY) {
-    const member = staff.deptId === d.id || d.manager_id === staff.id || staff.extendedAccess.some((a) => a.deptId === d.id);
-    if (!member) return false;
-  }
-  return staff.isAvailable;
-}
-
-/**
- * Ticket::assign(AssignmentForm) dall'apertura da agente (`assignId` = s<id> | t<id>, commenti = nota).
- */
-async function assignFromForm(ctx: WriteContext, rec: TicketRecord, threadId: number, assignId: string, comments: string): Promise<string | true> {
-  const kind = assignId[0];
-  const id = Number(assignId.slice(1));
-  let alert = true;
-  let evd: Record<string, unknown>;
-  let assignee: { kind: "staff"; id: number } | { kind: "team"; id: number };
-  let assigneeName: string;
-  if (kind === "s") {
-    const staff = await loadAgent(id, ctx.tx);
-    if (!staff) return "Unknown assignee";
-    if (rec.get("staff_id") === staff.id) return "Ticket already assigned to the agent";
-    if (!staff.isAvailable) return "Agent is unavailable for assignment";
-    if (!(await deptCanAssignStaff(ctx, rec.get("dept_id"), staff.id))) return "Permission denied";
-    rec.set("staff_id", staff.id);
-    if (ctx.agent && ctx.agent.id === staff.id) {
-      alert = false;
-      evd = { claim: true };
-    } else evd = { staff: [staff.id, staff.name.full] };
-    assignee = { kind: "staff", id: staff.id };
-    assigneeName = agentDisplayName(staff, ctx.cfg);
-    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.STAFF).where("object_id", "=", staff.id).execute();
-  } else if (kind === "t") {
-    const team = await ctx.tx.selectFrom("team").select(["team_id", "name", "flags"]).where("team_id", "=", id).executeTakeFirst();
-    if (!team) return "Unknown assignee";
-    if (rec.get("team_id") === team.team_id) return "Ticket already assigned to the team";
-    const members = await ctx.tx.selectFrom("team_member").select("staff_id").where("team_id", "=", team.team_id).execute();
-    if (!(team.flags & Team.ENABLED) || !members.length) return "Permission denied";
-    rec.set("team_id", team.team_id);
-    evd = { team: team.team_id };
-    assignee = { kind: "team", id: team.team_id };
-    assigneeName = team.name;
-    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.TEAM).where("object_id", "=", team.team_id).execute();
-  } else return "Unknown assignee";
-  await rec.save(true);
-  await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", evd);
-  // onAssign: nota con i commenti (senza avvisi) e avviso assigned.alert
-  let note: { id: number; threadId: number } | null = null;
-  if (comments) {
-    const title =
-      assignee.kind === "staff" && ctx.agent && assignee.id === ctx.agent.id
-        ? `Ticket claimed by ${agentDisplayName(ctx.agent, ctx.cfg)}`
-        : `Ticket Assigned to ${assigneeName}`;
-    const r = await postNote(ctx, { ticketId: rec.id, note: comments, title, format: "html", alert: false });
-    if ("entryId" in r) note = { id: r.entryId, threadId };
-    await rec.reload();
-  }
-  if (alert) await onAssignAlert(ctx, { ticketId: rec.id, deptId: rec.get("dept_id") }, assignee, comments, note);
-  return true;
-}
-
 /**
  * Fuso con cui il PHP interpreta la scadenza: bootstrap.php imposta date_default_timezone 'UTC' e
  * Misc::user2gmtime/Format::parseDateTime fanno `new DateTime($input)` prima di setTimezone(), quindi un
@@ -432,7 +93,7 @@ function parseUserDate(value: string, zone: string): DateTime | null {
   return null;
 }
 
-interface CreateOptions {
+export interface CreateOptions {
   autorespond?: boolean;
   alertstaff?: boolean;
 }
@@ -498,21 +159,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
 
   const topicForms: FormInstance[] = [];
   if (!Object.keys(errors).length) {
-    if (truthy(vars.topicId)) {
-      const t = await loadTopic(tx, Number(vars.topicId));
-      if (t) {
-        const tforms = await loadTopicForms(tx, cfg, t.topic_id, audience);
-        tforms.forEach((F, idx) => {
-          const disabled = F.fields.filter((f) => f.disabled && hasFlag(f, DynamicFormField.ENABLED)).map((f) => f.id);
-          const extra = phpJsonEncode({ disable: disabled });
-          if (F.type === FormType.TICKET) {
-            for (const f of form.fields) if (disabled.includes(f.id)) f.disabled = true;
-            form.sort = idx;
-            form.extra = extra;
-          } else topicForms.push(new FormInstance(F, sourceFor(F), idx, extra, { dates }));
-        });
-      }
-    }
+    if (truthy(vars.topicId)) topicForms.push(...(await topicFormInstances(tx, cfg, Number(vars.topicId), audience, form, sourceFor, dates)));
 
     try {
       vars = await filterTicketData(ctx, origin, vars, [form, ...topicForms], user, null, dates);
@@ -758,8 +405,8 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     if (truthy(vars.assignId)) {
       await assignFromForm(ctx, rec, threadId, String(vars.assignId), String(vars.note ?? ""));
     } else {
-      if (truthy(vars.staffId)) await assignToStaff(ctx, rec, threadId, Number(vars.staffId), true, "Ticket Filter");
-      if (truthy(vars.teamId)) await assignToTeam(ctx, rec, threadId, Number(vars.teamId), !truthy(vars.staffId), "Ticket Filter");
+      if (truthy(vars.staffId)) await autoAssignToStaff(ctx, rec, threadId, Number(vars.staffId), true, "Ticket Filter");
+      if (truthy(vars.teamId)) await autoAssignToTeam(ctx, rec, threadId, Number(vars.teamId), !truthy(vars.staffId), "Ticket Filter");
     }
   }
 
@@ -780,100 +427,4 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   }
 
   return { ok: true, ticketId: rec.id, number: rec.get("number"), messageId, threadId };
-}
-
-async function prioritySelection(executor: DbOrTx, id: number): Promise<{ id: number; label: string } | null> {
-  if (!id) return null;
-  const p = await executor.selectFrom("ticket_priority").select(["priority_id", "priority_desc"]).where("priority_id", "=", id).executeTakeFirst();
-  return p ? { id: p.priority_id, label: p.priority_desc } : null;
-}
-
-interface OpenTicketInput extends CreateTicketVars {
-  /** risposta iniziale (opzionale) */
-  response?: string;
-  /** nota interna (opzionale; commenti dell'assegnazione se c'è assignId) */
-  note?: string;
-  /** notifica: all | user | none */
-  "reply-to"?: string;
-  signature?: "none" | "mine" | "dept";
-  /** s<id> | t<id> */
-  assignId?: string;
-  /** allegati della risposta iniziale */
-  responseFiles?: AttachInput[];
-}
-
-/**
- * Ticket::open($vars, $errors): apertura da agente con controlli dei permessi, risposta iniziale,
- * nota interna e notifica `ticket.notice`.
- */
-export async function openTicket(ctx: WriteContext, input: OpenTicketInput, opts: CreateOptions = {}): Promise<CreateResult> {
-  const { tx, cfg, agent } = ctx;
-  const errors: CreateErrors = {};
-  if (!agent) return { ok: false, errors: { err: "forbidden" } };
-  if (!agent.hasPermInAnyRole(TicketPerm.CREATE)) return { ok: false, errors: { err: "You do not have permission to create tickets" } };
-
-  let role = null;
-  if (truthy(input.deptId)) {
-    const dept = await tx.selectFrom("department").select("id").where("id", "=", Number(input.deptId)).executeTakeFirst();
-    if (dept) {
-      role = agent.roleFor(dept.id);
-      if (!role.perms.has(TicketPerm.CREATE)) return { ok: false, errors: { err: "You do not have permission to create a ticket in this department" } };
-    }
-  }
-  if (input.source !== undefined && !(TICKET_SOURCES as readonly string[]).includes(String(input.source))) errors.source = `Invalid source given - ${String(input.source)}`;
-  if (!truthy(input.uid)) {
-    if (!input.email || !isEmail(String(input.email))) errors.email = "Valid email address is required";
-    if (!input.name) errors.name = "Name is required";
-  }
-  // Regola più stretta del PHP: un ruolo "solo creazione" (reparto senza accesso) non consente l'assegnazione
-  if (truthy(input.assignId) && !(role ? role.perms.has(TicketPerm.ASSIGN) : agent.hasPermInAnyRole(TicketPerm.ASSIGN))) {
-    errors.assignId = "Action Denied. You are not allowed to assign/reassign tickets.";
-  }
-
-  const createVars: CreateTicketVars = { ...input };
-  delete createVars.response;
-  delete createVars.responseFiles;
-  if (Object.keys(errors).length) return { ok: false, errors };
-  const res = await createTicket(ctx, createVars, "staff", { ...opts, autorespond: false });
-  if (!res.ok) return res;
-  // scp/tickets.php: dopo l'apertura si eliminano le bozze dell'agente 'ticket.staff%'
-  // (qui prima delle notifiche, che partono comunque dopo il commit)
-  await deleteDraftsFor(tx, "ticket.staff%", agent.id);
-
-  const rec = (await TicketRecord.load(tx, res.ticketId, true))!;
-  const assigned = rec.get("staff_id") === agent.id || agent.isTeamMember(rec.get("team_id"));
-  const ticketRole = agent.roleFor(rec.get("dept_id"), (await stateOf(tx, rec.row)) === "open" && assigned);
-  const replyTo = String(input["reply-to"] ?? "all");
-  const alert = replyTo.toLowerCase() !== "none";
-  let responseId = 0;
-  const responseText = String(input.response ?? "");
-  if (responseText && ticketRole.perms.has(TicketPerm.REPLY)) {
-    const r = await postReply(ctx, {
-      ticketId: rec.id,
-      response: responseText,
-      replyTo,
-      ccs: Array.isArray(input.ccs) ? (input.ccs as unknown[]).map(Number) : undefined,
-      signature: input.signature,
-      alert: alert && !cfg.bool("ticket_notice_active"),
-      files: input.responseFiles,
-      source: input.source === undefined ? undefined : String(input.source),
-    });
-    if ("entryId" in r) responseId = r.entryId;
-  }
-  if (!truthy(input.assignId) && input.note) {
-    await postNote(ctx, { ticketId: rec.id, note: String(input.note), title: "New Ticket", format: cfg.bool("enable_richtext") ? "html" : "text", alert: false });
-  }
-
-  if (!cfg.bool("ticket_notice_active") || !alert) return res;
-  await rec.reload();
-  const recipients = await ticketRecipients(ctx, rec.get("user_id"), res.threadId, replyTo);
-  if (!recipients) return res;
-  const contacts = (list: { name: string; email: string }[]): MailContact[] => list.map((c) => ({ name: c.name, address: c.email }));
-  await sendNewTicketNotice(
-    ctx,
-    { ticketId: rec.id, threadId: res.threadId, deptId: rec.get("dept_id"), messageId: res.messageId ?? 0, responseId },
-    { to: contacts(recipients.to), cc: contacts(recipients.cc) },
-    String(input.signature ?? "none"),
-  );
-  return res;
 }

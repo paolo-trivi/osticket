@@ -4,7 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { ChatIcon } from "@/icons";
 import { safeColor } from "@/lib/color";
 import { Ticket } from "@/lib/osticket/flags";
-import type { QueueColumnDef } from "@/server/domain/queue/engine";
+import type { QueueColumnDef } from "@/server/domain/queue/columns";
 import type { TicketRow } from "@/server/domain/ticket/rows";
 import { formatDbDate, isoOf, type DateStyle } from "@/server/format/datetime";
 import { cn } from "@/utils";

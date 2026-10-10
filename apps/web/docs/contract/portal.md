@@ -16,13 +16,14 @@ Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.
 startClientSession(login: ClientLogin)        currentClient(): ClientIdentity | null   (cache per richiesta)
 touchClientSession() clientSessionKey() visitorKey(create?) clientResetToken() refreshClientSession(pwv) clientLogout()
 
-// Autenticazione (src/server/domain/client/auth.ts) — solo dominio, usabili dall'harness
-performClientLogin({login, password, ip})            → ClientAuthOutcome
-performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore
-performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null
-performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)
-performConfirm({token, ip})                          → ConfirmOutcome
-lookupByAuthToken(executor, token)  resetTokenValid(executor, cfg, token, userId)
+// Autenticazione (src/server/domain/client/auth*.ts) — solo dominio, usabili dall'harness
+// auth.ts: tipi (ClientLogin, ClientAuthError), tentativi falliti (strike), scritture del login (loginWrites)
+performClientLogin({login, password, ip})            → ClientAuthOutcome                       // auth-login.ts
+performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore   // auth-access-link.ts
+performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null                // auth-access-link.ts
+performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)   // auth-reset.ts
+performConfirm({token, ip})                          → ConfirmOutcome                          // auth-confirm.ts
+lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(executor, cfg, token, userId) (auth-reset.ts)
 
 // Account (src/server/domain/client/account.ts)
 registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})

@@ -3,9 +3,9 @@ import { sql } from "kysely";
 import { TicketStatus } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import type { TicketQueue } from "@/server/domain/queue/engine";
+import type { TicketQueue } from "@/server/domain/queue/queues";
 import { TicketPerm, type Agent } from "@/server/domain/staff/staff";
-import { selectableDepts } from "@/server/domain/ticket/assign";
+import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { queueExportFields } from "@/server/domain/ticket/export";
 import { ticketStatusChoices } from "@/server/domain/ticket/ticket-state";
 

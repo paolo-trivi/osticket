@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
-import { adhocQueue, listQueueTickets, quickSearchCriteria } from "@/server/domain/queue/engine";
+import { listQueueTickets } from "@/server/domain/queue/engine";
+import { adhocQueue, quickSearchCriteria } from "@/server/domain/queue/queues";
 import type { Criterion } from "@/server/domain/queue/fields";
 import { loadAgent } from "@/server/domain/staff/staff";
 

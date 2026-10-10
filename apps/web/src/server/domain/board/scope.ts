@@ -4,15 +4,8 @@ import { sql, type RawBuilder } from "kysely";
 
 import { table, type DbOrTx } from "../../db";
 import { agentQueueNav } from "../queue/context";
-import {
-  adhocQueue,
-  mergeChildFilterSql,
-  queueScope,
-  queueScopeIdsSql,
-  quickSearchCriteria,
-  visibilitySql,
-  type TicketQueue,
-} from "../queue/engine";
+import { adhocQueue, quickSearchCriteria, type TicketQueue } from "../queue/queues";
+import { mergeChildFilterSql, queueScope, queueScopeIdsSql, visibilitySql } from "../queue/scope";
 import type { Agent } from "../staff/staff";
 import { criteriaStates } from "./grouping";
 import {

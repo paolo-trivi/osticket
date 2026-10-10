@@ -12,7 +12,8 @@ Diff test: `test/diff/ticket-create.diff.test.ts` (43 scenari) con le op di `tes
 // src/server/domain/ticket/create.ts — da eseguire dentro runWrite()
 createTicket(ctx: WriteContext, input: CreateTicketVars, origin: "staff" | "web",
              opts?: { autorespond?: boolean; alertstaff?: boolean }): Promise<CreateResult>
-openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>   // agente
+// src/server/domain/ticket/create-open.ts — Ticket::open (agente)
+openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>
 
 type CreateResult =
   | { ok: true; ticketId: number; number: string; messageId: number | null; threadId: number }
@@ -30,6 +31,12 @@ con `actor = { kind: "user", id, name, email, hasAccount, ip }` per il cliente a
 logica di `src/app/api/agent/upload/route.ts`) con `signUploadToken(id, nome, "U<uid>" | "G<sessione>")` e si
 verificano con `verifyUploadTokens(tokens, owner)`. Il portale deve anche eliminare le bozze
 `ticket.client.<ultimi 12 caratteri della sessione>` (open.php).
+
+Moduli di supporto di `createTicket` (che resta intera in `create.ts`): argomento, form del topic e priorità
+(`ticket/create-topic.ts`); `filterTicketData` (`ticket/create-filter.ts`); auto-assegnazione e assegnazione dal
+form di apertura (`ticket/create-assign.ts`); collaboratori e destinatari (`ticket/create-collab.ts`); utente e
+ticket aperti dell'utente (`ticket/create-user.ts`). Filtri: selezione e regole in `filter/ticket-filter.ts`, azioni
+in `filter/ticket-filter-actions.ts`.
 
 Altre API: `uploadFile`, `createAttachmentFile`, `attachFilesToEntry`, `signUploadToken`, `verifyUploadTokens`,
 `threadUploadRules` (`file/upload.ts`); `postCannedReply` (`ticket/create-canned.ts`); `sendFilterEmail`,

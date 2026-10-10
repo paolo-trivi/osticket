@@ -13,7 +13,7 @@ import { pageSizeFor } from "@/server/domain/queue/context";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
 import { countTaskQueues, listTasks, type TaskQueueName } from "@/server/domain/task/tasks";
-import { selectableDepts } from "@/server/domain/ticket/assign";
+import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 import { cn } from "@/utils";

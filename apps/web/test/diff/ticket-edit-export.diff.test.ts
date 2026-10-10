@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
 import { coreConfig } from "@/server/config/config";
-import { loadQueues, orderKeyValues } from "@/server/domain/queue/engine";
+import { orderKeyValues } from "@/server/domain/queue/order";
+import { loadQueues } from "@/server/domain/queue/queues";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { exportQueueCsv } from "@/server/domain/ticket/export";
 

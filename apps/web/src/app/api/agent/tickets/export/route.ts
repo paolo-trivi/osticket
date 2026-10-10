@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { loadQueues, navigableQueues } from "@/server/domain/queue/engine";
+import { loadQueues, navigableQueues } from "@/server/domain/queue/queues";
 import { exportQueueCsv } from "@/server/domain/ticket/export";
 import { agentTimeZone } from "@/server/format/datetime";
 

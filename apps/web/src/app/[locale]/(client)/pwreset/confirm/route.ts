@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { startClientSession } from "@/server/auth/client-auth";
 import { clientIp } from "@/server/auth/session";
-import { performConfirm } from "@/server/domain/client/auth";
+import { performConfirm } from "@/server/domain/client/auth-confirm";
 import { withBase } from "@/lib/base-path";
 
 /**

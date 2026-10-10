@@ -31,7 +31,7 @@ import {
 } from "@/server/domain/task/write";
 import { deleteDraftsFor } from "@/server/domain/ticket/collab";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { selectableDepts } from "@/server/domain/ticket/assign";
+import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
 

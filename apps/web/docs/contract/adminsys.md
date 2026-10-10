@@ -77,7 +77,8 @@ Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al P
 senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mailpit).
 
 ## Filtri — `/admin/filters` (scp/filters.php)
-`saveFilter(tx, id|null, vars)` = `Filter::update`:
+`saveFilter(tx, id|null, vars)` = `Filter::update` (`adminsys/filter.ts`; regole in `adminsys/filter-rules.ts`,
+azioni in `adminsys/filter-actions.ts`):
 - `filter`: isactive, flags, target (`Email` se il target è un id email → `email_id`), name,
   execorder, email_id, match_all_rules, stop_onmatch, notes (sanitize); `created` (nuovo),
   `updated=NOW()` se cambia.

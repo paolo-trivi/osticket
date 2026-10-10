@@ -7,14 +7,9 @@ import TicketListHeader from "@/components/tickets/list/TicketListHeader";
 import TicketListTable from "@/components/tickets/list/TicketListTable";
 import TicketMassBar from "@/components/tickets/mass/TicketMassBar";
 import { agentQueueNav, defaultQueueId, pageSizeFor } from "@/server/domain/queue/context";
-import {
-  adhocQueue,
-  listQueueTickets,
-  queueColumns,
-  queueSorts,
-  quickSearchCriteria,
-  type TicketQueue,
-} from "@/server/domain/queue/engine";
+import { queueColumns, queueSorts } from "@/server/domain/queue/columns";
+import { listQueueTickets } from "@/server/domain/queue/engine";
+import { adhocQueue, quickSearchCriteria, type TicketQueue } from "@/server/domain/queue/queues";
 import { formatAgentName, loadTicketRows } from "@/server/domain/ticket/rows";
 import { agentTimeZone } from "@/server/format/datetime";
 

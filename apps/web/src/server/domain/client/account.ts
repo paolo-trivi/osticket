@@ -15,7 +15,7 @@ import { FormInstance } from "../forms/entry";
 import { hasAnswerRow, isEditableTo, isRequiredFor, isVisibleTo, type FieldErrorCode } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
-import { resetTokenValid } from "./auth";
+import { resetTokenValid } from "./auth-reset";
 import {
   isUserId,
   loadClientAccount,

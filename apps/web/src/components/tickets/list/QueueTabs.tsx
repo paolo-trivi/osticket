@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Link } from "@/i18n/navigation";
 import type { agentQueueNav } from "@/server/domain/queue/context";
-import type { TicketQueue } from "@/server/domain/queue/engine";
+import type { TicketQueue } from "@/server/domain/queue/queues";
 import { cn } from "@/utils";
 
 interface QueueTabsProps {

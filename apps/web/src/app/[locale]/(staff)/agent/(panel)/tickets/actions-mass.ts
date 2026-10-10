@@ -7,7 +7,7 @@ import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { activeTeams } from "@/server/domain/ticket/assign";
+import { activeTeams } from "@/server/domain/ticket/assignees";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { mergeTickets } from "@/server/domain/ticket/merge";
 import {

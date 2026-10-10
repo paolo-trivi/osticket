@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
-import type { queueSorts, TicketQueue } from "@/server/domain/queue/engine";
+import type { queueSorts } from "@/server/domain/queue/columns";
+import type { TicketQueue } from "@/server/domain/queue/queues";
 
 interface TicketListHeaderProps {
   queue: TicketQueue;

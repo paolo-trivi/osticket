@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import TicketCell from "@/components/tickets/TicketCell";
-import type { QueueColumnDef } from "@/server/domain/queue/engine";
+import type { QueueColumnDef } from "@/server/domain/queue/columns";
 import type { TicketRow } from "@/server/domain/ticket/rows";
 
 export interface TicketListProps {

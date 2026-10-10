@@ -2,7 +2,7 @@ import "server-only";
 
 import { db, type DbOrTx } from "../../db";
 import { agentQueueNav } from "../queue/context";
-import type { TicketQueue } from "../queue/engine";
+import type { TicketQueue } from "../queue/queues";
 import type { Agent } from "../staff/staff";
 import { safeColor } from "./grouping";
 import type { BoardSourceOption } from "./types";

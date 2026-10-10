@@ -225,7 +225,10 @@ OST_DIFF_TAG=actions MAILPIT_SMTP_PORT=1026 MAILPIT_HTTP_PORT=8026 \
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio, referral, rimozione referral, scelte dei form |
+| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio |
+| Dominio | `src/server/domain/ticket/assignees.ts` | agenti e team assegnabili, `Dept::canAssign`, reparti selezionabili (scelte dei form) |
+| Dominio | `src/server/domain/ticket/referral.ts` | referral, scelte del form di referral, elenco e rimozione dei referral |
+| Dominio | `src/server/domain/ticket/action-load.ts` | caricamento del ticket con controllo di sessione e permessi |
 | Dominio | `src/server/domain/ticket/transfer.ts` | trasferimento di reparto |
 | Dominio | `src/server/domain/ticket/ticket-state.ts` | cambio stato da menu, riapertura, segna risposto, stati del menu, avviso `isCloseable`, aggancio "deleted" |
 | Dominio | `src/server/domain/ticket/alerts.ts` | destinatari e invio degli avvisi agli agenti |
@@ -658,7 +661,8 @@ Diff test: `test/diff/ticket-create.diff.test.ts` (43 scenari) con le op di `tes
 // src/server/domain/ticket/create.ts — da eseguire dentro runWrite()
 createTicket(ctx: WriteContext, input: CreateTicketVars, origin: "staff" | "web",
              opts?: { autorespond?: boolean; alertstaff?: boolean }): Promise<CreateResult>
-openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>   // agente
+// src/server/domain/ticket/create-open.ts — Ticket::open (agente)
+openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>
 
 type CreateResult =
   | { ok: true; ticketId: number; number: string; messageId: number | null; threadId: number }
@@ -676,6 +680,12 @@ con `actor = { kind: "user", id, name, email, hasAccount, ip }` per il cliente a
 logica di `src/app/api/agent/upload/route.ts`) con `signUploadToken(id, nome, "U<uid>" | "G<sessione>")` e si
 verificano con `verifyUploadTokens(tokens, owner)`. Il portale deve anche eliminare le bozze
 `ticket.client.<ultimi 12 caratteri della sessione>` (open.php).
+
+Moduli di supporto di `createTicket` (che resta intera in `create.ts`): argomento, form del topic e priorità
+(`ticket/create-topic.ts`); `filterTicketData` (`ticket/create-filter.ts`); auto-assegnazione e assegnazione dal
+form di apertura (`ticket/create-assign.ts`); collaboratori e destinatari (`ticket/create-collab.ts`); utente e
+ticket aperti dell'utente (`ticket/create-user.ts`). Filtri: selezione e regole in `filter/ticket-filter.ts`, azioni
+in `filter/ticket-filter-actions.ts`.
 
 Altre API: `uploadFile`, `createAttachmentFile`, `attachFilesToEntry`, `signUploadToken`, `verifyUploadTokens`,
 `threadUploadRules` (`file/upload.ts`); `postCannedReply` (`ticket/create-canned.ts`); `sendFilterEmail`,
@@ -878,7 +888,7 @@ la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `set
   `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
   `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
   `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
-  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter-actions.ts`, invio in
   `ticket/create-alerts.ts`).
 - **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
   = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
@@ -919,13 +929,14 @@ Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.
 startClientSession(login: ClientLogin)        currentClient(): ClientIdentity | null   (cache per richiesta)
 touchClientSession() clientSessionKey() visitorKey(create?) clientResetToken() refreshClientSession(pwv) clientLogout()
 
-// Autenticazione (src/server/domain/client/auth.ts) — solo dominio, usabili dall'harness
-performClientLogin({login, password, ip})            → ClientAuthOutcome
-performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore
-performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null
-performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)
-performConfirm({token, ip})                          → ConfirmOutcome
-lookupByAuthToken(executor, token)  resetTokenValid(executor, cfg, token, userId)
+// Autenticazione (src/server/domain/client/auth*.ts) — solo dominio, usabili dall'harness
+// auth.ts: tipi (ClientLogin, ClientAuthError), tentativi falliti (strike), scritture del login (loginWrites)
+performClientLogin({login, password, ip})            → ClientAuthOutcome                       // auth-login.ts
+performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore   // auth-access-link.ts
+performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null                // auth-access-link.ts
+performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)   // auth-reset.ts
+performConfirm({token, ip})                          → ConfirmOutcome                          // auth-confirm.ts
+lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(executor, cfg, token, userId) (auth-reset.ts)
 
 // Account (src/server/domain/client/account.ts)
 registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})
@@ -1222,7 +1233,8 @@ Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al P
 senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mailpit).
 
 #### Filtri — `/admin/filters` (scp/filters.php)
-`saveFilter(tx, id|null, vars)` = `Filter::update`:
+`saveFilter(tx, id|null, vars)` = `Filter::update` (`adminsys/filter.ts`; regole in `adminsys/filter-rules.ts`,
+azioni in `adminsys/filter-actions.ts`):
 - `filter`: isactive, flags, target (`Email` se il target è un id email → `email_id`), name,
   execorder, email_id, match_all_rules, stop_onmatch, notes (sanitize); `created` (nuovo),
   `updated=NOW()` se cambia.

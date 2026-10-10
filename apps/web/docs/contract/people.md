@@ -123,7 +123,7 @@ la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `set
   `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
   `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
   `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
-  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter-actions.ts`, invio in
   `ticket/create-alerts.ts`).
 - **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
   = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda

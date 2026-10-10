@@ -2,7 +2,8 @@ import { createConnection, type RowDataPacket } from "mysql2/promise";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
-import { createTicket, openTicket, type CreateResult } from "@/server/domain/ticket/create";
+import { createTicket, type CreateResult } from "@/server/domain/ticket/create";
+import { openTicket } from "@/server/domain/ticket/create-open";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { postNote, postReply } from "@/server/domain/ticket/post";
 import { runWrite } from "@/server/domain/write";
