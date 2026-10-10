@@ -12,6 +12,9 @@ import { listTemplateGroups } from "@/server/domain/adminsys/template";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massTemplateAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 /** Set di template email (include/staff/templates.inc.php). */
 export default async function TemplatesPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

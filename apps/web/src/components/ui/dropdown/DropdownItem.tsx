@@ -32,14 +32,14 @@ export const DropdownItem: React.FC<DropdownItemProps> = ({
 
   if (tag === "a" && href) {
     return (
-      <Link href={href} className={combinedClasses} onClick={handleClick}>
+      <Link href={href} role="menuitem" className={combinedClasses} onClick={handleClick}>
         {children}
       </Link>
     );
   }
 
   return (
-    <button onClick={handleClick} className={combinedClasses}>
+    <button type="button" role="menuitem" onClick={handleClick} className={combinedClasses}>
       {children}
     </button>
   );

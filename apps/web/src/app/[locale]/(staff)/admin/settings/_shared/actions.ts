@@ -4,6 +4,7 @@ import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult } from "@/server/actions/result";
 import { parsePhpForm } from "@/server/domain/admin/form-data";
 import { updateSettings, type SettingsPage } from "@/server/domain/admin/settings";
+import { changeOf, withChange } from "@/server/system/changes/changeset";
 
 import { adminWrite, requireAdminAction } from "../../_shared/server";
 
@@ -15,5 +16,5 @@ export async function saveSettingsAction(page: SettingsPage, _prev: AdminFormSta
   if (!PAGES.includes(page)) return { status: "error", errors: { err: "unknown_option" }, nonce: Date.now() };
   const vars = { ...parsePhpForm(form), t: page };
   const r = await adminWrite((tx) => updateSettings(tx, vars, { ip }));
-  return adminFormResult({ ok: r.ok, errors: r.errors }, { locale });
+  return adminFormResult(withChange({ ok: r.ok, errors: r.errors }, changeOf(r)), { locale });
 }

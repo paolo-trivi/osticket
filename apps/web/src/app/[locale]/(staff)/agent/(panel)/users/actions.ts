@@ -4,6 +4,7 @@ import { getLocale } from "next-intl/server";
 import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
+import { withDone } from "@/components/people/PeopleDoneNotice";
 import type { PeopleActionState } from "@/components/people/types";
 import { formFlag, formIds, formNum, formStr } from "@/server/actions/form-data";
 import { nonce, peopleState } from "@/server/actions/result";
@@ -47,7 +48,13 @@ export async function userCreateAction(_prev: PeopleActionState, form: FormData)
   const input = await userFields(form);
   return run(async (ctx) => {
     const r = await createUser(ctx, input);
-    return r.ok ? { ok: true, redirect: `/agent/users/${r.id}`, nonce: nonce() } : peopleState(r);
+    return r.ok
+      ? {
+          ok: true,
+          redirect: withDone(`/agent/users/${r.id}`, "user_created"),
+          nonce: nonce(),
+        }
+      : peopleState(r);
   });
 }
 
@@ -61,8 +68,19 @@ export async function userUpdateAction(_prev: PeopleActionState, form: FormData)
 /** ajax.users.php:delete (con `deletetickets`: User::deleteAllTickets) */
 export async function userDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = userId(form);
-  const r = await run(async (ctx) => peopleState(await deleteUser(ctx, id, { deleteTickets: formFlag(form, "deletetickets"), hardDeleteTicket: deleteTicketViaDeletedStatus })));
-  if (r.ok) redirect({ href: "/agent/users", locale: await getLocale() });
+  const r = await run(async (ctx) =>
+    peopleState(
+      await deleteUser(ctx, id, {
+        deleteTickets: formFlag(form, "deletetickets"),
+        hardDeleteTicket: deleteTicketViaDeletedStatus,
+      }),
+    ),
+  );
+  if (r.ok)
+    redirect({
+      href: withDone("/agent/users", "user_deleted"),
+      locale: await getLocale(),
+    });
   return r;
 }
 
@@ -71,16 +89,24 @@ export async function userOrgAction(_prev: PeopleActionState, form: FormData): P
   const id = userId(form);
   const orgId = formNum(form, "orgId");
   const newName = formStr(form, "orgName").trim();
-  return run(async (ctx) => {
-    let target = orgId;
-    if (!target) {
-      if (!newName) return { error: "invalid", fields: { orgId: "required" }, nonce: nonce() };
-      const o = await createOrg(ctx, { name: newName });
-      if (!o.ok) return peopleState(o);
-      target = o.id;
-    }
-    return peopleState(await setUserOrganization(ctx, id, target));
-  }, [`/agent/users/${id}`, "/agent/orgs"]);
+  return run(
+    async (ctx) => {
+      let target = orgId;
+      if (!target) {
+        if (!newName)
+          return {
+            error: "org_required",
+            fields: { orgId: "required" },
+            nonce: nonce(),
+          };
+        const o = await createOrg(ctx, { name: newName });
+        if (!o.ok) return peopleState(o);
+        target = o.id;
+      }
+      return peopleState(await setUserOrganization(ctx, id, target));
+    },
+    [`/agent/users/${id}`, "/agent/orgs"],
+  );
 }
 
 function accountVars(form: FormData): AccountVars {
@@ -130,15 +156,41 @@ export async function userMassAction(_prev: PeopleActionState, form: FormData): 
   const action = formStr(form, "do");
   let op: UserMassAction;
   if (action === "delete") op = { action, deleteTickets: formFlag(form, "deletetickets") };
-  else if (action === "setorg") op = { action, orgId: formNum(form, "orgId") };
-  else if (["lock", "unlock", "reset", "register"].includes(action)) op = { action: action as "lock" };
+  else if (action === "setorg") {
+    // il PHP sceglie l'organizzazione con un dialogo di ricerca che la richiede
+    const orgId = formNum(form, "orgId");
+    if (!orgId)
+      return {
+        error: "org_required",
+        fields: { orgId: "required" },
+        nonce: nonce(),
+      };
+    op = { action, orgId };
+  } else if (["lock", "unlock", "reset", "register"].includes(action)) op = { action: action as "lock" };
   else return { error: "invalid", nonce: nonce() };
-  return run(async (ctx) => {
-    const r = await massUserAction(ctx, ids, op);
-    if (r.error) return { error: r.error, nonce: nonce() };
-    if (!r.count) return { error: "none_processed", nonce: nonce() };
-    return { ok: true, count: r.count, notice: r.count === ids.length ? "mass_done" : "mass_partial", nonce: nonce() };
-  }, ids.map((i) => `/agent/users/${i}`));
+  return run(
+    async (ctx) => {
+      const r = await massUserAction(ctx, ids, op);
+      if (r.error) return { error: r.error, nonce: nonce() };
+      if (!r.count) {
+        // Blocco, sblocco e reset valgono solo per gli utenti registrati: se nessuno ha un account il
+        // messaggio lo dice, invece del generico "Unable to manage any of the selected end users"
+        if (
+          (op.action === "lock" || op.action === "unlock" || op.action === "reset") &&
+          !(await ctx.tx.selectFrom("user_account").select("id").where("user_id", "in", ids).executeTakeFirst())
+        )
+          return { error: `${op.action}_guest`, nonce: nonce() };
+        return { error: "none_processed", nonce: nonce() };
+      }
+      return {
+        ok: true,
+        count: r.count,
+        notice: r.count === ids.length ? "mass_done" : "mass_partial",
+        nonce: nonce(),
+      };
+    },
+    ids.map((i) => `/agent/users/${i}`),
+  );
 }
 
 /** ajax.users.php:importUsers / scp/users.php do=import-users (testo CSV incollato o file) */

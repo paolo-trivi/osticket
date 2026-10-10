@@ -25,6 +25,7 @@
     "moveDown": "Move down",
     "select": "— Select —",
     "none": "— None —",
+    "slaDisabled": "(disabled)",
     "done": {
       "edit": "Ticket updated.",
       "field": "Field updated.",
@@ -39,6 +40,7 @@
       "delete": "Ticket deleted."
     },
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "generic": "Operation failed. Please try again.",
       "session_expired": "Session expired: please sign in again.",
       "not_found": "Ticket not found or not accessible.",
@@ -102,7 +104,7 @@
     "selectTopic": "— Select a help topic —",
     "sla": "SLA plan",
     "duedate": "Due date",
-    "duedateTz": "As in osTicket, the time is interpreted as UTC.",
+    "duedateTz": "The time is in your time zone, as in the ticket view.",
     "internalNote": "Internal note",
     "notePlaceholder": "Reason for editing the ticket (optional)",
     "sources": {
@@ -122,6 +124,8 @@
     "noCollaborators": "No collaborators.",
     "collaborator": "Collaborator",
     "active": "Active",
+    "collabActive": "{name}: active",
+    "collabRemove": "Remove {name}",
     "addCollaborator": "Add a collaborator",
     "deleteTitle": "Delete ticket #{number}",
     "deleteConfirm": "Yes, delete",
@@ -137,6 +141,7 @@
     "entryTitle": "Ticket #{number}: edit a thread entry",
     "entry": "Entry",
     "entryTitleField": "Title",
+    "entryBody": "Entry text",
     "entryTypes": {
       "M": "Message",
       "R": "Response",
@@ -147,7 +152,11 @@
     "mergeHelp": "Choose the tickets to merge. The first ticket in the list is the parent: reorder with the arrows.",
     "linkHelp": "Choose the tickets to link. The first ticket in the list is the parent: reorder with the arrows.",
     "addTicket": "Add a ticket",
-    "ticketNumber": "Ticket number",
+    "ticketNumber": "Ticket number (at least 3 digits)",
+    "noTickets": "No tickets found",
+    "mergedNoAdd": "Merged tickets cannot be added manually. They must be preselected.",
+    "alreadyInList": "This ticket is already in the list.",
+    "unlinkWarning": "Clicking Save Changes will unlink: {numbers}. Other changes to the list will not be applied.",
     "participants": "Participants",
     "participantsUser": "User",
     "participantsAll": "User + collaborators",
@@ -200,6 +209,7 @@
       "selectAgent": "— Select an agent —",
       "selectTeam": "— Select a team —",
       "exportTitle": "Export queue “{queue}”",
+      "exportTitleList": "Export: {queue}",
       "exportHelp": "Choose the fields to export. The CSV file contains the queue tickets visible to you.",
       "delimiter": "Delimiter",
       "delimiters": {
@@ -210,6 +220,7 @@
       },
       "download": "Download CSV",
       "errors": {
+        "read_only": "Operation not available: TailTicket is read-only.",
         "select_tickets": "Select at least one ticket.",
         "assignee_required": "Choose an assignee.",
         "dept_required": "Choose a department.",

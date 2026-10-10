@@ -1,17 +1,17 @@
+import { ArrowLeft } from "lucide-react";
+
+import NewLink from "@/components/admin/NewLink";
 import { Link } from "@/i18n/navigation";
 
 export default function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="text-sm font-medium text-brand-500 hover:text-brand-600">
-      <span className="inline-block rtl:rotate-180">←</span> {label}
+    <Link href={href} className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-500 hover:text-brand-600">
+      <ArrowLeft className="size-4 rtl:rotate-180" /> {label}
     </Link>
   );
 }
 
+/** "Nuovo …" delle liste admin (disattivato se l'amministrazione non è scrivibile). */
 export function NewButton({ href, label }: { href: string; label: string }) {
-  return (
-    <Link href={href} className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600">
-      {label}
-    </Link>
-  );
+  return <NewLink href={href} label={label} />;
 }

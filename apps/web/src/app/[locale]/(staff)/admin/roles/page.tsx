@@ -6,14 +6,18 @@ import { Link } from "@/i18n/navigation";
 import { RoleModel } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 
+import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massRolesAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("roles");
 
 /** Elenco ruoli (include/staff/roles.inc.php). */
 export default async function RolesPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  await requireAdmin(locale);
+  const date = await dateFormatter(await requireAdmin(locale), locale);
   const t = await getTranslations("admRoles");
   const u = await getTranslations("admUi");
   const sp = await searchParams;
@@ -52,8 +56,8 @@ export default async function RolesPage({ params, searchParams }: { params: Prom
               {r.flags & RoleModel.ENABLED ? u("status.active") : u("status.disabled")}
             </Badge>
           ),
-          created: String(r.created),
-          updated: String(r.updated),
+          created: date(r.created, "date"),
+          updated: date(r.updated),
         },
       }))}
     />

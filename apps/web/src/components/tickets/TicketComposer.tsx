@@ -7,15 +7,8 @@ import AttachmentInput from "@/components/forms/AttachmentInput";
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/utils";
 
-import {
-  cannedTextAction,
-  lockAction,
-  postNoteAction,
-  postReplyAction,
-  releaseLockAction,
-  type LockState,
-  type PostState,
-} from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions";
+import { cannedTextAction, lockAction, postNoteAction, postReplyAction, releaseLockAction, type LockState, type PostState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 export interface ComposerLabels {
   reply: string;
@@ -41,7 +34,16 @@ export interface ComposerLabels {
   posted: string;
   lockedBy: string;
   errors: Record<string, string>;
-  editor: { bold: string; italic: string; underline: string; bullets: string; numbers: string; link: string; quote: string; linkPrompt: string };
+  editor: {
+    bold: string;
+    italic: string;
+    underline: string;
+    bullets: string;
+    numbers: string;
+    link: string;
+    quote: string;
+    linkPrompt: string;
+  };
 }
 
 interface Props {
@@ -50,7 +52,12 @@ interface Props {
   lockMode: number;
   statuses: { id: number; name: string; state: string }[];
   currentStatusId: number;
-  collaborators: { userId: number; name: string; email: string; active: boolean }[];
+  collaborators: {
+    userId: number;
+    name: string;
+    email: string;
+    active: boolean;
+  }[];
   canned: { id: number; title: string }[];
   hasMySignature: boolean;
   deptSignature: boolean;
@@ -61,6 +68,9 @@ interface Props {
   /** dimensione massima di un allegato in byte */
   maxFileSize?: number;
 }
+
+/** Stato del form con il numero di invii riusciti (chiave degli allegati: si svuotano solo dopo un invio). */
+type ComposerState = PostState & { sent?: number };
 
 const selectCls =
   "h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -74,18 +84,22 @@ export default function TicketComposer(props: Props) {
   const router = useRouter();
   const replyEditor = useRef<RichTextEditorHandle>(null);
   const noteEditor = useRef<RichTextEditorHandle>(null);
+  const replyForm = useRef<HTMLFormElement>(null);
+  const noteForm = useRef<HTMLFormElement>(null);
 
   // Dopo l'invio il server rilascia il lock: si azzera anche lo stato locale
-  const withLockReset = (fn: (prev: PostState, fd: FormData) => Promise<PostState>) => async (prev: PostState, fd: FormData) => {
-    const r = await fn(prev, fd);
-    if (r.ok) {
-      lockRef.current = { id: 0 };
-      setLock({ id: 0 });
-    }
-    return r;
-  };
-  const [replyState, replyAction, replyPending] = useActionState<PostState, FormData>(withLockReset(postReplyAction), {});
-  const [noteState, noteAction, notePending] = useActionState<PostState, FormData>(withLockReset(postNoteAction), {});
+  const withLockReset =
+    (fn: (prev: PostState, fd: FormData) => Promise<PostState>) =>
+    async (prev: ComposerState, fd: FormData): Promise<ComposerState> => {
+      const r = await fn(prev, fd);
+      if (r.ok) {
+        lockRef.current = { id: 0 };
+        setLock({ id: 0 });
+      }
+      return { ...r, sent: (prev.sent ?? 0) + (r.ok ? 1 : 0) };
+    };
+  const [replyState, replyAction, replyPending] = useActionState<ComposerState, FormData>(withLockReset(postReplyAction), {});
+  const [noteState, noteAction, notePending] = useActionState<ComposerState, FormData>(withLockReset(postNoteAction), {});
 
   const acquire = useCallback(async () => {
     if (!lockMode) return;
@@ -109,10 +123,13 @@ export default function TicketComposer(props: Props) {
   }, [lock, acquire]);
 
   const state = tab === "reply" ? replyState : noteState;
+  // Dopo un invio riuscito il form torna ai valori iniziali (solo allora: dopo un errore resta com'è)
   useEffect(() => {
     if (!state.ok) return;
+    (tab === "reply" ? replyForm : noteForm).current?.reset();
     (tab === "reply" ? replyEditor : noteEditor).current?.clear();
-    if (state.closed) router.push("/agent/tickets");
+    // chiusura del ticket: ritorno alla lista con l'esito (TicketDoneNotice)
+    if (state.closed) router.push(`/agent/tickets?done=status&tid=${ticketId}`);
     else router.refresh();
   }, [state.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -142,13 +159,13 @@ export default function TicketComposer(props: Props) {
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
-      <div className="flex border-b border-gray-200 dark:border-gray-800">
+      <div role="tablist" className="flex border-b border-gray-200 dark:border-gray-800">
         {props.canReply && (
-          <TabButton active={tab === "reply"} onClick={() => setTab("reply")}>
+          <TabButton id={`composer-${ticketId}-reply`} active={tab === "reply"} onClick={() => setTab("reply")}>
             {labels.reply}
           </TabButton>
         )}
-        <TabButton active={tab === "note"} onClick={() => setTab("note")}>
+        <TabButton id={`composer-${ticketId}-note`} active={tab === "note"} onClick={() => setTab("note")}>
           {labels.note}
         </TabButton>
       </div>
@@ -169,7 +186,14 @@ export default function TicketComposer(props: Props) {
         </p>
       )}
 
-      <form action={replyAction} className={cn("space-y-4 p-5", tab !== "reply" && "hidden")}>
+      <form
+        ref={replyForm}
+        onSubmit={submitKeepingValues(replyAction)}
+        id={`composer-${ticketId}-reply-panel`}
+        role="tabpanel"
+        aria-labelledby={`composer-${ticketId}-reply`}
+        className={cn("space-y-4 p-5", tab !== "reply" && "hidden")}
+      >
         <input type="hidden" name="ticketId" value={ticketId} />
         <input type="hidden" name="lockCode" value={lock.code ?? ""} />
         <div className="flex flex-wrap gap-4">
@@ -209,7 +233,7 @@ export default function TicketComposer(props: Props) {
           </fieldset>
         )}
         <RichTextEditor ref={replyEditor} name="response" placeholder={labels.replyPlaceholder} onActivity={lockMode === 2 ? acquire : undefined} labels={labels.editor} />
-        {props.uploadUrl && <AttachmentInput key={`r${replyState.nonce ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
+        {props.uploadUrl && <AttachmentInput key={`r${replyState.sent ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-theme-sm text-gray-600 dark:text-gray-400">
             {labels.signature}
@@ -230,16 +254,24 @@ export default function TicketComposer(props: Props) {
         </div>
       </form>
 
-      <form action={noteAction} className={cn("space-y-4 p-5", tab !== "note" && "hidden")}>
+      <form
+        ref={noteForm}
+        onSubmit={submitKeepingValues(noteAction)}
+        id={`composer-${ticketId}-note-panel`}
+        role="tabpanel"
+        aria-labelledby={`composer-${ticketId}-note`}
+        className={cn("space-y-4 p-5", tab !== "note" && "hidden")}
+      >
         <input type="hidden" name="ticketId" value={ticketId} />
         <input type="hidden" name="lockCode" value={lock.code ?? ""} />
         <input
           name="title"
           placeholder={labels.noteTitle}
+          aria-label={labels.noteTitle}
           className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
         />
         <RichTextEditor ref={noteEditor} name="note" placeholder={labels.notePlaceholder} onActivity={lockMode === 2 ? acquire : undefined} labels={labels.editor} />
-        {props.uploadUrl && <AttachmentInput key={`n${noteState.nonce ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
+        {props.uploadUrl && <AttachmentInput key={`n${noteState.sent ?? 0}`} name="files" uploadUrl={props.uploadUrl} maxSize={props.maxFileSize} />}
         <div className="flex flex-wrap items-end gap-4">
           {statusSelect}
           <button
@@ -255,10 +287,14 @@ export default function TicketComposer(props: Props) {
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({ id, active, onClick, children }: { id: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
+      id={id}
+      role="tab"
+      aria-selected={active}
+      aria-controls={`${id}-panel`}
       onClick={onClick}
       className={cn(
         "px-5 py-3 text-sm font-medium",

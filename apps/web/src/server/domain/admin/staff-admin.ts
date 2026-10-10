@@ -25,7 +25,9 @@ import { usernameError } from "./validator";
  * sono in staff-password.ts, eliminazione e azioni di massa in staff-mass.ts.
  *
  * Stranezze del PHP replicate:
- * - il form di modifica non ha il campo "isvisible": ogni salvataggio dall'admin imposta isvisible = 0;
+ * - il form (staff.inc.php) non ha il campo "isvisible" e Staff::update imposta 0: in creazione per
+ *   l'ORM null == 0 non è una modifica e resta il default della colonna (1), in modifica si scrive 0.
+ *   Il valore non è letto da nessuna pagina (né del PHP né di Next), quindi non c'è effetto visibile;
  * - il controllo "unico amministratore attivo" confronta con l'id trovato dall'ultima ricerca per
  *   username/email ($uid), non con l'agente modificato.
  * Differenze: una password che non rispetta la politica genera un'eccezione non gestita nel PHP;
@@ -78,7 +80,9 @@ export async function saveStaff(executor: DbOrTx, staffId: number | null, input:
     if (uid && (!id || uid !== id)) errors.username = "in_use";
   }
   const email = str(vars.email);
-  if (!email || !(await isValidEmail(email, cfg.bool("verify_email_addrs")))) errors.email = "invalid";
+  // il PHP ha un solo messaggio ("Valid email is required"): qui vuoto → obbligatorio, altrimenti non valido
+  if (!email) errors.email = "required";
+  else if (!(await isValidEmail(email, cfg.bool("verify_email_addrs")))) errors.email = "invalid";
   else if (await executor.selectFrom("email").select("email_id").where("email", "=", email).executeTakeFirst()) errors.email = "system_email";
   else {
     uid = (await executor.selectFrom("staff").select("staff_id").where("email", "=", email).executeTakeFirst())?.staff_id ?? 0;
@@ -94,7 +98,10 @@ export async function saveStaff(executor: DbOrTx, staffId: number | null, input:
 
   // Deve restare almeno un amministratore attivo
   if (vars.isadmin !== "1" || vars.islocked === "1") {
-    const { rows } = await sql<{ cnt: number; sid: number | null }>`SELECT count(*) AS cnt, max(staff_id) AS sid FROM ${table("staff")} WHERE isadmin = 1 AND isactive = 1`.execute(executor);
+    const { rows } = await sql<{
+      cnt: number;
+      sid: number | null;
+    }>`SELECT count(*) AS cnt, max(staff_id) AS sid FROM ${table("staff")} WHERE isadmin = 1 AND isactive = 1`.execute(executor);
     const r = rows[0];
     if (r && Number(r.cnt) === 1 && phpLooseEquals(r.sid, uid)) errors.isadmin = "last_admin";
   }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "kysely";
 
-import { Dept, Team } from "@/lib/osticket/flags";
+import { Dept } from "@/lib/osticket/flags";
 import { ObjectType } from "@/lib/osticket/object-types";
 
 import type { ConfigNamespace } from "../../config/config";
@@ -78,7 +78,9 @@ async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespac
   const d = await executor.selectFrom("department").select("manager_id").where("id", "=", deptId).executeTakeFirst();
   if (!d) return [];
   const [x, y] = staffSortColumns(cfg.str("agent_name_format"));
-  const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
+  const { rows } = await sql<{
+    staff_id: number;
+  }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
     LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${deptId})
     WHERE (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId})
     ORDER BY S.${sql.ref(x)}, S.${sql.ref(y)}`.execute(executor);
@@ -105,7 +107,9 @@ interface TeamInfo {
 export async function loadTeam(executor: DbOrTx, teamId: number): Promise<TeamInfo | null> {
   const t = await executor.selectFrom("team").select(["team_id", "name", "flags", "lead_id"]).where("team_id", "=", teamId).executeTakeFirst();
   if (!t) return null;
-  const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("team_member")} WHERE team_id = ${teamId}`.execute(executor);
+  const { rows } = await sql<{
+    n: number;
+  }>`SELECT COUNT(*) AS n FROM ${table("team_member")} WHERE team_id = ${teamId}`.execute(executor);
   return { ...t, members: Number(rows[0]?.n ?? 0) };
 }
 
@@ -141,7 +145,11 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
     conds.push(sql`(S.dept_id IN (${depts}) OR EXISTS (SELECT 1 FROM ${table("staff_dept_access")} X WHERE X.staff_id = S.staff_id AND X.dept_id IN (${depts})))`);
   }
   const order = ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format")) ? sql`S.lastname, S.firstname` : sql`S.firstname, S.lastname`;
-  const { rows } = await sql<{ staff_id: number; firstname: string | null; lastname: string | null }>`
+  const { rows } = await sql<{
+    staff_id: number;
+    firstname: string | null;
+    lastname: string | null;
+  }>`
     SELECT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S WHERE ${sql.join(conds, sql` AND `)} ORDER BY ${order}`.execute(executor);
   return rows.map((r) => ({
     id: r.staff_id,
@@ -149,9 +157,5 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
   }));
 }
 
-/** Team::getActiveTeams() */
-export async function activeTeams(executor: DbOrTx) {
-  const { rows } = await sql<{ team_id: number; name: string }>`SELECT T.team_id, T.name FROM ${table("team")} T
-    WHERE (T.flags & ${sql.lit(Team.ENABLED)}) != 0 AND EXISTS (SELECT 1 FROM ${table("team_member")} M WHERE M.team_id = T.team_id) ORDER BY T.name`.execute(executor);
-  return rows.map((r) => ({ id: r.team_id, name: r.name }));
-}
+/** Team::getActiveTeams(): una sola implementazione, in ticket/assignees */
+export { activeTeams } from "../ticket/assignees";

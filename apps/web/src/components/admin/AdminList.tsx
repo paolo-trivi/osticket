@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
 import DataTable, { PageHeader, type DataColumn } from "@/components/common/DataTable";
-import { Link } from "@/i18n/navigation";
 
 import AdminNotice from "./AdminNotice";
 import MassBar from "./MassBar";
+import NewLink from "./NewLink";
 
 /**
  * Lista dell'area admin: intestazione con "Nuovo", esito delle azioni di massa, tabella con le
@@ -32,23 +32,13 @@ export default function AdminList({
   columns: DataColumn[];
   rows: { id: number; label: string; cells: Record<string, ReactNode> }[];
   empty: string;
-  notice: { ok?: string; n?: string; err?: string };
+  notice: { ok?: string; n?: string; err?: string; cs?: string };
   extra?: ReactNode;
 }) {
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={title}
-        subtitle={subtitle}
-        actions={
-          newHref ? (
-            <Link href={newHref} className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600">
-              {newLabel}
-            </Link>
-          ) : undefined
-        }
-      />
-      <AdminNotice ok={notice.ok} n={notice.n} err={notice.err} />
+      <PageHeader title={title} subtitle={subtitle} actions={newHref ? <NewLink href={newHref} label={newLabel ?? ""} /> : undefined} />
+      <AdminNotice ok={notice.ok} n={notice.n} err={notice.err} cs={notice.cs} />
       <form action={action} className="space-y-4">
         <MassBar actions={actions} />
         <DataTable

@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import type React from "react";
 
 import { Link } from "@/i18n/navigation";
-import { ChatIcon, PadlockIcon, PaperclipIcon } from "@/icons";
+import { Lock, MessageSquare, Paperclip } from "lucide-react";
 import type { BoardCard } from "@/server/domain/board/types";
 import { cn } from "@/utils";
 
@@ -94,14 +94,9 @@ export default function BoardCardItem({
           <span className="flex items-center gap-1.5 text-theme-xs font-medium text-gray-500 dark:text-gray-400">
             <span className="font-mono">#{card.number}</span>
             {card.lockedBy && (
-              <span
-                title={t("locked", { name: card.lockedBy })}
-                className="text-warning-600 dark:text-warning-400"
-              >
-                <PadlockIcon className="size-3.5" aria-hidden />
-                <span className="sr-only">
-                  {t("locked", { name: card.lockedBy })}
-                </span>
+              <span title={t("locked", { name: card.lockedBy })} className="text-warning-600 dark:text-warning-400">
+                <Lock className="size-3.5" aria-hidden />
+                <span className="sr-only">{t("locked", { name: card.lockedBy })}</span>
               </span>
             )}
           </span>
@@ -121,12 +116,7 @@ export default function BoardCardItem({
         title={[card.user, card.dept, card.topic].filter(Boolean).join(" · ")}
       >
         {card.user}
-        {card.dept && (
-          <span className="text-gray-400 dark:text-gray-500">
-            {" "}
-            · {card.dept}
-          </span>
-        )}
+        {card.dept && <span className="text-gray-400 dark:text-gray-500"> · {card.dept}</span>}
       </p>
 
       {(card.overdue || card.dueSoon) && (
@@ -157,11 +147,8 @@ export default function BoardCardItem({
         <PriorityPill priority={card.priority} />
         <div className="flex min-w-0 flex-1 items-center gap-2 text-theme-xs text-gray-500 dark:text-gray-400">
           {card.threadCount > 0 && (
-            <span
-              className="inline-flex items-center gap-0.5"
-              title={t("thread", { count: card.threadCount })}
-            >
-              <ChatIcon viewBox="0 0 24 24" className="size-3.5" aria-hidden />
+            <span className="inline-flex items-center gap-0.5" title={t("thread", { count: card.threadCount })}>
+              <MessageSquare className="size-3.5" aria-hidden />
               {card.threadCount}
               <span className="sr-only">
                 {t("thread", { count: card.threadCount })}
@@ -169,11 +156,8 @@ export default function BoardCardItem({
             </span>
           )}
           {card.attachments > 0 && (
-            <span
-              className="inline-flex items-center gap-0.5"
-              title={t("attachments", { count: card.attachments })}
-            >
-              <PaperclipIcon className="size-3.5" aria-hidden />
+            <span className="inline-flex items-center gap-0.5" title={t("attachments", { count: card.attachments })}>
+              <Paperclip className="size-3.5" aria-hidden />
               {card.attachments}
               <span className="sr-only">
                 {t("attachments", { count: card.attachments })}

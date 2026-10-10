@@ -18,7 +18,7 @@ import {
   updateTaskFields,
 } from "@/server/domain/task/write";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
@@ -32,7 +32,7 @@ afterAll(closeDb);
 async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
 async function withTask<T>(staffId: number, taskId: number, fn: (ctx: WriteContext, task: NonNullable<Awaited<ReturnType<typeof loadTaskRow>>>) => Promise<T>): Promise<T> {
@@ -92,9 +92,26 @@ describe("task: PHP vs TypeScript", () => {
         (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
     );
     const fields = { stanza: "dodici" };
-    const args = { agent: 2, title: "Titolo valido", description: "<p>desc</p>", deptId: 1, duedate: "", fields };
-    const php = await runPhp<{ ok: boolean; errors: [unknown, Record<string, string[]>] }>({ op: "task.create", args });
-    const ts = await asAgent(2, (ctx) => createTask(ctx, { title: args.title, description: args.description, deptId: 1, fields }));
+    const args = {
+      agent: 2,
+      title: "Titolo valido",
+      description: "<p>desc</p>",
+      deptId: 1,
+      duedate: "",
+      fields,
+    };
+    const php = await runPhp<{
+      ok: boolean;
+      errors: [unknown, Record<string, string[]>];
+    }>({ op: "task.create", args });
+    const ts = await asAgent(2, (ctx) =>
+      createTask(ctx, {
+        title: args.title,
+        description: args.description,
+        deptId: 1,
+        fields,
+      }),
+    );
     expect(php.ok).toBe(false);
     expect(Object.keys(php.errors[1])).toEqual(["71"]);
     expect(ts).toEqual({ ok: false, error: "invalid", fields: { stanza: "number" } });
@@ -174,8 +191,8 @@ describe("task: PHP vs TypeScript", () => {
     // in entrambi i casi il PHP ignora la configurazione e usa lo stato predefinito.
     await execBoth(
       "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
-      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":false,\"reopenstatus\":6}' WHERE id = 3",
-      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":3}' WHERE id = 2",
+      'UPDATE {p}ticket_status SET properties = \'{"allowreopen":false,"reopenstatus":6}\' WHERE id = 3',
+      'UPDATE {p}ticket_status SET properties = \'{"allowreopen":true,"reopenstatus":3}\' WHERE id = 2',
       "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id IN (2, 3)",
       "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
       "UPDATE {p}ticket SET status_id = 2, closed = NOW(), topic_id = 0 WHERE ticket_id = 24",
@@ -190,7 +207,7 @@ describe("task: PHP vs TypeScript", () => {
   it("riapertura del ticket dal task con stato di riapertura configurato", async () => {
     await execBoth(
       "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
-      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":6}' WHERE id = 3",
+      'UPDATE {p}ticket_status SET properties = \'{"allowreopen":true,"reopenstatus":6}\' WHERE id = 3',
       "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id = 3",
       "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
     );

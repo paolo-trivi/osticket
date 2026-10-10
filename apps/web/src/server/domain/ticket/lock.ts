@@ -7,6 +7,7 @@ import { Lock } from "@/lib/osticket/flags";
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { randCode } from "../../mail/message-id";
+import { canWrite } from "../../system/write-mode";
 import { TicketRecord } from "./record";
 
 /**
@@ -32,7 +33,13 @@ export function lockEnabled(cfg: ConfigNamespace): boolean {
 
 async function lockRow(executor: DbOrTx, lockId: number): Promise<LockInfo | null> {
   if (!lockId) return null;
-  const { rows } = await sql<{ lock_id: number; staff_id: number; code: string | null; time: number; expired: number }>`
+  const { rows } = await sql<{
+    lock_id: number;
+    staff_id: number;
+    code: string | null;
+    time: number;
+    expired: number;
+  }>`
     SELECT lock_id, staff_id, code, GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), expire)) AS time, (NOW() > expire) AS expired
     FROM ${sql.table("lock")} WHERE lock_id = ${lockId}`.execute(executor);
   const r = rows[0];
@@ -98,7 +105,10 @@ export async function releaseTicketLock(executor: DbOrTx, ticketId: number, staf
   return true;
 }
 
-/** Verifica del lock prima di risposta/nota (scp/tickets.php). */
+/**
+ * Verifica del lock prima di risposta/nota (scp/tickets.php). Senza scritture operative consentite i
+ * lock non si acquisiscono: nessun controllo, l'invio risponde read_only (runWrite).
+ */
 export async function checkLockForPost(
   executor: DbOrTx,
   cfg: ConfigNamespace,
@@ -107,6 +117,7 @@ export async function checkLockForPost(
   lockCode: string | undefined,
 ): Promise<null | "lock_required" | "locked_by_other" | "lock_expired"> {
   if (!lockEnabled(cfg)) return null;
+  if (!(await canWrite("operational"))) return null;
   const lock = await ticketLock(executor, ticketId);
   if (!lock) return "lock_required";
   if (lock.staff_id !== staffId) return "locked_by_other";

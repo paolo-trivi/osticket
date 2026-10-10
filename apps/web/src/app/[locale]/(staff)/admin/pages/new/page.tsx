@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import { requireAdmin } from "../../guard";
 import { savePageAction } from "../actions";
 import { PageFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("pages");
 
 export default async function NewSitePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import EditTicketForm from "@/components/portal/EditTicketForm";
 import { redirect } from "@/i18n/navigation";
 import { fieldKey, type DynamicFormView } from "@/lib/forms/dynamic-field";
+import { parseId } from "@/lib/route-id";
 import { coreConfig } from "@/server/config/config";
 import { clientEditForms } from "@/server/domain/client/ticket-edit";
 import { loadClientTicketView } from "@/server/domain/client/ticket-view";
@@ -22,7 +23,7 @@ export default async function EditClientTicketPage({ params }: { params: Promise
   setRequestLocale(locale);
   const client = await requireClient(locale, `/tickets/${id}/edit`);
   const cfg = await coreConfig();
-  const ticketId = Number(id) || 0;
+  const ticketId = parseId(id) ?? 0;
   const view = await loadClientTicketView(cfg, client, ticketId);
   if (!view || !view.canEdit) redirect({ href: `/tickets/${ticketId}`, locale });
   const t = await getTranslations("portal.ticket");

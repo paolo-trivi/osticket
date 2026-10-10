@@ -143,6 +143,28 @@ export function quickSearchCriteria(query: string): Criterion[] | null {
   return [[":keywords", null, q]];
 }
 
+/** Parametri di una lista ad hoc: ricerca rapida (?q), ticket di un utente (?user) o di un'organizzazione (?org). */
+export interface AdhocListParams {
+  q?: string;
+  user?: string;
+  org?: string;
+}
+
+/**
+ * Ricerca ad hoc della lista ticket (scp/tickets.php a=search, ?uid=, ?orgid=), la stessa per la lista e
+ * per il suo export: null se non c'è (o se la ricerca rapida non è valida, es. troppe parole).
+ */
+export function adhocListQueue(agent: Agent, p: AdhocListParams, titles: { user: string; org: string }): TicketQueue | null {
+  const query = p.q?.trim() ?? "";
+  if (query) {
+    const criteria = quickSearchCriteria(query);
+    return criteria ? adhocQueue(agent, criteria, query) : null;
+  }
+  if (p.user) return adhocQueue(agent, [["user_id", "equal", Number(p.user)]], titles.user);
+  if (p.org) return adhocQueue(agent, [["user__org_id", "equal", Number(p.org)]], titles.org);
+  return null;
+}
+
 /** Code visibili nella navigazione dell'agente: di sistema o personali, non disattivate. */
 export function navigableQueues(all: Map<number, TicketQueue>, agent: Agent): TicketQueue[] {
   return [...all.values()].filter(

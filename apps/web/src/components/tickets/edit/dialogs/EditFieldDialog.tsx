@@ -32,7 +32,16 @@ export default function EditFieldDialog({ data, onClose, onSuccess }: { data: Ti
         )}
         {field?.kind === "sla" && (
           <Field label={t("sla")}>
-            <Select name="value" defaultValue={String(e.slaId || "")} options={e.slas.map((x) => ({ value: String(x.id), label: x.name }))} required />
+            <Select
+              name="value"
+              defaultValue={String(e.slaId || "")}
+              empty={e.slaId ? undefined : t("select")}
+              options={e.slas.map((x) => ({
+                value: String(x.id),
+                label: x.name,
+              }))}
+              required
+            />
           </Field>
         )}
         {field?.kind === "source" && (

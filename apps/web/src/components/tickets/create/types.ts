@@ -4,7 +4,8 @@ import type { DynamicFormView } from "@/lib/forms/dynamic-field";
 export interface NewTicketOptions {
   topics: { id: number; name: string }[];
   depts: { id: number; name: string }[];
-  slas: { id: number; name: string }[];
+  /** tutti gli SLA, come SLA::getSLAs() (`active` false: disattivato) */
+  slas: { id: number; name: string; active?: boolean }[];
   agents: { id: number; name: string }[];
   teams: { id: number; name: string }[];
   statuses: { id: number; name: string; state: string }[];

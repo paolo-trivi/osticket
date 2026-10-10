@@ -11,7 +11,7 @@ import { formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { isPortalPath, safeRedirectPath } from "@/server/actions/redirect-path";
 import {
   clientLogout,
-  clientMustChangePassword,
+  clientPasswordChangeEnforced,
   clientResetToken,
   currentClient,
   passwordChangePending,
@@ -57,8 +57,11 @@ export async function portalLoginAction(_prev: PortalLoginState, fd: FormData): 
   const locale = await getLocale();
   // client.inc.php: cambio password obbligatorio prima di continuare
   const client = await sessionClient();
-  if (client && clientMustChangePassword(client)) redirect({ href: "/profile?pwchange=1", locale });
-  redirect({ href: safeRedirectPath(formStr(fd, "next"), "/tickets", isPortalPath), locale });
+  if (client && (await clientPasswordChangeEnforced(client))) redirect({ href: "/profile?pwchange=1", locale });
+  redirect({
+    href: safeRedirectPath(formStr(fd, "next"), "/tickets", isPortalPath),
+    locale,
+  });
   return {};
 }
 
@@ -163,25 +166,30 @@ export async function profileAction(_prev: ProfileState, fd: FormData): Promise<
   if (!res.ok) return { error: res.err ?? "profile", fields: res.fields, values: plainValues(fd) };
   if (res.passwordChanged) await refreshClientSession(res.pwv);
   else await touchClientSession();
-  redirect({ href: "/tickets", locale: await getLocale() });
+  // esito mostrato dalla lista dei ticket (?profile=1)
+  redirect({ href: "/tickets?profile=1", locale: await getLocale() });
   return { saved: true };
 }
 
 export interface ReplyState {
   error?: string;
-  nonce?: number;
 }
 
 /** tickets.php a=reply */
 export async function replyAction(_prev: ReplyState, fd: FormData): Promise<ReplyState> {
   const client = await currentClient();
-  if (!client) return { error: "session", nonce: Date.now() };
+  // niente nonce negli errori: il form della risposta resta com'è (testo e allegati)
+  if (!client) return { error: "session" };
   const ticketId = formNum(fd, "ticketId");
   const message = formStr(fd, "message");
   const files = verifyUploadTokens(formStrs(fd, "files"), `U${client.id}`);
   const cfg = await coreConfig();
-  const res = await postClientMessage(cfg, client, ticketId, { message, files, ip: await clientIp() });
-  if ("error" in res) return { error: res.error, nonce: Date.now() };
+  const res = await postClientMessage(cfg, client, ticketId, {
+    message,
+    files,
+    ip: await clientIp(),
+  });
+  if ("error" in res) return { error: res.error };
   await touchClientSession();
   redirect({ href: `/tickets/${ticketId}?posted=1#reply`, locale: await getLocale() });
   return {};
@@ -208,7 +216,10 @@ export async function editTicketAction(_prev: EditState, fd: FormData): Promise<
     for (const [k, v] of fd.entries()) if (typeof v === "string") (values[k] ??= []).push(v);
     return { error: res.error, fieldErrors: res.error === "invalid" ? res.fields : undefined, values };
   }
-  redirect({ href: `/tickets/${ticketId}`, locale: await getLocale() });
+  redirect({
+    href: `/tickets/${ticketId}?edited=1`,
+    locale: await getLocale(),
+  });
   return {};
 }
 

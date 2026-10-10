@@ -9,7 +9,7 @@ import { errorInputCls, inputCls } from "./styles";
 import type { FieldInputProps } from "./types";
 
 /** "2026-03-15T14:30" (ora locale del browser) → ISO con offset esplicito, letto correttamente dal server */
-export function localToIsoWithOffset(local: string): string {
+function localToIsoWithOffset(local: string): string {
   if (!local) return "";
   const d = new Date(local);
   if (Number.isNaN(d.getTime())) return local;

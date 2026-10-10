@@ -15,8 +15,12 @@ import { adminWrite, requireAdminAction } from "../_shared/server";
  */
 export { adminWrite, parsePhpForm, requireAdminAction, selectedIds };
 
-/** Formattatore delle date del DB nel fuso dell'agente (Format::datetime). */
+/**
+ * Formattatore delle date del DB nel fuso dell'agente, unico per le liste admin: "date" per le
+ * colonne Creato (Format::date), "full" per Aggiornato (Format::datetime), stesso formato del giorno.
+ * Date vuote o a zero ('0000-00-00 00:00:00', es. regole create dall'installer) → "—".
+ */
 export async function dateFormatter(agent: Agent, locale: string): Promise<(v: unknown, style?: DateStyle) => string> {
   const tz = await agentTimeZone(agent);
-  return (v, style = "short") => (v ? formatDbDate(String(v) as DbDateTime, tz, locale, style) : "—");
+  return (v, style = "full") => (v ? formatDbDate(String(v) as DbDateTime, tz, locale, style) : "") || "—";
 }

@@ -1,15 +1,19 @@
+import { Folder, Paperclip } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
 import { Link, redirect } from "@/i18n/navigation";
+import { parseId } from "@/lib/route-id";
 import { publicCategory } from "@/server/domain/client/kb";
 import { safeHtml } from "@/server/format/sanitize";
 
-import { requireKb } from "../../guard";
+import { kbVisible, requireKb } from "../../guard";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const cat = await publicCategory(Number(id) || 0);
+  // titolo dai dati solo se la knowledge base è visibile al visitatore (come la pagina)
+  const catId = parseId(id);
+  const cat = catId && (await kbVisible()) ? await publicCategory(catId) : null;
   return { title: cat?.name ?? (await getTranslations("portal.kb"))("title") };
 }
 
@@ -18,7 +22,8 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireKb(locale);
-  const cat = await publicCategory(Number(id) || 0);
+  const catId = parseId(id);
+  const cat = catId ? await publicCategory(catId) : null;
   if (!cat) redirect({ href: "/kb", locale });
   const c = cat!;
   const t = await getTranslations("portal.kb");
@@ -44,8 +49,8 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
           <ul className="space-y-1">
             {c.subcategories.map((s) => (
               <li key={s.id}>
-                <Link href={`/kb/category/${s.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
-                  📁 {s.name} ({s.count})
+                <Link href={`/kb/category/${s.id}`} className="inline-flex items-center gap-1.5 text-brand-600 hover:underline dark:text-brand-400">
+                  <Folder className="size-4" /> {s.name} ({s.count})
                 </Link>
               </li>
             ))}
@@ -60,7 +65,7 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
                   <Link href={`/kb/faq/${f.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
                     {f.question}
                   </Link>
-                  {f.attachments ? <span className="ms-1 text-gray-400">📎</span> : null}
+                  {f.attachments ? <Paperclip className="ms-1 inline size-3.5 align-[-2px] text-gray-400" /> : null}
                 </li>
               ))}
             </ol>

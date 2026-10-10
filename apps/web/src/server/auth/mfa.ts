@@ -8,7 +8,7 @@ import { phpJsonDecode } from "../format/php-json";
 import { loadStaffInfo, staffVar } from "../mail/objects";
 import { alertOrDefaultEmail, loadContentPage, sendContentMail } from "../domain/directory/content-mail";
 import { randNumber } from "../domain/sequence";
-import { BoundedStore } from "./bounded-store";
+import { sharedStore } from "./bounded-store";
 
 /**
  * Secondo fattore via email per gli agenti (include/class.2fa.php, Email2FABackend "2fa-email").
@@ -30,7 +30,7 @@ interface OtpState {
   strikes: number;
 }
 
-const store = new BoundedStore<OtpState>(MAX_PENDING);
+const store = sharedStore<OtpState>("mfa-otp", MAX_PENDING);
 
 export function newMfaKey(): string {
   return randomBytes(18).toString("base64url");

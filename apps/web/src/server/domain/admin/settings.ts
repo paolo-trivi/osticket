@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { isKnownOrCurrent } from "@/lib/admin/current-value";
+
 import { table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
 import { htmlcharsVars, inArray, intval, isNumeric, isset, list, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
@@ -32,7 +34,12 @@ interface SettingsResult {
   errors: Errors;
 }
 
-/** Backend di archiviazione registrati (FileStorageBackend::allRegistered): solo il DB nel core. */
+/**
+ * Backend di archiviazione che TailTicket sa proporre (FileStorageBackend::allRegistered): solo il DB
+ * del core. I backend dei plugin ("F" di storage-fs, S3…) sono registrati solo nel PHP: il valore
+ * attuale di default_storage_bk resta ammesso se non viene cambiato (isKnownOrCurrent), così un
+ * salvataggio da TailTicket non riporta a "D" un'installazione configurata su filesystem.
+ */
 const STORAGE_BACKENDS = ["D"];
 
 /** OsticketConfig::updateSettings */
@@ -97,15 +104,19 @@ async function updateSystemSettings(executor: DbOrTx, cfg: ConfigWriter, input: 
 
   let storagebk: string | null = null;
   if (isset(vars, "default_storage_bk")) {
-    if (STORAGE_BACKENDS.includes(str(vars.default_storage_bk))) storagebk = str(vars.default_storage_bk);
+    if (isKnownOrCurrent(str(vars.default_storage_bk), STORAGE_BACKENDS, cfg.get("default_storage_bk"))) storagebk = str(vars.default_storage_bk);
     else errors.default_storage_bk = "invalid";
   }
 
   if (!validate(f, vars, errors) || Object.keys(errors).length) return false;
 
-  // lingue secondarie installate
+  // lingue secondarie installate (Internationalization::isLanguageInstalled); quelle già configurate
+  // restano ammesse anche se TailTicket non vede la cartella i18n del PHP (es. senza OST_CONFIG_PATH)
   const installed = installedLanguages();
-  const langs = [...list(vars.secondary_langs), vars.add_secondary_language].filter((l) => truthy(l) && installed.includes(str(l).toLowerCase()));
+  const current = str(cfg.get("secondary_langs") ?? "")
+    .split(",")
+    .filter(Boolean);
+  const langs = [...list(vars.secondary_langs), vars.add_secondary_language].filter((l) => truthy(l) && (installed.includes(str(l).toLowerCase()) || current.includes(str(l))));
   const secondary = langs.map(str).join(",");
 
   if (storagebk) await cfg.update(executor, "default_storage_bk", storagebk);
@@ -175,9 +186,24 @@ async function updateKBSettings(executor: DbOrTx, cfg: ConfigWriter, vars: PhpVa
   });
 }
 
+/**
+ * Cartella `uploadpath` del plugin storage-fs (config del plugin, namespace "plugin.<id>…"), per
+ * l'etichetta del backend "F" come FilesystemStorage::$desc ("Filesystem: <uploadpath>"). Null se assente.
+ */
+export async function fsStorageUploadPath(executor: DbOrTx): Promise<string | null> {
+  const { rows } = await sql<{
+    value: string | null;
+  }>`SELECT value FROM ${table("config")}
+    WHERE namespace LIKE 'plugin.%' AND \`key\` = 'uploadpath' AND value <> '' ORDER BY id LIMIT 1`.execute(executor);
+  return rows[0]?.value ?? null;
+}
+
 /** Config "core" con i default di OsticketConfig, per precompilare i form. */
 export async function settingsValues(executor: DbOrTx): Promise<Record<string, string>> {
-  const { rows } = await sql<{ key: string; value: string }>`SELECT \`key\`, value FROM ${table("config")} WHERE namespace = 'core'`.execute(executor);
+  const { rows } = await sql<{
+    key: string;
+    value: string;
+  }>`SELECT \`key\`, value FROM ${table("config")} WHERE namespace = 'core'`.execute(executor);
   const { CORE_DEFAULTS } = await import("../../config/config");
   const out: Record<string, string> = {};
   for (const [k, d] of Object.entries(CORE_DEFAULTS)) out[k] = typeof d === "boolean" ? (d ? "1" : "") : String(d);

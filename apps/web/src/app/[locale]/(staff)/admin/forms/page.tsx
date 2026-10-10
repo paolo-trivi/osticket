@@ -13,6 +13,9 @@ import { listForms } from "@/server/domain/adminsys/form";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massFormAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("forms");
 
 /** Form personalizzati (include/staff/dynamic-forms.inc.php): form di sistema e form "G". */
 export default async function FormsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

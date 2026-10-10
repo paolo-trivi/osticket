@@ -1,3 +1,4 @@
+import { Paperclip } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
@@ -5,6 +6,7 @@ import { RICH_CLASS } from "@/components/portal/rich";
 import { Link, redirect } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
 import { inlineCidImages } from "@/lib/format/inline-images";
+import { parseId } from "@/lib/route-id";
 import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
@@ -13,11 +15,13 @@ import { publicFaq, topicsWithFaqs } from "@/server/domain/client/kb";
 import { formatDbDate } from "@/server/format/datetime";
 import { safeHtml } from "@/server/format/sanitize";
 
-import { requireKb } from "../../guard";
+import { kbVisible, requireKb } from "../../guard";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const faq = await publicFaq(Number(id) || 0);
+  // titolo dai dati solo se la knowledge base è visibile al visitatore (come la pagina)
+  const faqId = parseId(id);
+  const faq = faqId && (await kbVisible()) ? await publicFaq(faqId) : null;
   return { title: faq?.question ?? (await getTranslations("portal.kb"))("title") };
 }
 
@@ -26,7 +30,8 @@ export default async function KbFaqPage({ params }: { params: Promise<{ locale: 
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireKb(locale);
-  const faq = await publicFaq(Number(id) || 0);
+  const faqId = parseId(id);
+  const faq = faqId ? await publicFaq(faqId) : null;
   if (!faq) redirect({ href: "/kb", locale });
   const f = faq!;
   const t = await getTranslations("portal.kb");
@@ -53,8 +58,12 @@ export default async function KbFaqPage({ params }: { params: Promise<{ locale: 
             <h2 className="mb-2 text-theme-sm font-medium text-gray-800 dark:text-white/90">{t("attachments")}</h2>
             <div className="flex flex-wrap gap-2">
               {f.attachments.map((a) => (
-                <a key={a.id} href={withBase(`/api/portal/file/${a.key}`)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-                  📎 {a.name}
+                <a
+                  key={a.id}
+                  href={withBase(`/api/portal/file/${a.key}`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                >
+                  <Paperclip className="size-3.5 text-gray-400" /> {a.name}
                 </a>
               ))}
             </div>

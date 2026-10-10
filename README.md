@@ -18,7 +18,7 @@
 
 ---
 
-> **In short (EN)** — TailTicket is a fork of [osTicket](https://osticket.com) 1.18 that gives it a modern, responsive web interface (Next.js + Tailwind) while keeping the **same MySQL database**. Every write reproduces exactly the rows (and emails) the PHP code would produce, verified by 300+ differential tests, so the classic osTicket panel keeps working side by side and future osTicket upgrades remain possible. One command deploys the whole stack with Docker.
+> **In short (EN)** — TailTicket is a fork of [osTicket](https://osticket.com) 1.18 that gives it a modern, responsive web interface (Next.js + Tailwind) while keeping the **same MySQL database**. Every write reproduces exactly the rows (and emails) the PHP code would produce, verified by 300+ differential tests, so the classic osTicket panel keeps working side by side and future osTicket upgrades remain possible. One command deploys the whole stack with Docker, or attaches TailTicket read-only to an existing osTicket 1.17 or 1.18 installation.
 
 ## Perché
 
@@ -41,8 +41,8 @@ TailTicket tiene il **cuore** di osTicket e rifà la **faccia**:
 | Database | MySQL/MariaDB osTicket | **lo stesso**, senza tabelle nuove né migrazioni |
 | Logica di dominio | PHP (`legacy/`) | porting TypeScript riga per riga, verificato contro il PHP |
 | Interfaccia | PHP + jQuery | Next.js 16, React 19, Tailwind v4: responsive, tema chiaro/scuro, brandizzabile |
-| Pannello agenti, admin, portale clienti | ✅ | ✅ riscritti |
-| Cron, fetch email, API REST, plugin | ✅ | restano a osTicket, che continua a girare accanto |
+| Pannello agenti, admin, portale clienti | sì | riscritti |
+| Cron, fetch email, API REST, plugin | sì | restano a osTicket, che continua a girare accanto |
 
 Le due interfacce lavorano **in contemporanea sugli stessi dati**. Si può adottare TailTicket gradualmente, tornare indietro in qualsiasi momento e continuare ad applicare gli aggiornamenti di osTicket.
 
@@ -50,7 +50,7 @@ Come facciamo a fidarci? Ogni operazione di scrittura (risposta, assegnazione, c
 1. la stessa operazione viene eseguita dal codice PHP originale e da TailTicket, su due copie del DB;
 2. si confrontano **tutte le tabelle e le email** generate.
 
-Oggi i test sono **308 scenari**, tutti identici. Dettagli in [docs/compatibility.md](docs/compatibility.md).
+Oggi i test sono **351 scenari**, tutti identici. Dettagli in [docs/compatibility.md](docs/compatibility.md).
 
 ## Cosa c'è dentro
 
@@ -68,6 +68,7 @@ Oggi i test sono **308 scenari**, tutti identici. Dettagli in [docs/compatibilit
   - i miei ticket, apertura ticket con form dinamici, KB pubblica;
   - responsive per l'uso da telefono.
 - **Deploy in un comando**: Docker Compose con TailTicket, osTicket classico (con cron), MariaDB e reverse proxy con HTTPS automatico.
+- **Collegamento a un osTicket in produzione**: TailTicket si affianca all'installazione esistente, parte in sola lettura e scrive solo dopo i controlli (vedi sotto).
 
 Elenco completo e limiti noti in [docs/scope.md](docs/scope.md).
 
@@ -91,7 +92,25 @@ Il comando:
 3. installa osTicket nel database, se è vuoto;
 4. stampa gli indirizzi e le credenziali iniziali.
 
-Per collegarsi a un osTicket già in produzione, HTTPS, email e backup: [deploy/README.md](deploy/README.md).
+HTTPS, email, backup e aggiornamenti: [deploy/README.md](deploy/README.md).
+
+## Collegarlo a un osTicket già in produzione
+
+```bash
+cd tailticket/deploy
+./tailticket init --attach --config /var/www/osticket/include/ost-config.php --db-user tailticket
+./tailticket up                  # parte in sola lettura ed esegue il doctor
+```
+
+Funziona con osTicket 1.17 e 1.18, entrambe verificate con tutti i test differenziali; con versioni precedenti resta in sola lettura ([versioni supportate](docs/compatibility.md)). Parte solo TailTicket, accanto al PHP esistente, che continua a gestire cron, email in entrata, API e plugin. Le garanzie:
+- **sola lettura all'avvio**, e di nuovo in automatico se lo schema non è verificato o se `SECRET_SALT`, fuso orario o prefisso non coincidono con quelli del PHP;
+- **un controllo unico** su ogni query che modifica dati, a livello di driver;
+- **il doctor** (schema, configurazione, permessi MySQL senza DDL, email, allegati, plugin, cron) prima di scrivere;
+- **tre modalità** da attivare un passo alla volta, con backup recente e conferma: `readonly`, `operational` (agenti e portale), `full` (anche l'amministrazione);
+- **ogni modifica dell'area admin si annulla**: dal banner dopo il salvataggio, dalla pagina *Modifiche recenti* o con `./tailticket undo`, con il controllo dei conflitti con il pannello classico;
+- **prova generale** su una copia del DB con la posta catturata, **registro delle scritture** e **interruttore d'emergenza** (`./tailticket readonly`).
+
+Percorso consigliato e dettagli: [deploy/README.md](deploy/README.md#collegare-un-osticket-esistente-modalità-attach).
 
 Per sviluppare: [docs/development.md](docs/development.md).
 
@@ -112,6 +131,6 @@ Perché questa struttura e come si importano gli aggiornamenti di osTicket: [doc
 
 TailTicket è un'opera derivata di **osTicket** (© Enhancesoft e collaboratori) ed è distribuito con la stessa licenza **GNU GPL v2**: [LICENSE.txt](LICENSE.txt).
 
-La base grafica deriva da **TailAdmin** (licenza MIT). Dettagli e marchi: [NOTICE.md](NOTICE.md).
+La base grafica deriva da **TailAdmin** (licenza MIT), le icone sono di **Lucide** (licenza ISC). Dettagli e marchi: [NOTICE.md](NOTICE.md).
 
 TailTicket non è affiliato né approvato da Enhancesoft/osTicket. "osTicket" è usato solo per indicare la compatibilità.

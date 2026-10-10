@@ -10,6 +10,7 @@ export interface EditableEntry {
   id: number;
   type: "M" | "R" | "N";
   poster: string;
+  /** data di creazione già formattata nel fuso dell'agente */
   created: string;
   title: string;
   body: string;
@@ -33,6 +34,7 @@ export interface RelatedItem {
 export interface TicketExtraData {
   ticketId: number;
   number: string;
+  subject: string;
   can: {
     edit: boolean;
     collaborators: boolean;
@@ -61,11 +63,19 @@ export interface TicketExtraData {
     /** valori attuali dei campi (`f.<id>` → valori) */
     values: Record<string, string[]>;
     /** campi modificabili singolarmente (ajax editField) */
-    fields: { key: string; label: string; kind: "topic" | "sla" | "source" | "duedate" | "form"; fieldId?: number }[];
+    fields: {
+      key: string;
+      label: string;
+      kind: "topic" | "sla" | "source" | "duedate" | "form";
+      fieldId?: number;
+    }[];
   };
   collaborators: CollaboratorItem[];
   /** ticket collegati/uniti a questo (padre e figli) */
-  related: { mergeType: "combine" | "separate" | "visual"; tickets: RelatedItem[] };
+  related: {
+    mergeType: "combine" | "separate" | "visual";
+    tickets: RelatedItem[];
+  };
   /** stati per il dialogo di merge */
   closedStatuses: Choice[];
   /** stato del figlio preselezionato (stato chiuso "interno", non disattivabile) */

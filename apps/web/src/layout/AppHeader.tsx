@@ -1,5 +1,6 @@
 "use client";
 
+import { Command, Ellipsis, Menu, PanelLeft, Search, X } from "lucide-react";
 import BrandLogo from "@/components/brand/BrandLogo";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import UserMenu from "@/components/shell/UserMenu";
@@ -55,14 +56,9 @@ export default function AppHeader({ user, searchHref, logoutAction, menuLinks = 
             onClick={handleToggle}
             aria-label={t("toggleSidebar")}
           >
-            <svg className="rtl:-scale-x-100" width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden>
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M0.583 1c0-.414.336-.75.75-.75h13.334a.75.75 0 0 1 0 1.5H1.333A.75.75 0 0 1 .583 1Zm0 10c0-.414.336-.75.75-.75h13.334a.75.75 0 0 1 0 1.5H1.333a.75.75 0 0 1-.75-.75Zm.75-5.75a.75.75 0 0 0 0 1.5H8a.75.75 0 0 0 0-1.5H1.333Z"
-                fill="currentColor"
-              />
-            </svg>
+            {/* da telefono e tablet apre il menu laterale, da desktop comprime la sidebar */}
+            {isMobileOpen ? <X className="size-5 xl:hidden" /> : <Menu className="size-5 xl:hidden" />}
+            <PanelLeft className="hidden size-5 xl:block rtl:-scale-x-100" />
           </button>
 
           {/* marchio visibile quando la sidebar è nascosta (mobile e tablet) */}
@@ -76,16 +72,13 @@ export default function AppHeader({ user, searchHref, logoutAction, menuLinks = 
             className="z-99999 flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 xl:hidden dark:text-gray-400 dark:hover:bg-gray-800"
             aria-label={t("menu")}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <circle cx="6" cy="12" r="1.5" fill="currentColor" />
-              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-              <circle cx="18" cy="12" r="1.5" fill="currentColor" />
-            </svg>
+            <Ellipsis className="size-6" />
           </button>
 
           {searchHref && (
             <div className="hidden xl:block">
               <form
+                role="search"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const q = inputRef.current?.value.trim();
@@ -94,23 +87,21 @@ export default function AppHeader({ user, searchHref, logoutAction, menuLinks = 
               >
                 <div className="relative">
                   <span className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2">
-                    <svg className="fill-gray-500 dark:fill-gray-400" width="20" height="20" viewBox="0 0 20 20" aria-hidden>
-                      <path
-                        fillRule="evenodd"
-                        clipRule="evenodd"
-                        d="M3.042 9.374a6.333 6.333 0 1 1 12.666 0 6.333 6.333 0 0 1-12.666 0Zm6.333-7.832a7.833 7.833 0 1 0 4.982 13.876l2.82 2.82a.75.75 0 1 0 1.06-1.06l-2.82-2.82A7.833 7.833 0 0 0 9.375 1.542Z"
-                      />
-                    </svg>
+                    <Search className="size-5 text-gray-500 dark:text-gray-400" />
                   </span>
                   <input
                     ref={inputRef}
                     type="search"
                     name="q"
+                    aria-label={t("searchLabel")}
                     placeholder={t("searchPlaceholder")}
                     className="h-11 w-full rounded-lg border border-gray-200 bg-transparent py-2.5 ps-12 pe-14 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 focus:outline-hidden xl:w-107.5 dark:border-gray-800 dark:bg-white/3 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                   />
-                  <span className="absolute end-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-1.75 py-[4.5px] text-xs text-gray-500 dark:border-gray-800 dark:bg-white/3 dark:text-gray-400">
-                    ⌘ K
+                  <span
+                    aria-hidden="true"
+                    className="absolute end-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-1.75 py-[4.5px] text-xs text-gray-500 dark:border-gray-800 dark:bg-white/3 dark:text-gray-400"
+                  >
+                    <Command className="size-3" /> K
                   </span>
                 </div>
               </form>

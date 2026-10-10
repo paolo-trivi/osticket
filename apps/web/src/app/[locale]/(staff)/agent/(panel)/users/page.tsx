@@ -3,6 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DataTable, { Forbidden, PageHeader, SearchBox } from "@/components/common/DataTable";
 import LinkPager from "@/components/common/LinkPager";
 import AccountStatusBadge from "@/components/people/AccountStatusBadge";
+import PeopleCards from "@/components/people/PeopleCards";
+import PeopleDoneNotice from "@/components/people/PeopleDoneNotice";
 import { ImportUsersButton, NewRecordButton, RowSelect, UserMassBar } from "@/components/people/directory/DirectoryButtons";
 import { Link } from "@/i18n/navigation";
 import { db } from "@/server/db";
@@ -18,12 +20,42 @@ export async function generateMetadata() {
   return { title: (await getTranslations("directory"))("users") };
 }
 
+type UserRow = Awaited<ReturnType<typeof listUsers>>["rows"][number];
+
+const linkClass = "text-brand-600 hover:underline dark:text-brand-400";
+
+function orgLink(u: UserRow) {
+  return u.org_id ? (
+    <Link href={`/agent/orgs/${u.org_id}`} className={linkClass}>
+      {u.org_name}
+    </Link>
+  ) : (
+    "—"
+  );
+}
+
+function ticketsLink(u: UserRow) {
+  return u.tickets ? (
+    <Link href={`/agent/tickets?user=${u.id}`} className={linkClass}>
+      {u.tickets}
+    </Link>
+  ) : (
+    0
+  );
+}
+
 export default async function UsersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ q?: string; p?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    p?: string;
+    sort?: string;
+    dir?: string;
+    done?: string;
+  }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -39,8 +71,12 @@ export default async function UsersPage({
   const { rows, total } = await listUsers({ q: sp.q, sort: sp.sort, desc, page, pageSize });
   const tz = await agentTimeZone(agent);
   const canCreate = agent.hasGlobalPerm(GlobalPerm.USER_CREATE);
-  const massCan = { manage: agent.hasGlobalPerm(GlobalPerm.USER_MANAGE), delete: agent.hasGlobalPerm(GlobalPerm.USER_DELETE), edit: agent.hasGlobalPerm(GlobalPerm.USER_EDIT) };
-  const orgs = massCan.edit ? (await db().selectFrom("organization").select(["id", "name"]).orderBy("name").execute()) : [];
+  const massCan = {
+    manage: agent.hasGlobalPerm(GlobalPerm.USER_MANAGE),
+    delete: agent.hasGlobalPerm(GlobalPerm.USER_DELETE),
+    edit: agent.hasGlobalPerm(GlobalPerm.USER_EDIT),
+  };
+  const orgs = massCan.edit ? await db().selectFrom("organization").select(["id", "name"]).orderBy("name").execute() : [];
   const href = (extra: Record<string, string | number>) => {
     const p = new URLSearchParams();
     if (sp.q) p.set("q", sp.q);
@@ -65,35 +101,57 @@ export default async function UsersPage({
           </div>
         }
       />
+      <PeopleDoneNotice done={sp.done} />
       <UserMassBar can={massCan} orgs={massCan.edit ? orgs : []} />
-      <DataTable
+      <PeopleCards
         empty={t("empty")}
-        columns={[
-          { key: "sel", label: "" },
-          { key: "name", label: t("name"), ...sortCol("name") },
-          { key: "email", label: t("email"), ...sortCol("email") },
-          { key: "org", label: t("organization"), ...sortCol("org") },
-          { key: "status", label: t("status") },
-          { key: "tickets", label: t("tickets") },
-          { key: "updated", label: t("updated"), ...sortCol("updated") },
-        ]}
-        rows={rows.map((u) => ({
+        cards={rows.map((u) => ({
           key: u.id,
-          cells: {
-            sel: <RowSelect id={u.id} group="user" />,
-            name: (
-              <Link href={`/agent/users/${u.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-                {u.name}
-              </Link>
-            ),
-            email: u.email,
-            org: u.org_id ? <Link href={`/agent/orgs/${u.org_id}`}>{u.org_name}</Link> : "—",
-            status: <AccountStatusBadge status={u.account_status} />,
-            tickets: u.tickets ? <Link href={`/agent/tickets?user=${u.id}`}>{u.tickets}</Link> : 0,
-            updated: formatDbDate(u.updated, tz, locale, "date"),
-          },
+          select: <RowSelect id={u.id} group="user" />,
+          title: (
+            <Link href={`/agent/users/${u.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+              {u.name}
+            </Link>
+          ),
+          badge: <AccountStatusBadge status={u.account_status} />,
+          meta: [
+            { label: t("email"), value: u.email },
+            { label: t("organization"), value: orgLink(u) },
+            { label: t("tickets"), value: ticketsLink(u) },
+            { label: t("updated"), value: formatDbDate(u.updated, tz, locale) },
+          ],
         }))}
       />
+      <div className="hidden md:block">
+        <DataTable
+          empty={t("empty")}
+          columns={[
+            { key: "sel", label: "" },
+            { key: "name", label: t("name"), ...sortCol("name") },
+            { key: "email", label: t("email"), ...sortCol("email") },
+            { key: "org", label: t("organization"), ...sortCol("org") },
+            { key: "status", label: t("status") },
+            { key: "tickets", label: t("tickets") },
+            { key: "updated", label: t("updated"), ...sortCol("updated") },
+          ]}
+          rows={rows.map((u) => ({
+            key: u.id,
+            cells: {
+              sel: <RowSelect id={u.id} group="user" />,
+              name: (
+                <Link href={`/agent/users/${u.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+                  {u.name}
+                </Link>
+              ),
+              email: u.email,
+              org: orgLink(u),
+              status: <AccountStatusBadge status={u.account_status} />,
+              tickets: ticketsLink(u),
+              updated: formatDbDate(u.updated, tz, locale),
+            },
+          }))}
+        />
+      </div>
       <LinkPager page={page} totalPages={Math.max(1, Math.ceil(total / pageSize))} href={(p) => href({ p })} labels={{ prev: t("prev"), next: t("next") }} />
     </div>
   );

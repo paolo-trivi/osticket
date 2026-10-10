@@ -2,9 +2,7 @@ import "server-only";
 
 import { isIP } from "node:net";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { randCode } from "../../mail/message-id";
 import { str, truthy, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
@@ -27,12 +25,26 @@ export async function saveApiKey(executor: DbOrTx, id: number | null, vars: PhpV
   }
   if (!id && (!truthy(vars.ipaddr) || !isIP(str(vars.ipaddr)))) errors.ipaddr = "valid_ip_required";
   if (Object.keys(errors).length) return { ok: false, errors };
-  const set = sql`updated=NOW(), isactive=${str(vars.isactive)}, can_create_tickets=${str(vars.can_create_tickets)}, can_exec_cron=${str(vars.can_exec_cron)}, notes=${sanitizeHtml(str(vars.notes))}`;
+  // stringhe come db_input() (con SQL_MODE vuoto '' diventa 0 nelle colonne numeriche)
+  const set = {
+    updated: NOW,
+    isactive: str(vars.isactive),
+    can_create_tickets: str(vars.can_create_tickets),
+    can_exec_cron: str(vars.can_exec_cron),
+    notes: sanitizeHtml(str(vars.notes)),
+  };
   if (id) {
-    await sql`UPDATE ${table("api_key")} SET ${set} WHERE id=${id}`.execute(executor);
+    await executor
+      .updateTable("api_key")
+      .set(set as never)
+      .where("id", "=", id)
+      .execute();
     return { ok: true, id, errors };
   }
-  const res = await sql`INSERT INTO ${table("api_key")} SET ${set}, created=NOW(), ipaddr=${str(vars.ipaddr)}, apikey=${randCode(48, KEY_CHARS)}`.execute(executor);
+  const res = await executor
+    .insertInto("api_key")
+    .values({ ...set, created: NOW, ipaddr: str(vars.ipaddr), apikey: randCode(48, KEY_CHARS) } as never)
+    .executeTakeFirst();
   return { ok: true, id: Number(res.insertId), errors };
 }
 
@@ -52,7 +64,7 @@ export async function massApiKeys(executor: DbOrTx, action: ApiKeyMassAction, id
   const value = action === "enable" ? 1 : 0;
   // db_affected_rows(): solo le righe che cambiano
   const n = await executor.selectFrom("api_key").select((eb) => eb.fn.countAll<number>().as("n")).where("id", "in", ids).where("isactive", "<>", value).executeTakeFirstOrThrow();
-  await sql`UPDATE ${table("api_key")} SET isactive=${value} WHERE id IN (${sql.join(ids)})`.execute(executor);
+  await executor.updateTable("api_key").set({ isactive: value }).where("id", "in", ids).execute();
   const num = Number(n.n);
   return num ? { ok: true, num } : { ok: false, num: 0, error: "failed" };
 }

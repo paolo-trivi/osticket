@@ -4,12 +4,15 @@ import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 
 import { orgAddUserAction, orgDeleteAction, orgProfileAction, orgRemoveUsersAction, orgUpdateAction } from "@/app/[locale]/(staff)/agent/(panel)/orgs/actions";
+import ActionNotice from "@/components/common/ActionNotice";
+import { useReadOnlyHint } from "@/components/common/WriteGate";
 import Button from "@/components/ui/button/Button";
 import { OrganizationModel } from "@/lib/osticket/flags";
 
 import { CheckField, DynamicField, SelectField, TextField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
 import type { Choice, DynField } from "../types";
+import { useActionNotice } from "../useActionNotice";
 import { ImportUsersButton, MassBar } from "./DirectoryButtons";
 
 interface OrgActionsData {
@@ -21,17 +24,31 @@ interface OrgActionsData {
   managers: { agents: Choice[]; teams: Choice[] };
   members: { id: number; name: string; primary: boolean }[];
   users: Choice[];
-  can: { edit: boolean; delete: boolean; addUser: boolean; createUser: boolean; import: boolean };
+  can: {
+    edit: boolean;
+    delete: boolean;
+    addUser: boolean;
+    createUser: boolean;
+    import: boolean;
+  };
 }
 
 type Kind = "edit" | "settings" | "addUser" | "delete";
 
-/** Azioni sulla scheda organizzazione (org-view.inc.php, ajax.orgs.php). */
+/**
+ * Azioni sulla scheda organizzazione (org-view.inc.php, ajax.orgs.php). Dopo un'azione riuscita la scheda
+ * si ricarica e mostra l'esito; l'eliminazione torna alla lista, che mostra l'esito.
+ */
 export default function OrgActions({ data }: { data: OrgActionsData }) {
   const t = useTranslations("peopleDir");
+  const tu = useTranslations("peopleUi");
   const [open, setOpen] = useState<Kind | null>(null);
   const [newUser, setNewUser] = useState(false);
   const close = useCallback(() => setOpen(null), []);
+  const { notice, show, clear, withNotice } = useActionNotice();
+  const done = (code: string) => () => tu(`done.${code}`);
+  // sola lettura: pulsanti disattivati con il motivo nel tooltip
+  const readOnly = useReadOnlyHint();
   const hidden = { orgId: data.orgId };
   const st = data.profile.status;
   const sharing = st & OrganizationModel.SHARE_EVERYBODY ? "sharing-all" : st & OrganizationModel.SHARE_PRIMARY_CONTACT ? "sharing-primary" : "";
@@ -48,15 +65,36 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
         {buttons
           .filter((b) => b.show)
           .map((b) => (
-            <Button key={b.kind} size="sm" variant="outline" onClick={() => setOpen(b.kind)} className={b.kind === "delete" ? "text-error-600 dark:text-error-400" : ""}>
+            <Button
+              key={b.kind}
+              size="sm"
+              variant="outline"
+              onClick={() => setOpen(b.kind)}
+              disabled={!!readOnly}
+              title={readOnly}
+              className={b.kind === "delete" ? "text-error-600 dark:text-error-400" : ""}
+            >
               {t(`orgActions.${b.kind}`)}
             </Button>
           ))}
-        {data.can.import && <ImportUsersButton orgId={data.orgId} />}
+        {data.can.import && <ImportUsersButton orgId={data.orgId} onDone={show} />}
+        {notice && (
+          <ActionNotice closeLabel={tu("dismiss")} onClose={clear}>
+            {notice}
+          </ActionNotice>
+        )}
       </div>
 
       {open === "edit" && (
-        <PeopleDialog title={t("dialogs.editOrg", { name: data.name })} action={orgUpdateAction} submitLabel={t("save")} onClose={close} hidden={hidden} notice={t("editOrgNotice")} wide>
+        <PeopleDialog
+          title={t("dialogs.editOrg", { name: data.name })}
+          action={withNotice(orgUpdateAction, done("org_updated"))}
+          submitLabel={t("save")}
+          onClose={close}
+          hidden={hidden}
+          notice={t("editOrgNotice")}
+          wide
+        >
           {(s) => (
             <div className="space-y-4">
               {data.fields.map((f) => (
@@ -67,7 +105,14 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
         </PeopleDialog>
       )}
       {open === "settings" && (
-        <PeopleDialog title={t("dialogs.settings", { name: data.name })} action={orgProfileAction} submitLabel={t("save")} onClose={close} hidden={{ ...hidden, name: data.name }} wide>
+        <PeopleDialog
+          title={t("dialogs.settings", { name: data.name })}
+          action={withNotice(orgProfileAction, done("org_settings"))}
+          submitLabel={t("save")}
+          onClose={close}
+          hidden={{ ...hidden, name: data.name }}
+          wide
+        >
           {(s) => (
             <div className="space-y-4">
               <SelectField
@@ -111,7 +156,14 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
         </PeopleDialog>
       )}
       {open === "addUser" && (
-        <PeopleDialog title={t("dialogs.addUser", { name: data.name })} action={orgAddUserAction} submitLabel={t("orgActions.addUser")} onClose={close} hidden={hidden} wide>
+        <PeopleDialog
+          title={t("dialogs.addUser", { name: data.name })}
+          action={withNotice(orgAddUserAction, done("org_user_added"))}
+          submitLabel={t("orgActions.addUser")}
+          onClose={close}
+          hidden={hidden}
+          wide
+        >
           {(s) => (
             <div className="space-y-4">
               {data.can.createUser && (
@@ -133,7 +185,17 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
           )}
         </PeopleDialog>
       )}
-      {open === "delete" && <PeopleDialog title={t("dialogs.deleteOrg", { name: data.name })} action={orgDeleteAction} submitLabel={t("orgActions.delete")} onClose={close} hidden={hidden} danger notice={t("deleteOrgConfirm")} />}
+      {open === "delete" && (
+        <PeopleDialog
+          title={t("dialogs.deleteOrg", { name: data.name })}
+          action={orgDeleteAction}
+          submitLabel={t("orgActions.delete")}
+          onClose={close}
+          hidden={hidden}
+          danger
+          notice={t("deleteOrgConfirm")}
+        />
+      )}
     </>
   );
 }
@@ -141,5 +203,24 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
 /** Rimozione dei membri selezionati (scp/orgs.php a=remove-users). */
 export function OrgMembersBar({ orgId, canRemove }: { orgId: number; canRemove: boolean }) {
   const t = useTranslations("peopleDir");
-  return <MassBar group="member" ops={canRemove ? [{ key: "remove", label: t("removeUsers"), danger: true }] : []} action={orgRemoveUsersAction} hidden={{ orgId }} />;
+  const tu = useTranslations("peopleUi");
+  return (
+    <MassBar
+      group="member"
+      ops={
+        canRemove
+          ? [
+              {
+                key: "remove",
+                label: t("removeUsers"),
+                danger: true,
+                done: (n) => tu("done.org_users_removed", { n }),
+              },
+            ]
+          : []
+      }
+      action={orgRemoveUsersAction}
+      hidden={{ orgId }}
+    />
+  );
 }

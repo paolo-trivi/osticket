@@ -2,6 +2,9 @@ import { setRequestLocale } from "next-intl/server";
 
 import { requireAdmin } from "../../guard";
 import SettingsView from "../_shared/SettingsView";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("kbSettings");
 
 /** Impostazioni › kb (scp/settings.php?t=kb). */
 export default async function KbSettingsPage({ params }: { params: Promise<{ locale: string }> }) {

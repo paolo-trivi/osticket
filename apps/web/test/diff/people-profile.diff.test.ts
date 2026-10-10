@@ -12,7 +12,7 @@ import { changeStaffPassword, updateStaffProfile } from "@/server/domain/staff/p
 import { setDefault2fa, setup2faEmail, verify2faSetup } from "@/server/domain/staff/two-factor";
 import { loadAgent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
@@ -29,11 +29,13 @@ afterAll(closeDb);
 async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
 async function staffPasswd(dbName: string, staffId: number): Promise<string> {
-  const { rows } = await sql<{ passwd: string }>`SELECT passwd FROM ${sql.raw(`\`${dbName}\`.ost_staff`)} WHERE staff_id = ${staffId}`.execute(db());
+  const { rows } = await sql<{
+    passwd: string;
+  }>`SELECT passwd FROM ${sql.raw(`\`${dbName}\`.ost_staff`)} WHERE staff_id = ${staffId}`.execute(db());
   return rows[0]?.passwd ?? "";
 }
 

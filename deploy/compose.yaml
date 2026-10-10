@@ -89,6 +89,25 @@ services:
       # un solo proxy fidato (Caddy): l'IP del client arriva in X-Real-IP
       TAILTICKET_TRUSTED_PROXY_HOPS: ${TAILTICKET_TRUSTED_PROXY_HOPS:-1}
       # una sola istanza: codici 2FA, tentativi falliti e sessioni revocate sono in memoria
+      # Chiavi senza valore = passate solo se presenti in .env. TAILTICKET_MODE assente = full (stack
+      # integrato); readonly | operational | full con ./tailticket mode. Il doctor (./tailticket doctor)
+      # risponde solo con TAILTICKET_DOCTOR_TOKEN impostato.
+      TAILTICKET_MODE:
+      TAILTICKET_DOCTOR_TOKEN:
+      # allegati su disco montati in sola lettura (usato dalla prova generale: ./tailticket rehearse --attachments)
+      OST_ATTACHMENTS_DIR:
+      # registro delle scritture (una riga JSON per operazione, senza dati personali)
+      TAILTICKET_JOURNAL_DIR: /var/lib/tailticket/journal
+    group_add:
+      - "${TAILTICKET_FILES_GID:-app}"
+    volumes:
+      - type: bind
+        source: ${OST_ATTACHMENTS_HOST_DIR:-/dev/null}
+        target: ${OST_ATTACHMENTS_DIR:-/run/tailticket/no-attachments}
+        read_only: true
+        bind:
+          create_host_path: false
+      - journal:/var/lib/tailticket/journal
 
   proxy:
     image: caddy:2.10.2
@@ -126,3 +145,4 @@ volumes:
   osticket-files:
   caddy-data:
   caddy-config:
+  journal:

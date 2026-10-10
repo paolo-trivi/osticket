@@ -6,13 +6,11 @@ import { db } from "../../db";
 import { type ClientAuthError, type ClientLogin, lockedOut, loginWrites, prepare, strike } from "./auth";
 import { resetToken } from "./auth-reset";
 import { accountIsConfirmed, loadClientAccount, type ClientAccountRow } from "./identity";
+import { canWrite, withWriteScope } from "../../system/write-mode";
 
 /** Conferma dell'account del cliente dal link dell'email di registrazione (ClientAcctConfirmationTokenBackend). */
 
-type ConfirmOutcome =
-  | ({ ok: true; confirmed: true; forceReset: boolean } & ClientLogin)
-  | { ok: true; confirmed: false; form: true }
-  | { ok: false; error: ClientAuthError | "not_found" };
+type ConfirmOutcome = ({ ok: true; confirmed: true; forceReset: boolean } & ClientLogin) | { ok: true; confirmed: false; form: true } | { ok: false; error: ClientAuthError | "not_found" };
 
 /**
  * pwreset.php?token=<token> (GET): se l'account non è confermato lo conferma e apre la sessione
@@ -20,6 +18,12 @@ type ConfirmOutcome =
  * impostarla. Se l'account è già confermato il token serve al reset: si mostra il form username.
  */
 export async function performConfirm(input: { token: string; ip: string }): Promise<ConfirmOutcome> {
+  return withWriteScope("operational", () => confirm(input), {
+    op: "client.confirm",
+  });
+}
+
+async function confirm(input: { token: string; ip: string }): Promise<ConfirmOutcome> {
   const cfg = await prepare();
   const { ip } = input;
   const out = await db()
@@ -29,6 +33,8 @@ export async function performConfirm(input: { token: string; ip: string }): Prom
       const acct: ClientAccountRow | null = t && /^c\d+$/.test(t.value ?? "") ? await loadClientAccount(tx, Number(t.value!.slice(1)), true) : null;
       if (!t || !acct) return { ok: false, error: "not_found" };
       if (accountIsConfirmed(acct)) return { ok: true, confirmed: false, form: true };
+      // la conferma è una scrittura: in sola lettura l'account resta da confermare
+      if (!(await canWrite("operational"))) return { ok: false, error: "read_only" };
       // UserAccount::confirm
       await tx.updateTable("user_account").set({ status: acct.status | UserAccountStatus.CONFIRMED }).where("id", "=", acct.id).execute();
       // processSignOn($errors): strike backend, poi ClientAcctConfirmationTokenBackend

@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import { requireAdmin } from "../../guard";
 import { saveApiKeyAction } from "../actions";
 import { ApiKeyFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("apikeys");
 
 export default async function NewApiKeyPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

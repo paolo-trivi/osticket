@@ -1,6 +1,6 @@
 import { useTranslations } from "next-intl";
 
-import { GroupIcon } from "@/icons";
+import { Users } from "lucide-react";
 import type { BoardAssignee } from "@/server/domain/board/types";
 import { cn } from "@/utils";
 
@@ -20,15 +20,7 @@ export function avatarTone(kind: "staff" | "team", id: number): string {
 }
 
 /** Avatar con le iniziali dell'assegnatario (cerchio = agente, quadrato con icona = team, tratteggiato = nessuno). */
-export default function AssigneeAvatar({
-  assignee,
-  size = "sm",
-  className,
-}: {
-  assignee: BoardAssignee | null;
-  size?: "sm" | "md";
-  className?: string;
-}) {
+export default function AssigneeAvatar({ assignee, size = "sm", className }: { assignee: BoardAssignee | null; size?: "sm" | "md"; className?: string }) {
   const t = useTranslations("board.card");
   const dim = size === "sm" ? "size-7 text-[0.625rem]" : "size-8 text-theme-xs";
   if (!assignee)
@@ -59,11 +51,7 @@ export default function AssigneeAvatar({
         className,
       )}
     >
-      {assignee.kind === "team" ? (
-        <GroupIcon viewBox="0 0 24 24" className="size-4" aria-hidden />
-      ) : (
-        <span aria-hidden>{assignee.initials}</span>
-      )}
+      {assignee.kind === "team" ? <Users className="size-4" aria-hidden /> : <span aria-hidden>{assignee.initials}</span>}
       <span className="sr-only">{label}</span>
     </span>
   );

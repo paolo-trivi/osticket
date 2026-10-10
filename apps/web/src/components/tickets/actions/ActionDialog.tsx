@@ -7,6 +7,7 @@ import type { TicketActionState } from "@/app/[locale]/(staff)/agent/(panel)/tic
 import RichTextEditor from "@/components/editor/RichTextEditor";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 type TicketAction = (prev: TicketActionState, form: FormData) => Promise<TicketActionState>;
 
@@ -82,6 +83,7 @@ export default function ActionDialog({
   }, [state, onSuccess]);
 
   const warned = state.ok && !!state.warn;
+  const submit = submitKeepingValues(formAction);
 
   return (
     <Modal isOpen onClose={warned ? () => onSuccess(state) : onClose} className="m-4 max-w-[600px] p-6 lg:p-8">
@@ -101,7 +103,7 @@ export default function ActionDialog({
         ) : (
           <>
             {aside}
-            <form action={formAction} className="space-y-5">
+            <form onSubmit={submit} className="space-y-5">
               <input type="hidden" name="ticketId" value={ticketId} />
               {notice && <div className={`${box} bg-blue-light-50 text-blue-light-700 dark:bg-blue-light-500/15 dark:text-blue-light-400`}>{notice}</div>}
               {warning && <div className={`${box} bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-orange-400`}>{warning}</div>}

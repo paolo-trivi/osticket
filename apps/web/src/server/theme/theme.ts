@@ -4,6 +4,10 @@ import { cache } from "react";
 import { coreConfig, loadConfigNamespace } from "../config/config";
 import { NOW, db } from "../db";
 import { stripFourByteChars } from "../format/html";
+import type { ChangeRef } from "@/lib/changes";
+import { withChangeset } from "../system/changes/changeset";
+import type { StaffRef } from "../system/changes/types";
+import { withWriteScope } from "../system/write-mode";
 import { DEFAULT_THEME, ThemeSchema, type ThemeSettings } from "@/lib/theme/schema";
 
 export { DEFAULT_THEME,  themeCss,  } from "@/lib/theme/schema";
@@ -52,9 +56,23 @@ export const loadTheme = cache(async (): Promise<ResolvedTheme> => {
   };
 });
 
-/** Salva il tema: stessa semantica di Config::set() PHP (update se esiste, altrimenti insert). */
-export async function saveTheme(input: ThemeSettings): Promise<void> {
+/**
+ * Salva il tema: stessa semantica di Config::set() PHP (update se esiste, altrimenti insert).
+ * Scrittura "admin" (write-mode.ts): se non consentita, ReadOnlyModeError. È una modifica registrata,
+ * annullabile (changes/changeset.ts): restituisce il riferimento, null se nulla è cambiato.
+ */
+export async function saveTheme(input: ThemeSettings, staff: StaffRef | null): Promise<ChangeRef | null> {
   const settings = ThemeSchema.parse(input);
+  const { change } = await withChangeset({ staff, op: "admin.theme", path: "/admin/theme" }, () =>
+    withWriteScope("admin", () => saveThemeTx(settings), {
+      op: "admin.theme",
+      actor: staff ? { type: "agent", id: staff.id } : undefined,
+    }),
+  );
+  return change;
+}
+
+async function saveThemeTx(settings: ThemeSettings): Promise<void> {
   await db()
     .transaction()
     .execute(async (tx) => {

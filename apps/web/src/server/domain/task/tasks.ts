@@ -72,21 +72,38 @@ function queueCondition(agent: Agent, queue: TaskQueueName): RawBuilder<unknown>
   }
 }
 
-/** Numero di task visibili per ogni coda (contatori delle schede). */
-export async function countTaskQueues(agent: Agent, queues: readonly TaskQueueName[], executor: DbOrTx = db()): Promise<Record<TaskQueueName, number>> {
+/** Task di un ticket (ticket-tasks.inc.php). */
+const ofTicket = (ticketId: number) => sql`K.object_type = 'T' AND K.object_id = ${ticketId}`;
+
+/** Numero di task visibili per ogni coda (contatori delle schede), facoltativamente dei soli task di un ticket. */
+export async function countTaskQueues(agent: Agent, queues: readonly TaskQueueName[], opts: { ticketId?: number } = {}, executor: DbOrTx = db()): Promise<Record<TaskQueueName, number>> {
   const cols = queues.map((q) => sql`SUM(CASE WHEN ${queueCondition(agent, q)} THEN 1 ELSE 0 END) AS ${sql.ref(q)}`);
-  const { rows } = await sql<Record<string, number | null>>`SELECT ${sql.join(cols)} ${FROM()} WHERE ${taskVisibility(agent)}`.execute(executor);
+  const where = opts.ticketId ? sql`${taskVisibility(agent)} AND ${ofTicket(opts.ticketId)}` : taskVisibility(agent);
+  const { rows } = await sql<Record<string, number | null>>`SELECT ${sql.join(cols)} ${FROM()} WHERE ${where}`.execute(executor);
   return Object.fromEntries(queues.map((q) => [q, Number(rows[0]?.[q] ?? 0)])) as Record<TaskQueueName, number>;
 }
 
+/**
+ * Lista dei task visibili. Con `ticketId` tutti i task del ticket (ticket-tasks.inc.php), oppure solo
+ * quelli della coda se `ticketQueue` è vero (schede della lista filtrata per ticket).
+ */
 export async function listTasks(
   agent: Agent,
-  opts: { queue: TaskQueueName; q?: string; ticketId?: number; page: number; pageSize: number },
+  opts: {
+    queue: TaskQueueName;
+    q?: string;
+    ticketId?: number;
+    ticketQueue?: boolean;
+    page: number;
+    pageSize: number;
+  },
   executor: DbOrTx = db(),
 ): Promise<{ rows: TaskRow[]; total: number }> {
   const conds: RawBuilder<unknown>[] = [taskVisibility(agent)];
-  if (opts.ticketId) conds.push(sql`K.object_type = 'T' AND K.object_id = ${opts.ticketId}`);
-  else if (opts.q) {
+  if (opts.ticketId) {
+    conds.push(ofTicket(opts.ticketId));
+    if (opts.ticketQueue) conds.push(queueCondition(agent, opts.queue));
+  } else if (opts.q) {
     conds.push(sql`(K.number LIKE ${opts.q + "%"} OR KC.title LIKE ${"%" + opts.q + "%"})`);
   } else conds.push(queueCondition(agent, opts.queue));
   const where = sql.join(conds, sql` AND `);

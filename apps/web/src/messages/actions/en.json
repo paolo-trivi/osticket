@@ -29,6 +29,9 @@
     "selectTeam": "Select a team",
     "selectDept": "Select a department",
     "selectTarget": "Select",
+    "noAgents": "No agents available for assignment: active agents with access to the ticket's department are required.",
+    "noTeams": "No teams available for assignment: active teams with at least one active member are required.",
+    "noneAvailable": "Nothing available",
     "keepReferral": "Maintain referral access to {who}",
     "assignPlaceholder": "Optional reason for the assignment",
     "transferTitle": "Ticket #{number}: Transfer",
@@ -73,6 +76,7 @@
       "status": "Ticket status changed to {status}"
     },
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "generic": "The operation failed",
       "session_expired": "Session expired: please sign in again",
       "not_found": "No such ticket or access denied",

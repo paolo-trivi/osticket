@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { ChevronDownIcon } from "@/icons";
+import { ChevronDown } from "lucide-react";
 
 import type { Choice } from "./types";
 
@@ -57,7 +57,7 @@ export function FieldSelect({
           ))}
         </select>
         <span className="pointer-events-none absolute inset-e-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-          <ChevronDownIcon />
+          <ChevronDown className="size-5" />
         </span>
       </span>
     </label>

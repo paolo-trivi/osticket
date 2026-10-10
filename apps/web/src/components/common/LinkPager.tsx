@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/utils";
 
@@ -14,13 +16,14 @@ export default function LinkPager({
   href: (p: number) => string;
   labels: { prev: string; next: string };
 }) {
+  const t = useTranslations("common");
   const last = totalPages ?? page + 1;
   const pages: number[] = [];
   for (let p = Math.max(1, page - 2); p <= Math.min(last, page + 2); p++) pages.push(p);
   const btn =
     "flex h-9 min-w-9 items-center justify-center rounded-lg px-3 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5";
   return (
-    <nav className="flex items-center gap-1" aria-label="pagination">
+    <nav className="flex items-center gap-1" aria-label={t("pagination")}>
       {page > 1 ? (
         <Link href={href(page - 1)} className={cn(btn, "border border-gray-200 dark:border-gray-800")}>
           {labels.prev}

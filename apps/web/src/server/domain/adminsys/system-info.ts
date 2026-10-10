@@ -8,10 +8,12 @@ import { sql } from "kysely";
 import { type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
 import { installConfig } from "../../env";
+import { schemaVersionLabel } from "../../system/schema-compat";
 
 /**
  * Informazioni di sistema (scp/system.php, include/staff/system.inc.php). Il PHP non gira dentro
- * Next: versione di osTicket letta da bootstrap.php dell'installazione, dati del database e del
+ * Next: versione di osTicket letta da bootstrap.php dell'installazione (se OST_CONFIG_PATH punta al
+ * PHP), altrimenti ricavata dalla firma dello schema come nel Pannello; dati del database e del
  * runtime Node/Next al posto di PHP ed estensioni.
  */
 interface SystemInfo {
@@ -69,24 +71,30 @@ function languages(): string[] {
 export async function systemInfo(executor: DbOrTx): Promise<SystemInfo> {
   const ic = installConfig();
   const version = await sql<{ v: string }>`SELECT VERSION() AS v`.execute(executor);
-  const space = await sql<{ total: string | null }>`SELECT SUM(data_length + index_length) / 1048576 AS total FROM information_schema.TABLES WHERE table_schema = ${ic.dbName}`.execute(executor);
-  const att = await sql<{ total: string | null }>`SELECT (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = ${ic.dbName} AND TABLE_NAME = ${`${ic.tablePrefix}file_chunk`}`.execute(executor);
-  const cfg = await executor
-    .selectFrom("config")
-    .select(["key", "value"])
-    .where("namespace", "=", "core")
-    .where("key", "in", ["schema_signature", "db_timezone"])
-    .execute();
-  const plugins = await executor.selectFrom("plugin").select((eb) => eb.fn.countAll<number>().as("n")).executeTakeFirstOrThrow();
+  const space = await sql<{
+    total: string | null;
+  }>`SELECT SUM(data_length + index_length) / 1048576 AS total FROM information_schema.TABLES WHERE table_schema = ${ic.dbName}`.execute(executor);
+  const att = await sql<{
+    total: string | null;
+  }>`SELECT (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = ${ic.dbName} AND TABLE_NAME = ${`${ic.tablePrefix}file_chunk`}`.execute(
+    executor,
+  );
+  const cfg = await executor.selectFrom("config").select(["key", "value"]).where("namespace", "=", "core").where("key", "in", ["schema_signature", "db_timezone"]).execute();
+  const signature = cfg.find((c) => c.key === "schema_signature")?.value ?? "";
+  const plugins = await executor
+    .selectFrom("plugin")
+    .select((eb) => eb.fn.countAll<number>().as("n"))
+    .executeTakeFirstOrThrow();
   return {
-    osticketVersion: osticketVersion(),
+    // il container web di norma non vede bootstrap.php: versione dalla firma (release nota, verificata o no)
+    osticketVersion: osticketVersion() ?? schemaVersionLabel(signature),
     nodeVersion: process.version,
     nextVersion: nextVersion(),
     dbVersion: version.rows[0]?.v ?? "",
     dbName: ic.dbName,
     dbHost: ic.dbHost,
     tablePrefix: ic.tablePrefix,
-    schemaSignature: cfg.find((c) => c.key === "schema_signature")?.value ?? "",
+    schemaSignature: signature,
     spaceUsedMiB: Number(space.rows[0]?.total ?? 0),
     attachmentsMiB: Number(att.rows[0]?.total ?? 0),
     dbTimezone: await detectDbTimezone(executor),

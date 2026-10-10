@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useTranslations } from "next-intl";
 
@@ -14,6 +14,18 @@ interface UploadedFile {
   size: number;
   /** token firmato da inviare con il form */
   token: string;
+}
+
+/**
+ * Memoria degli allegati già caricati, per nome del campo, che sopravvive al remount dei form che dopo un
+ * errore di validazione si ricostruiscono con i valori del server (key = nonce): senza, i file andrebbero
+ * ricaricati. Il provider va messo fuori dal form con la key.
+ */
+const AttachmentMemoryContext = createContext<Map<string, UploadedFile[]> | null>(null);
+
+export function AttachmentMemory({ children }: { children: ReactNode }) {
+  const [memory] = useState(() => new Map<string, UploadedFile[]>());
+  return <AttachmentMemoryContext.Provider value={memory}>{children}</AttachmentMemoryContext.Provider>;
 }
 
 interface Props {
@@ -36,9 +48,14 @@ interface Props {
 export default function AttachmentInput({ name, uploadUrl, maxSize, accept, disabled, className }: Props) {
   const t = useTranslations("attachments");
   const input = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const memory = useContext(AttachmentMemoryContext);
+  const [files, setFiles] = useState<UploadedFile[]>(() => memory?.get(name) ?? []);
   const [busy, setBusy] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
+
+  useEffect(() => {
+    memory?.set(name, files);
+  }, [memory, name, files]);
 
   const upload = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -52,8 +69,13 @@ export default function AttachmentInput({ name, uploadUrl, maxSize, accept, disa
       try {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch(withBase(uploadUrl), { method: "POST", body: fd });
-        const json = (await res.json().catch(() => ({ error: "invalid" }))) as Partial<UploadedFile> & { error?: string };
+        const res = await fetch(withBase(uploadUrl), {
+          method: "POST",
+          body: fd,
+        });
+        const json = (await res.json().catch(() => ({ error: "invalid" }))) as Partial<UploadedFile> & {
+          error?: string;
+        };
         if (!res.ok || json.error || !json.token) {
           const code = json.error ?? "invalid";
           errs.push(t.has(`errors.${code}`) ? t(`errors.${code}`, { name: file.name }) : t("errors.invalid", { name: file.name }));

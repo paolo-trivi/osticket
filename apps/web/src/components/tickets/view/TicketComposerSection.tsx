@@ -1,9 +1,13 @@
 import { getTranslations } from "next-intl/server";
 
+import { ReadOnlyNotice, WriteGate } from "@/components/common/WriteGate";
 import TicketComposer, { type ComposerLabels } from "@/components/tickets/TicketComposer";
 import type { TicketComposerData } from "@/server/domain/ticket/view";
 
-/** Composer della vista ticket (risposta / nota interna): dati dal loader, testi tradotti lato server. */
+/**
+ * Composer della vista ticket (risposta / nota interna): dati dal loader, testi tradotti lato server.
+ * In sola lettura un avviso prende il posto del form (e il lock del ticket non viene chiesto).
+ */
 export default async function TicketComposerSection({ composer }: { composer: TicketComposerData }) {
   const tc = await getTranslations("composer");
   const labels: ComposerLabels = {
@@ -39,6 +43,10 @@ export default async function TicketComposerSection({ composer }: { composer: Ti
       locked_by_other: tc("errors.locked_by_other"),
       lock_expired: tc("errors.lock_expired"),
       banned: tc("errors.banned"),
+      // postReply/postNote senza agente nel contesto (codice "forbidden" del dominio)
+      forbidden: tc("errors.forbidden"),
+      read_only: tc("errors.read_only"),
+      generic: tc("errors.generic"),
     },
     editor: {
       bold: tc("editor.bold"),
@@ -51,5 +59,9 @@ export default async function TicketComposerSection({ composer }: { composer: Ti
       linkPrompt: tc("editor.linkPrompt"),
     },
   };
-  return <TicketComposer {...composer} labels={labels} />;
+  return (
+    <WriteGate fallback={<ReadOnlyNotice />}>
+      <TicketComposer {...composer} labels={labels} />
+    </WriteGate>
+  );
 }

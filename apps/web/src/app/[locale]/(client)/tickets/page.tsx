@@ -1,5 +1,7 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import Alert from "@/components/ui/alert/Alert";
 import { Link, redirect } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
 import { coreConfig } from "@/server/config/config";
@@ -26,7 +28,15 @@ export default async function ClientTicketsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ status?: string; topic?: string; q?: string; sort?: string; order?: string; p?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    topic?: string;
+    q?: string;
+    sort?: string;
+    order?: string;
+    p?: string;
+    profile?: string;
+  }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -34,9 +44,11 @@ export default async function ClientTicketsPage({
   const client = await requireClient(locale, "/tickets");
   if (client.guest) redirect({ href: `/tickets/${client.guest.ticketId}`, locale });
   const t = await getTranslations("portal.tickets");
+  const ta = await getTranslations("portal.account");
   const cfg = await coreConfig();
   const stats = await clientTicketStats(cfg, client);
-  if (!stats.open && !stats.closed) redirect({ href: "/open", locale });
+  // senza ticket si va all'apertura, portando con sé l'esito del salvataggio del profilo
+  if (!stats.open && !stats.closed) redirect({ href: sp.profile ? "/open?profile=1" : "/open", locale });
   const status = sp.status === "closed" ? "closed" : "open";
   const sort = SORTS.includes(sp.sort as ClientSort) ? (sp.sort as ClientSort) : "date";
   const order = sp.order === "ASC" ? "ASC" : "DESC";
@@ -54,6 +66,12 @@ export default async function ClientTicketsPage({
 
   return (
     <div className="space-y-6">
+      {/* esito del salvataggio del profilo (profileAction → ?profile=1) */}
+      {sp.profile && (
+        <div>
+          <Alert variant="success" title={ta("profileSaved")} message="" />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-title-sm font-semibold text-gray-800 dark:text-white/90">{t("title")}</h1>
         <div className="flex gap-2">
@@ -105,9 +123,16 @@ export default async function ClientTicketsPage({
             <tr>
               {(["id", "date", "status", "subject", "dept"] as ClientSort[]).map((c) => (
                 <th key={c} className="px-5 py-3 text-start font-medium">
-                  <Link href={qs({ sort: c, order: sort === c && order === "DESC" ? "ASC" : "DESC", p: undefined })} className="hover:text-gray-700 dark:hover:text-gray-200">
+                  <Link
+                    href={qs({
+                      sort: c,
+                      order: sort === c && order === "DESC" ? "ASC" : "DESC",
+                      p: undefined,
+                    })}
+                    className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200"
+                  >
                     {t(`col.${c}`)}
-                    {sort === c ? (order === "DESC" ? " ↓" : " ↑") : ""}
+                    {sort === c ? order === "DESC" ? <ArrowDown className="size-3.5" /> : <ArrowUp className="size-3.5" /> : null}
                   </Link>
                 </th>
               ))}

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Link } from "@/i18n/navigation";
-import { DownloadIcon } from "@/icons";
+import { Download } from "lucide-react";
 import { cn } from "@/utils";
 
 interface StatsTab {
@@ -66,7 +66,7 @@ export default function StatsTabs({ tabs, active, exportHref, exportLabel, expor
           title={exportTitle}
           className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-700 dark:hover:bg-white/5"
         >
-          <DownloadIcon className="size-4" />
+          <Download className="size-4" />
           {exportLabel}
         </a>
       </div>

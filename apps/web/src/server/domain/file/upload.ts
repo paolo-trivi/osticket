@@ -10,6 +10,7 @@ import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
 import { installConfig } from "../../env";
 import { sanitizeText } from "../../format/text";
+import { isStoredFileReadable, readStoredFile, warnUnreadableFile } from "./storage";
 
 /**
  * Scrittura dei file come AttachmentFile::create / ::upload (include/class.file.php) con il backend
@@ -45,19 +46,36 @@ function fileKeyAndHash(data: Buffer): { key: string; signature: string } {
 /**
  * AttachmentFile::create($file, 'T', deduplicate=true): se esiste già un file con stessa firma e
  * dimensione si restituisce quello; altrimenti riga `file` + blocchi `file_chunk`, bk 'D', attrs NULL.
+ *
+ * Deduplica e backend: il PHP riusa il primo file con stessa firma e dimensione qualunque sia il suo
+ * backend (lo legge sempre, i backend sono registrati). TailTicket riusa un file solo se sa leggerlo
+ * (isStoredFileReadable: "D", oppure "F" con la cartella montata e il file presente), altrimenti
+ * salva una nuova copia "D": un allegato riusato ma illeggibile non si potrebbe scaricare né
+ * allegare alle email inviate da TailTicket. La copia è un file valido anche per il PHP. Con file
+ * tutti "D" il risultato è identico al PHP (primo per id).
  */
 async function createAttachmentFile(executor: DbOrTx, input: UploadInput, ft = "T"): Promise<StoredFileRef> {
   const { key, signature } = fileKeyAndHash(input.data);
   const size = input.data.length;
   if (size > 0) {
-    const existing = await executor
+    const candidates = await executor
       .selectFrom("file")
-      .select(["id", "name", "key", "type", "size"])
+      .select(["id", "name", "key", "type", "size", "bk"])
       .where("signature", "=", signature)
       .where("size", "=", size)
       .orderBy("id")
-      .executeTakeFirst();
-    if (existing) return { id: existing.id, name: existing.name, key: existing.key, type: existing.type, size: Number(existing.size) };
+      .limit(20)
+      .execute();
+    for (const existing of candidates) {
+      if (!(await isStoredFileReadable(existing))) continue;
+      return {
+        id: existing.id,
+        name: existing.name,
+        key: existing.key,
+        type: existing.type,
+        size: Number(existing.size),
+      };
+    }
   }
   const type = (input.type || "application/octet-stream").toLowerCase();
   const res = await executor
@@ -173,7 +191,12 @@ export async function attachFilesToEntry(executor: DbOrTx, entryId: number, file
   return ids;
 }
 
-/** File allegati a una voce del thread, per le email (email_attachments) */
+/**
+ * File allegati a una voce del thread, per le email (email_attachments). Il contenuto si legge come
+ * per il download (readStoredFile, backend "D" o "F"). Un file non leggibile non viene allegato
+ * (mai un allegato vuoto): come Mailer::send, che salta l'allegato se il backend lancia
+ * un'eccezione; il PHP registra un avviso in syslog, qui solo su console (una volta per file).
+ */
 export async function entryAttachmentsForMail(executor: DbOrTx, entryId: number): Promise<{ filename: string; content: Buffer; contentType: string }[]> {
   const rows = await executor
     .selectFrom("attachment as a")
@@ -185,8 +208,16 @@ export async function entryAttachmentsForMail(executor: DbOrTx, entryId: number)
     .execute();
   const out: { filename: string; content: Buffer; contentType: string }[] = [];
   for (const r of rows) {
-    const chunks = await executor.selectFrom("file_chunk").select("filedata").where("file_id", "=", r.id).orderBy("chunk_id").execute();
-    out.push({ filename: r.aname || r.name, content: Buffer.concat(chunks.map((c) => c.filedata)), contentType: r.type || "application/octet-stream" });
+    const stored = await readStoredFile(r.id, executor);
+    if (!stored) {
+      warnUnreadableFile(r.id, r.aname || r.name, "allegato email");
+      continue;
+    }
+    out.push({
+      filename: r.aname || r.name,
+      content: stored.data,
+      contentType: r.type || "application/octet-stream",
+    });
   }
   return out;
 }

@@ -23,7 +23,7 @@ export async function generateMetadata() {
  * senza accesso al login; un ospite da link deve accedere con un account. Gli ospiti non possono
  * aprire ticket da Next se il captcha è attivo (immagine GD del PHP non replicata).
  */
-export default async function OpenTicketPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ topicId?: string }> }) {
+export default async function OpenTicketPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ topicId?: string; profile?: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const sp = await searchParams;
@@ -34,6 +34,7 @@ export default async function OpenTicketPage({ params, searchParams }: { params:
     if (!client || client.guest) redirect({ href: "/login?next=/open", locale });
   }
   const t = await getTranslations("portal.open");
+  const ta = await getTranslations("portal.account");
   const allowed = portalOpenAllowed(cfg, client);
   const topics = await publicTopics(cfg);
   const requested = Number(sp.topicId) || 0;
@@ -41,6 +42,12 @@ export default async function OpenTicketPage({ params, searchParams }: { params:
   const [forms, initialTopic] = await Promise.all([baseForms(db(), cfg, "client"), defaultTopic ? topicFormsView(db(), cfg, defaultTopic, "client") : Promise.resolve({ forms: [], disabled: [] })]);
   return (
     <div className="space-y-6">
+      {/* esito del salvataggio del profilo per chi non ha ancora ticket (/tickets?profile=1 → /open) */}
+      {sp.profile && (
+        <div>
+          <Alert variant="success" title={ta("profileSaved")} message="" />
+        </div>
+      )}
       <div>
         <h1 className="text-title-sm font-semibold text-gray-800 dark:text-white/90">{t("title")}</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t("subtitle")}</p>

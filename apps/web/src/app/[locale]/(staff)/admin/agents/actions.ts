@@ -8,6 +8,7 @@ import { str, truthy, type PhpVars } from "@/server/php/values";
 import { saveStaff } from "@/server/domain/admin/staff-admin";
 import { massStaff, type StaffMassAction } from "@/server/domain/admin/staff-mass";
 import { setAgentPassword } from "@/server/domain/admin/staff-password";
+import { changeOf } from "@/server/system/changes/changeset";
 
 import { adminWrite, requireAdminAction } from "../_shared/server";
 
@@ -61,7 +62,7 @@ export async function agentPasswordAction(staffId: number, _prev: AdminFormState
     ),
   );
   if (!r.ok) return { status: "error", errors: r.errors, nonce: Date.now() };
-  return { status: "saved", nonce: Date.now() };
+  return { status: "saved", change: changeOf(r), nonce: Date.now() };
 }
 
 const ACTIONS: StaffMassAction[] = ["enable", "disable", "delete", "permissions", "department"];

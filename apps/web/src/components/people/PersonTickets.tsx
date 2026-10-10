@@ -83,7 +83,7 @@ export default async function PersonTickets({
                 </Badge>
                 <span>{r.dept_name}</span>
                 {r.staff_id ? <span>{names.get(r.staff_id)}</span> : r.team_name ? <span>{r.team_name}</span> : null}
-                <time>{formatDbDate(r.lastupdate ?? r.created, tz, locale, "short")}</time>
+                <time>{formatDbDate(r.lastupdate ?? r.created, tz, locale)}</time>
               </span>
             </li>
           ))}

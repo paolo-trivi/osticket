@@ -8,21 +8,31 @@ import SysNotice from "@/components/adminsys/SysNotice";
 import Callout from "@/components/common/Callout";
 import { PageHeader } from "@/components/common/DataTable";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { initialTemplate, loadGroup, TEMPLATE_NAMES } from "@/server/domain/adminsys/template";
 
 import { requireAdmin } from "../../../guard";
 import { saveTemplateAction } from "../../actions";
+import { adminMetadata } from "../../../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 /** Modifica (updatetpl) o definizione (implement) di un messaggio del set (include/staff/tpl.inc.php). */
-export default async function TemplateMessagePage({ params, searchParams }: { params: Promise<{ locale: string; id: string; code: string }>; searchParams: Promise<Record<string, string>> }) {
+export default async function TemplateMessagePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string; code: string }>;
+  searchParams: Promise<Record<string, string>>;
+}) {
   const { locale, id, code: rawCode } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
   // nell'URL i punti del codice diventano trattini (i percorsi con un punto non passano dal middleware i18n)
   const code = decodeURIComponent(rawCode).replace(/-/g, ".");
-  const tplId = Number(id);
-  const group = Number.isInteger(tplId) && tplId > 0 ? await loadGroup(db(), tplId) : null;
+  const tplId = idOrNotFound(id);
+  const group = await loadGroup(db(), tplId);
   if (!group || !TEMPLATE_NAMES[code]) notFound();
   const t = await getTranslations("asys.templates");
   const sp = await searchParams;

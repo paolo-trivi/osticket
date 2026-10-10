@@ -23,7 +23,8 @@
 	tls internal
 }
 
-# Link del vecchio portale clienti (email, segnalibri) verso le pagine di TailTicket
+# Link del vecchio portale clienti (email, segnalibri) e link con token delle email agli agenti verso le
+# pagine di TailTicket
 (portal_redirect) {
 	@classicHome path /classic/ /classic/index.php
 	redir @classicHome / 302
@@ -45,6 +46,14 @@
 	}
 	redir @faqById /kb/faq/{query.id} 302
 	redir /classic/kb/* /kb 302
+	# link con token delle email agli agenti (benvenuto, reset password): solo GET con token, così il
+	# modulo "password dimenticata" del pannello classico (GET senza token, POST) resta del PHP
+	@staffResetLink {
+		path /classic/scp/pwreset.php
+		method GET
+		query token=*
+	}
+	redir @staffResetLink /agent/login/reset?{query} 302
 }
 (portal_keep) {
 }
@@ -64,6 +73,12 @@
 
 	# redir viene valutata prima di handle (ordine predefinito delle direttive di Caddy)
 	import portal_{$TAILTICKET_CLASSIC_PORTAL:redirect}
+
+	# diagnostica (/api/doctor): solo dall'interno del container con ./tailticket doctor, mai da fuori
+	# (handle e non respond: handle viene valutata prima di respond e il blocco finale prenderebbe tutto)
+	handle /api/doctor* {
+		respond 404
+	}
 
 	handle /classic/* {
 		reverse_proxy osticket:80 {

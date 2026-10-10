@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import BackLink from "@/components/adminsys/BackLink";
+import PhpLink from "@/components/adminsys/PhpLink";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
@@ -10,6 +11,7 @@ import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { DynamicListItem } from "@/lib/osticket/flags";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { htmlDecode } from "@/server/format/html";
 import { listDetail } from "@/server/domain/adminsys/list";
@@ -18,14 +20,17 @@ import { requireAdmin } from "../../guard";
 import { massListItemAction, saveListAction, saveListItemAction } from "../actions";
 import { ListFields } from "../form";
 import { ItemFields, propertyLabels } from "../items";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("lists");
 
 /** Lista: proprietà ed elementi (include/staff/dynamic-list.inc.php). */
 export default async function ListPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const listId = Number(id);
-  const detail = Number.isInteger(listId) && listId > 0 ? await listDetail(db(), listId) : null;
+  const listId = idOrNotFound(id);
+  const detail = await listDetail(db(), listId);
   if (!detail) notFound();
   const t = await getTranslations("asys.lists");
   const c = await getTranslations("asys.common");
@@ -36,7 +41,9 @@ export default async function ListPage({ params, searchParams }: { params: Promi
       <PageHeader title={htmlDecode(detail.list.name)} subtitle={t("edit")} actions={<BackLink href="/admin/lists" label={c("back")} />} />
       <SysNotice sp={sp} />
       {detail.system ? (
-        <Callout tone="info">{t("systemNote")}</Callout>
+        <Callout tone="info">
+          {t("systemNote")} <PhpLink path={`/scp/lists.php?id=${listId}`} label={t("openPhp")} />
+        </Callout>
       ) : (
         <>
           <SysForm action={saveListAction.bind(null, listId)} labels={{ name: t("name") }}>
@@ -46,6 +53,11 @@ export default async function ListPage({ params, searchParams }: { params: Promi
           <SysForm action={saveListItemAction.bind(null, listId, null)} submitLabel={t("addItem")} savedMessage={t("itemAdded")} labels={{ value: t("value"), extra: t("abbrev"), ...propertyLabels(detail.properties) }} resetOnSave>
             <ItemFields item={null} properties={detail.properties} />
           </SysForm>
+          {detail.list.sort_mode === "SortCol" && (
+            <Callout tone="info">
+              {t("sortNote")} <PhpLink path={`/scp/lists.php?id=${listId}`} label={t("openPhp")} />
+            </Callout>
+          )}
           <form action={massListItemAction.bind(null, listId)} className="space-y-4">
             <MassBar
               actions={[

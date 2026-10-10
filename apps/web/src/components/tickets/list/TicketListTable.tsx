@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import MassSelectAll from "@/components/tickets/mass/MassSelectAll";
@@ -36,9 +37,9 @@ export default async function TicketListTable({ rows, columns, names, tz, locale
                   className="px-4 py-3 text-start text-theme-xs font-medium whitespace-nowrap text-gray-500 uppercase dark:text-gray-400"
                 >
                   {c.sortable ? (
-                    <Link href={sortHref(c.id, nextDir)} className="hover:text-gray-800 dark:hover:text-white">
+                    <Link href={sortHref(c.id, nextDir)} className="inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-white">
                       {tq.has(c.heading) ? tq(c.heading) : c.heading}
-                      {sorted ? (dir === 1 ? " ▲" : " ▼") : ""}
+                      {sorted ? dir === 1 ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" /> : null}
                     </Link>
                   ) : tq.has(c.heading) ? (
                     tq(c.heading)

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { loadConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { loadSystemEmail, sendMail } from "../../mail/mailer";
 import { str, truthy, type PhpVars } from "../../php/values";
@@ -18,8 +19,9 @@ export async function sendTestEmail(executor: DbOrTx, vars: PhpVars): Promise<Sa
   const errors: Errors = {};
   const email = truthy(vars.email_id) ? await loadSystemEmail(Number(vars.email_id) || 0, executor) : null;
   if (!email) errors.email_id = "select_from";
-  const verify = await executor.selectFrom("config").select("value").where("namespace", "=", "core").where("key", "=", "verify_email_addrs").executeTakeFirst();
-  if (!truthy(vars.email) || !(await isValidEmail(str(vars.email), truthy(verify?.value ?? "")))) errors.email = "valid_recipient_required";
+  // verify_email_addrs ha default 1 in OsticketConfig::$defaults
+  const verify = (await loadConfigNamespace("core", executor)).bool("verify_email_addrs");
+  if (!truthy(vars.email) || !(await isValidEmail(str(vars.email), verify))) errors.email = "valid_recipient_required";
   if (!truthy(vars.subj)) errors.subj = "subject_required";
   if (!truthy(vars.body)) errors.body = "message_required";
   if (Object.keys(errors).length || !email) return { ok: false, errors };

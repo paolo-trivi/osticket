@@ -2,6 +2,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import DataTable, { PageHeader, SearchBox } from "@/components/common/DataTable";
 import LinkPager from "@/components/common/LinkPager";
+import PeopleCards from "@/components/people/PeopleCards";
+import PeopleDoneNotice from "@/components/people/PeopleDoneNotice";
 import NewTaskButton from "@/components/people/tasks/NewTaskButton";
 import TaskMassActions, { TaskSelect } from "@/components/people/tasks/TaskMassActions";
 import Badge from "@/components/ui/badge/Badge";
@@ -13,7 +15,7 @@ import { newFormFields } from "@/server/domain/directory/ui";
 import { pageSizeFor } from "@/server/domain/queue/context";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
-import { countTaskQueues, listTasks, type TaskQueueName } from "@/server/domain/task/tasks";
+import { countTaskQueues, listTasks, type TaskQueueName, type TaskRow } from "@/server/domain/task/tasks";
 import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
@@ -27,12 +29,30 @@ export async function generateMetadata() {
   return { title: (await getTranslations("tasks"))("title") };
 }
 
+/** Numero del ticket del task come link (stile dei link delle liste). */
+function ticketLink(k: TaskRow) {
+  return k.ticket_id ? (
+    <Link href={`/agent/tickets/${k.ticket_id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+      #{k.ticket_number}
+    </Link>
+  ) : (
+    "—"
+  );
+}
+
 export default async function TasksPage({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ queue?: string; q?: string; p?: string; ticket?: string }>;
+  searchParams: Promise<{
+    queue?: string;
+    q?: string;
+    p?: string;
+    ticket?: string;
+    done?: string;
+    n?: string;
+  }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -45,10 +65,30 @@ export default async function TasksPage({
   // ?ticket=<id>: task di un ticket (ticket-tasks.inc.php), con creazione dal ticket
   const ticket = sp.ticket ? await loadTicket(Number(sp.ticket), agent.id) : null;
   const ticketOk = !!ticket && (await checkStaffPerm(ticket, agent));
+  const ticketId = ticketOk ? ticket!.ticket_id : undefined;
+  // Con ?ticket= senza scheda scelta tutti i task del ticket (ticket-tasks.inc.php); le schede e i loro
+  // contatori restano limitati al ticket
+  const queueChosen = !ticketId || (QUEUES as string[]).includes(sp.queue ?? "");
   const [{ rows, total }, counts] = await Promise.all([
-    listTasks(agent, { queue, q: sp.q, page, pageSize, ticketId: ticketOk ? ticket!.ticket_id : undefined }),
-    countTaskQueues(agent, QUEUES),
+    listTasks(agent, {
+      queue,
+      q: sp.q,
+      page,
+      pageSize,
+      ticketId,
+      ticketQueue: queueChosen,
+    }),
+    countTaskQueues(agent, QUEUES, { ticketId }),
   ]);
+  const ticketParam = ticketId ? `&ticket=${ticketId}` : "";
+  const pageQuery = (p: number) => {
+    const qs = new URLSearchParams();
+    if (queueChosen) qs.set("queue", queue);
+    if (sp.q) qs.set("q", sp.q);
+    if (ticketId) qs.set("ticket", String(ticketId));
+    qs.set("p", String(p));
+    return qs.toString();
+  };
   const tz = await agentTimeZone(agent);
   const tp = await getTranslations("peopleTasks");
 
@@ -92,61 +132,89 @@ export default async function TasksPage({
           </div>
         }
       />
+      <PeopleDoneNotice done={sp.done} n={sp.n} />
       <TaskMassActions can={can} agents={agents} teams={teams} depts={depts} />
       <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-800">
         {QUEUES.map((q) => (
           <Link
             key={q}
-            href={`/agent/tasks?queue=${q}`}
+            href={`/agent/tasks?queue=${q}${ticketParam}`}
             className={cn(
               "rounded-lg px-3 py-2 text-sm font-medium",
-              q === queue && !sp.q ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5",
+              q === queue && !sp.q && queueChosen
+                ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5",
             )}
           >
             {t(`queues.${q}`)}
-            <span className="ms-1.5 rounded-full bg-gray-100 px-1.5 text-theme-xs tabular-nums text-gray-600 dark:bg-white/5 dark:text-gray-400">{counts[q]}</span>
+            <span className="ms-1.5 rounded-full bg-gray-100 px-1.5 text-theme-xs text-gray-600 tabular-nums dark:bg-white/5 dark:text-gray-400">{counts[q]}</span>
           </Link>
         ))}
       </div>
-      <DataTable
+      <PeopleCards
         empty={t("empty")}
-        columns={[
-          { key: "sel", label: "" },
-          { key: "number", label: t("number") },
-          { key: "ticket", label: t("ticket") },
-          { key: "created", label: t("created") },
-          { key: "title", label: t("titleCol") },
-          { key: "dept", label: t("department") },
-          { key: "assignee", label: t("assignee") },
-        ]}
-        rows={rows.map((k) => ({
+        cards={rows.map((k) => ({
           key: k.id,
-          cells: {
-            sel: <TaskSelect id={k.id} />,
-            number: (
-              <Link href={`/agent/tasks/${k.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-                {k.number}
-              </Link>
-            ),
-            ticket: k.ticket_id ? <Link href={`/agent/tickets/${k.ticket_id}`}>#{k.ticket_number}</Link> : "—",
-            created: formatDbDate(k.created, tz, locale, "short"),
-            title: (
-              <span className="inline-flex items-center gap-2">
-                {k.title}
-                {(k.flags & TaskModel.ISOPEN) === 0 && <Badge size="sm" color="light">{t("completed")}</Badge>}
-              </span>
-            ),
-            dept: k.dept_name,
-            assignee: k.staff_name ?? k.team_name ?? "—",
-          },
+          select: <TaskSelect id={k.id} />,
+          title: (
+            <Link href={`/agent/tasks/${k.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+              #{k.number} · {k.title}
+            </Link>
+          ),
+          badge:
+            (k.flags & TaskModel.ISOPEN) === 0 ? (
+              <Badge size="sm" color="light">
+                {t("completed")}
+              </Badge>
+            ) : undefined,
+          meta: [
+            { label: t("ticket"), value: ticketLink(k) },
+            { label: t("created"), value: formatDbDate(k.created, tz, locale) },
+            { label: t("department"), value: k.dept_name },
+            { label: t("assignee"), value: k.staff_name ?? k.team_name ?? "—" },
+          ],
         }))}
       />
-      <LinkPager
-        page={page}
-        totalPages={Math.max(1, Math.ceil(total / pageSize))}
-        href={(p) => `/agent/tasks?queue=${queue}${sp.q ? `&q=${encodeURIComponent(sp.q)}` : ""}${ticketOk ? `&ticket=${ticket!.ticket_id}` : ""}&p=${p}`}
-        labels={{ prev: t("prev"), next: t("next") }}
-      />
+      <div className="hidden md:block">
+        <DataTable
+          empty={t("empty")}
+          columns={[
+            { key: "sel", label: "" },
+            { key: "number", label: t("number") },
+            { key: "ticket", label: t("ticket") },
+            { key: "created", label: t("created") },
+            { key: "title", label: t("titleCol") },
+            { key: "dept", label: t("department") },
+            { key: "assignee", label: t("assignee") },
+          ]}
+          rows={rows.map((k) => ({
+            key: k.id,
+            cells: {
+              sel: <TaskSelect id={k.id} />,
+              number: (
+                <Link href={`/agent/tasks/${k.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+                  {k.number}
+                </Link>
+              ),
+              ticket: ticketLink(k),
+              created: formatDbDate(k.created, tz, locale),
+              title: (
+                <span className="inline-flex items-center gap-2">
+                  {k.title}
+                  {(k.flags & TaskModel.ISOPEN) === 0 && (
+                    <Badge size="sm" color="light">
+                      {t("completed")}
+                    </Badge>
+                  )}
+                </span>
+              ),
+              dept: k.dept_name,
+              assignee: k.staff_name ?? k.team_name ?? "—",
+            },
+          }))}
+        />
+      </div>
+      <LinkPager page={page} totalPages={Math.max(1, Math.ceil(total / pageSize))} href={(p) => `/agent/tasks?${pageQuery(p)}`} labels={{ prev: t("prev"), next: t("next") }} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 
 import DatePicker from "@/components/form/date-picker";
-import { ChevronDownIcon } from "@/icons";
+import { ChevronDown } from "lucide-react";
 
 interface StatsFilterProps {
   /** primo giorno del periodo (yyyy-mm-dd) */
@@ -39,7 +39,7 @@ export default async function StatsFilter({ start, period, periods, group, range
                 </option>
               ))}
             </select>
-            <ChevronDownIcon className="pointer-events-none absolute end-4 top-1/2 size-5 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+            <ChevronDown className="pointer-events-none absolute end-4 top-1/2 size-5 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
           </span>
         </label>
         <input type="hidden" name="group" value={group} />

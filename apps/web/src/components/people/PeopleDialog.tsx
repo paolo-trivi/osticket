@@ -10,6 +10,7 @@ import { useRouter } from "@/i18n/navigation";
 
 import { FormAlert } from "./FormControls";
 import type { PeopleAction, PeopleActionState } from "./types";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 interface PeopleDialogProps {
   title: string;
@@ -45,10 +46,11 @@ export default function PeopleDialog({ title, action, submitLabel, onClose, hidd
   }, [state, onClose, router]);
 
   const error = state.error ? (t.has(`errors.${state.error}`) ? t(`errors.${state.error}`) : t("errors.generic")) : "";
+  const submit = submitKeepingValues(formAction);
 
   return (
     <Modal isOpen onClose={onClose} className={wide ? "m-4 max-w-[820px] p-6 lg:p-8" : "m-4 max-w-[600px] p-6 lg:p-8"}>
-      <form action={formAction} className="max-h-[80vh] space-y-5 overflow-y-auto custom-scrollbar pe-1">
+      <form onSubmit={submit} className="custom-scrollbar max-h-[80vh] space-y-5 overflow-y-auto pe-1">
         {Object.entries(hidden ?? {}).map(([k, v]) => (
           <input key={k} type="hidden" name={k} value={v} />
         ))}

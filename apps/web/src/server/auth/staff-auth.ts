@@ -8,6 +8,7 @@ import { detectDbTimezone } from "../db/time";
 import { findStaffIdForLogin, loadAgent, type Agent } from "../domain/staff/staff";
 import { phpJsonDecode, phpJsonEncode } from "../format/php-json";
 import { logSystem } from "../system/syslog";
+import { canWrite, withWriteScope, writeIfAllowed } from "../system/write-mode";
 import { burnPasswordCheck, checkPassword } from "./passwd";
 import { clearSession, clientIp, readSession, writeSession } from "./session";
 import { addStrike, isLockedOut, resetStrikes } from "./strikes";
@@ -22,7 +23,13 @@ export type StaffLoginResult = { ok: true; mustChangePassword: boolean; mfa?: bo
 
 /** Esito della parte di dominio del login (senza cookie/sessione HTTP): usata anche dall'harness. */
 type StaffAuthOutcome =
-  | { ok: true; staffId: number; passwdVersion: string; mustChangePassword: boolean; mfaKey?: string }
+  | {
+      ok: true;
+      staffId: number;
+      passwdVersion: string;
+      mustChangePassword: boolean;
+      mfaKey?: string;
+    }
   | { ok: false; error: StaffLoginError };
 
 /** Backend di autenticazione che la app sa gestire (staff.backend NULL = qualunque, cioè locale). */
@@ -35,12 +42,9 @@ const SUPPORTED_BACKENDS = new Set(["", "local"]);
  *  - DELETE config namespace "pwreset" con value = staff_id                  (cancelResetTokens)
  *  - eventuale rehash da MD5 (staff.passwd + updated)                        (check_passwd)
  *  - syslog "Agent Login" a livello Debug                                     (logDebug)
+ * Scritture "operational" (write-mode.ts); in sola lettura il login riesce senza scriverle.
  */
-export async function performStaffLogin(input: {
-  login: string;
-  password: string;
-  ip: string;
-}): Promise<StaffAuthOutcome> {
+export async function performStaffLogin(input: { login: string; password: string; ip: string }): Promise<StaffAuthOutcome> {
   const { password, ip } = input;
   const cfg = await coreConfig();
   const username = input.login.trim();
@@ -80,32 +84,32 @@ export async function performStaffLogin(input: {
     return { ok: false, error: "mfa_unsupported" };
   }
 
-  await db().transaction().execute(async (tx) => {
-    const extra = phpJsonDecode<Record<string, unknown>>(agent.row.extra, {});
-    extra.browser_lang = agent.row.lang || cfg.str("system_language", "en_US");
-    await tx
-      .updateTable("staff")
-      .set({
-        extra: phpJsonEncode(extra),
-        lastlogin: NOW,
-        updated: NOW,
-        ...(check.rehash ? { passwd: check.rehash } : {}),
-      })
-      .where("staff_id", "=", agent.id)
-      .execute();
-    await tx
-      .deleteFrom("config")
-      .where("namespace", "=", "pwreset")
-      .where("value", "=", String(agent.id))
-      .execute();
-  });
-
-  await logSystem(
-    "Debug",
-    "Agent Login",
-    `${agent.username} logged in [${ip}], via osTicketStaffAuthentication`,
-    ip,
+  // Staff::onLogin e cancelResetTokens: scritture accessorie, saltate in sola lettura
+  const login = {
+    op: "agent.login",
+    actor: { type: "agent" as const, id: agent.id },
+  };
+  await writeIfAllowed("operational", login, () =>
+    db()
+      .transaction()
+      .execute(async (tx) => {
+        const extra = phpJsonDecode<Record<string, unknown>>(agent.row.extra, {});
+        extra.browser_lang = agent.row.lang || cfg.str("system_language", "en_US");
+        await tx
+          .updateTable("staff")
+          .set({
+            extra: phpJsonEncode(extra),
+            lastlogin: NOW,
+            updated: NOW,
+            ...(check.rehash ? { passwd: check.rehash } : {}),
+          })
+          .where("staff_id", "=", agent.id)
+          .execute();
+        await tx.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", String(agent.id)).execute();
+      }),
   );
+
+  await withWriteScope("operational", () => logSystem("Debug", "Agent Login", `${agent.username} logged in [${ip}], via osTicketStaffAuthentication`, ip), login);
 
   // StaffAuthenticationBackend::login: secondo fattore via email (Email2FABackend::send). Senza
   // configurazione del backend il PHP completa il login senza 2FA: comportamento replicato.
@@ -147,7 +151,12 @@ export async function staffLogin(login: string, password: string): Promise<Staff
     last: Math.floor(Date.now() / 1000),
     ...(outcome.mfaKey ? { mfa: "pending" as const, mfk: outcome.mfaKey } : {}),
   });
-  return { ok: true, mustChangePassword: outcome.mustChangePassword, ...(outcome.mfaKey ? { mfa: true } : {}) };
+  const mustChangePassword = outcome.mustChangePassword && (await canWrite("operational"));
+  return {
+    ok: true,
+    mustChangePassword,
+    ...(outcome.mfaKey ? { mfa: true } : {}),
+  };
 }
 
 async function failed(
@@ -216,8 +225,17 @@ export const sessionAgent = cache(async (): Promise<Agent | null> => {
  */
 export const currentAgent = cache(async (): Promise<Agent | null> => {
   const agent = await sessionAgent();
-  return agent && !agent.mustChangePassword ? agent : null;
+  return agent && !(await passwordChangeEnforced(agent)) ? agent : null;
 });
+
+/**
+ * Cambio password obbligatorio da imporre ora: solo se la modalità di scrittura lo consente
+ * (write-mode.ts). In sola lettura il form non può salvare: l'agente naviga in consultazione e il
+ * cambio torna obbligatorio appena le scritture sono di nuovo permesse.
+ */
+export async function passwordChangeEnforced(agent: Pick<Agent, "mustChangePassword">): Promise<boolean> {
+  return agent.mustChangePassword && (await canWrite("operational"));
+}
 
 /** Rinnova il timestamp di attività (da chiamare nelle Server Actions / route handler). */
 export async function touchStaffSession(): Promise<void> {

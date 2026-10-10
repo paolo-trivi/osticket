@@ -1,5 +1,5 @@
 import { Link } from "@/i18n/navigation";
-import { PaperclipIcon } from "@/icons";
+import { Paperclip } from "lucide-react";
 
 import VisibilityBadge, { type VisibilityLabels } from "./VisibilityBadge";
 
@@ -38,7 +38,7 @@ export default function FaqList({
           <div className="flex shrink-0 items-center gap-2">
             {f.attachmentCount > 0 && (
               <span className="inline-flex items-center gap-1 text-theme-xs text-gray-500 dark:text-gray-400" title={attachmentsLabel(f.attachmentCount)}>
-                <PaperclipIcon className="size-4" aria-hidden />
+                <Paperclip className="size-4" aria-hidden />
                 <span className="sr-only">{attachmentsLabel(f.attachmentCount)}</span>
                 <span aria-hidden>{f.attachmentCount}</span>
               </span>

@@ -12,6 +12,9 @@ import { listLists } from "@/server/domain/adminsys/list";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massListAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("lists");
 
 /** Liste personalizzate (include/staff/dynamic-lists.inc.php). */
 export default async function ListsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

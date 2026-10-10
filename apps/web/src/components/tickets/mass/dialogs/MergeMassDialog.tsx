@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
@@ -46,11 +47,23 @@ export default function MergeMassDialog({ ids, title, data, onClose, onSuccess }
               <span className="font-medium text-gray-800 dark:text-white/90">#{x.number}</span>
               <span className="flex-1 truncate text-gray-600 dark:text-gray-400">{x.subject}</span>
               {i === 0 && <span className="rounded bg-brand-50 px-2 py-0.5 text-theme-xs text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">{t("parent")}</span>}
-              <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("moveUp")} className="rounded px-2 py-1 text-theme-xs disabled:opacity-30">
-                ↑
+              <button
+                type="button"
+                disabled={i === 0}
+                onClick={() => move(i, -1)}
+                aria-label={t("moveUp")}
+                className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5"
+              >
+                <ArrowUp className="size-4" />
               </button>
-              <button type="button" disabled={i === list.length - 1} onClick={() => move(i, 1)} aria-label={t("moveDown")} className="rounded px-2 py-1 text-theme-xs disabled:opacity-30">
-                ↓
+              <button
+                type="button"
+                disabled={i === list.length - 1}
+                onClick={() => move(i, 1)}
+                aria-label={t("moveDown")}
+                className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5"
+              >
+                <ArrowDown className="size-4" />
               </button>
             </li>
           ))}

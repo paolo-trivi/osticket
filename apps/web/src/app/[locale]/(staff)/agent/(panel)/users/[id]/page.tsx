@@ -3,33 +3,34 @@ import { notFound } from "next/navigation";
 
 import ComponentCard from "@/components/common/ComponentCard";
 import { Forbidden, PageHeader } from "@/components/common/DataTable";
+import { WriteGate } from "@/components/common/WriteGate";
 import AccountStatusBadge from "@/components/people/AccountStatusBadge";
+import PeopleDoneNotice from "@/components/people/PeopleDoneNotice";
 import UserActions from "@/components/people/directory/UserActions";
 import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { loadUser } from "@/server/domain/directory/directory";
 import { editFormFields } from "@/server/domain/directory/ui";
-import { GlobalPerm } from "@/server/domain/staff/staff";
+import { GlobalPerm, TicketPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../guard";
 
-export default async function UserPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string; id: string }>;
-  searchParams: Promise<{ tickets?: string }>;
-}) {
+export async function generateMetadata() {
+  return { title: (await getTranslations("directory"))("users") };
+}
+
+export default async function UserPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ tickets?: string; done?: string }> }) {
   const { locale, id } = await params;
-  const { tickets } = await searchParams;
+  const { tickets, done } = await searchParams;
   const filter: TicketStateFilter = tickets === "open" || tickets === "closed" ? tickets : "all";
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("directory");
   if (!agent.hasGlobalPerm(GlobalPerm.USER_DIR)) return <Forbidden message={t("noAccess")} />;
-  const user = await loadUser(Number(id));
+  const user = await loadUser(idOrNotFound(id));
   if (!user) notFound();
   const tz = await agentTimeZone(agent);
   // UserAccount: status con i bit di UserAccountStatus (confermato, bloccato…)
@@ -45,11 +46,25 @@ export default async function UserPage({
         title={user.name}
         subtitle={user.email}
         actions={
-          <Link href={`/agent/tickets?user=${user.id}`} className="rounded-lg bg-brand-500 px-4 py-2 text-sm text-white hover:bg-brand-600">
-            {t("viewTickets", { n: user.tickets })}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {/* tickets.php?a=open&uid=: nuovo ticket con l'utente già selezionato */}
+            {agent.hasPermInAnyRole(TicketPerm.CREATE) && (
+              <WriteGate>
+                <Link
+                  href={`/agent/tickets/new?uid=${user.id}`}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                >
+                  {t("newTicketForUser")}
+                </Link>
+              </WriteGate>
+            )}
+            <Link href={`/agent/tickets?user=${user.id}`} className="rounded-lg bg-brand-500 px-4 py-2 text-sm text-white hover:bg-brand-600">
+              {t("viewTickets", { n: user.tickets })}
+            </Link>
+          </div>
         }
       />
+      <PeopleDoneNotice done={done} name={user.name} />
       <UserActions
         data={{
           userId: user.id,
@@ -73,7 +88,18 @@ export default async function UserPage({
         <ComponentCard title={t("profile")}>
           <dl className="space-y-2 text-sm">
             <Row label={t("emails")} value={user.emails.join(", ")} />
-            <Row label={t("organization")} value={user.org_id ? <Link href={`/agent/orgs/${user.org_id}`}>{user.org_name}</Link> : "—"} />
+            <Row
+              label={t("organization")}
+              value={
+                user.org_id ? (
+                  <Link href={`/agent/orgs/${user.org_id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+                    {user.org_name}
+                  </Link>
+                ) : (
+                  "—"
+                )
+              }
+            />
             <Row label={t("account")} value={<AccountStatusBadge status={user.account_status} />} />
             {user.username && <Row label={t("username")} value={user.username} />}
             <Row label={t("created")} value={formatDbDate(user.created, tz, locale)} />

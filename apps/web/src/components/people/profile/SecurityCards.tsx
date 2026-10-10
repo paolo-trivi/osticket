@@ -1,15 +1,17 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { passwordChangeAction, twofaSetupAction, twofaVerifyAction } from "@/app/[locale]/(staff)/agent/(panel)/profile/actions";
 import ComponentCard from "@/components/common/ComponentCard";
+import { ReadOnlyNote, useReadOnlyHint } from "@/components/common/WriteGate";
 import Button from "@/components/ui/button/Button";
 import { useRouter } from "@/i18n/navigation";
 
 import { FormAlert, TextField } from "../FormControls";
 import type { PeopleActionState } from "../types";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 function useErr(state: PeopleActionState) {
   const tu = useTranslations("peopleUi");
@@ -28,17 +30,27 @@ export function PasswordCard({ withToken, forced }: { withToken: boolean; forced
     else router.refresh();
   }, [state, router]);
   const error = useErr(state);
+  const readOnly = useReadOnlyHint();
   const f = state.fields ?? {};
   return (
     <ComponentCard title={t("changePassword")} desc={forced ? t("mustChangePassword") : t("changePasswordHint")}>
       <form action={action} className="space-y-4">
-        {error && <FormAlert kind="error">{error}</FormAlert>}
-        {state.ok && <FormAlert kind="success">{t("passwordChanged")}</FormAlert>}
+        {error && (
+          <div role="alert">
+            <FormAlert kind="error">{error}</FormAlert>
+          </div>
+        )}
+        {state.ok && (
+          <div role="status">
+            <FormAlert kind="success">{t("passwordChanged")}</FormAlert>
+          </div>
+        )}
+        <ReadOnlyNote />
         {!withToken && <TextField name="current" type="password" label={t("currentPassword")} autoComplete="current-password" error={f.current} />}
         <TextField name="passwd1" type="password" label={t("newPassword")} autoComplete="new-password" error={f.passwd1} maxLength={128} />
         <TextField name="passwd2" type="password" label={t("confirmPassword")} autoComplete="new-password" error={f.passwd2} maxLength={128} />
         <div className="flex justify-end">
-          <Button type="submit" size="sm" disabled={pending}>
+          <Button type="submit" size="sm" disabled={pending || !!readOnly} title={readOnly}>
             {pending ? tu("working") : t("updatePassword")}
           </Button>
         </div>
@@ -54,10 +66,13 @@ export function TwoFactorCard({ email, verified }: { email: string; verified: bo
   const router = useRouter();
   const [setup, setupAction, setupPending] = useActionState<PeopleActionState, FormData>(twofaSetupAction, {});
   const [verify, verifyAction, verifyPending] = useActionState<PeopleActionState, FormData>(twofaVerifyAction, {});
+  // indirizzo inviato per ultimo: ripreso se dopo un codice scaduto si torna al primo passo
+  const [address, setAddress] = useState(email);
   useEffect(() => {
     if (verify.ok) router.refresh();
   }, [verify, router]);
   const setupErr = useErr(setup);
+  const readOnly = useReadOnlyHint();
   const verifyErr = useErr(verify);
   // dopo un codice scaduto o troppi tentativi si torna all'invio (il PHP chiude il dialogo)
   const expired = verify.error === "code_expired" || verify.error === "code_missing";
@@ -65,24 +80,42 @@ export function TwoFactorCard({ email, verified }: { email: string; verified: bo
   return (
     <ComponentCard title={t("twofa")} desc={verified ? t("twofaConfigured") : t("twofaHint")}>
       <div className="space-y-4">
-        {verify.ok && <FormAlert kind="success">{t("twofaVerified")}</FormAlert>}
+        {verify.ok && (
+          <div role="status">
+            <FormAlert kind="success">{t("twofaVerified")}</FormAlert>
+          </div>
+        )}
         {!sent ? (
-          <form action={setupAction} className="space-y-4">
-            {setupErr && <FormAlert kind="error">{setupErr}</FormAlert>}
-            <TextField name="email" type="email" label={t("twofaEmail")} defaultValue={email} hint={t("twofaEmailHint")} error={setup.fields?.email} />
+          <form
+            onSubmit={submitKeepingValues((data) => {
+              setAddress(String(data.get("email") ?? ""));
+              setupAction(data);
+            })}
+            className="space-y-4"
+          >
+            {setupErr && (
+              <div role="alert">
+                <FormAlert kind="error">{setupErr}</FormAlert>
+              </div>
+            )}
+            <TextField name="email" type="email" label={t("twofaEmail")} defaultValue={address} hint={t("twofaEmailHint")} error={setup.fields?.email} />
             <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={setupPending}>
+              <Button type="submit" size="sm" disabled={setupPending || !!readOnly} title={readOnly}>
                 {setupPending ? tu("working") : t("sendCode")}
               </Button>
             </div>
           </form>
         ) : (
-          <form action={verifyAction} className="space-y-4">
+          <form onSubmit={submitKeepingValues(verifyAction)} className="space-y-4">
             <FormAlert kind="info">{t("codeSent")}</FormAlert>
-            {verifyErr && <FormAlert kind="error">{verifyErr}</FormAlert>}
+            {verifyErr && (
+              <div role="alert">
+                <FormAlert kind="error">{verifyErr}</FormAlert>
+              </div>
+            )}
             <TextField name="token" label={t("verificationCode")} autoComplete="one-time-code" />
             <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={verifyPending}>
+              <Button type="submit" size="sm" disabled={verifyPending || !!readOnly} title={readOnly}>
                 {verifyPending ? tu("working") : t("verify")}
               </Button>
             </div>

@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import { db } from "@/server/db";
 import { loadAgent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, runPhp, type TableDiff } from "./harness";
 import { mailsOf } from "./mailpit";
@@ -14,10 +14,15 @@ const IP = "127.0.0.1";
 async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
-type PhpResult = { ok?: boolean; error?: string | number; errors?: Record<string, unknown>; [k: string]: unknown };
+type PhpResult = {
+  ok?: boolean;
+  error?: string | number;
+  errors?: Record<string, unknown>;
+  [k: string]: unknown;
+};
 
 /**
  * Datetime calcolati "adesso + ore SLA" (ticket.est_duedate): PHP e TS girano in istanti diversi e

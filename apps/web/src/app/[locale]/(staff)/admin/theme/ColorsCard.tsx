@@ -26,6 +26,7 @@ export default function ColorsCard({ color, hexDraft, onColor, onHexDraft }: Col
   const t = useTranslations("admin.theme");
   const palette = paletteFromHex(color);
   const lowContrast = relativeLuminance(color) > 0.45;
+  const invalid = !isHexColor(hexDraft);
   return (
     <ComponentCard title={t("colors")} desc={t("colorsDesc")}>
       <div className="flex flex-wrap gap-3">
@@ -33,6 +34,7 @@ export default function ColorsCard({ color, hexDraft, onColor, onHexDraft }: Col
           <button
             key={p.id}
             type="button"
+            aria-pressed={color === p.color}
             onClick={() => onColor(p.color)}
             className={cn(
               "flex items-center gap-2 rounded-lg border px-3 py-2 text-theme-sm",
@@ -41,28 +43,36 @@ export default function ColorsCard({ color, hexDraft, onColor, onHexDraft }: Col
                 : "border-gray-200 dark:border-gray-800",
             )}
           >
-            <span className="size-5 rounded-full" style={{ backgroundColor: p.color }} />
+            <span className="size-5 rounded-full ring-1 ring-black/15 dark:ring-white/25" style={{ backgroundColor: p.color }} />
             <span className="text-gray-700 dark:text-gray-300">{t(`presets.${p.id}`)}</span>
           </button>
         ))}
       </div>
       <div className="flex flex-wrap items-end gap-4">
-        <Field label={t("customColor")}>
+        <Field label={t("customColor")} htmlFor="theme-color">
           <div className="flex items-center gap-3">
             <input
+              id="theme-color"
               type="color"
               value={color}
               onChange={(e) => onColor(e.target.value)}
               className="h-11 w-14 cursor-pointer rounded-lg border border-gray-200 bg-transparent dark:border-gray-800"
-              aria-label={t("customColor")}
             />
             <Input
               value={hexDraft}
               onChange={(e) => onHexDraft(e.target.value)}
-              className="w-32 font-mono"
-              error={!isHexColor(hexDraft)}
+              className="font-mono w-32"
+              aria-label={t("hexLabel")}
+              aria-invalid={invalid}
+              aria-describedby={invalid ? "theme-hex-error" : undefined}
+              error={invalid}
             />
           </div>
+          {invalid && (
+            <p id="theme-hex-error" className="mt-1.5 text-theme-xs text-error-500">
+              {t("hexInvalid")}
+            </p>
+          )}
         </Field>
       </div>
       <div className="flex overflow-hidden rounded-lg">

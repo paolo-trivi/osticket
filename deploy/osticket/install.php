@@ -45,6 +45,13 @@ $vars = [
     'dbpass' => $env('OST_DB_PASS', ''),
     'timezone' => $env('TAILTICKET_TIMEZONE', 'Europe/Rome'),
 ];
-if ($installer->install($vars)) { echo "osTicket installato\n"; exit(0); }
+if ($installer->install($vars)) {
+    // La password iniziale sta in chiaro in .env ed è stampata da "./tailticket up": si impone il cambio al
+    // primo accesso (Staff::setPassword dell'installer azzera change_passwd). Vale per TailTicket e per scp/.
+    $admin = Staff::lookup(['username' => $vars['username']]);
+    if ($admin) { $admin->change_passwd = 1; $admin->save(); }
+    echo "osTicket installato\n";
+    exit(0);
+}
 fwrite(STDERR, "Installazione di osTicket fallita:\n".print_r($installer->getErrors(), true));
 exit(1);

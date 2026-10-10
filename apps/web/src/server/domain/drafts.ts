@@ -1,8 +1,6 @@
 import "server-only";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../db";
+import type { DbOrTx } from "../db";
 import { likeEscape } from "../db/like";
 
 /**
@@ -13,8 +11,10 @@ import { likeEscape } from "../db/like";
  */
 export async function deleteDraftsForNamespace(executor: DbOrTx, namespace: string, staffId?: number): Promise<void> {
   const prefix = likeEscape(namespace) + "%";
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${prefix}${staffId ? sql` AND D.staff_id = ${staffId}` : sql``}`.execute(executor);
+  // DELETE A … JOIN draft del PHP, come DELETE con sottoquery (annullabile nelle modifiche admin: changes/)
+  let drafts = executor.selectFrom("draft").select("id").where("namespace", "like", prefix);
+  if (staffId) drafts = drafts.where("staff_id", "=", staffId);
+  await executor.deleteFrom("attachment").where("type", "=", "D").where("object_id", "in", drafts).execute();
   let q = executor.deleteFrom("draft").where("namespace", "like", namespace);
   if (staffId) q = q.where("staff_id", "=", staffId);
   await q.execute();

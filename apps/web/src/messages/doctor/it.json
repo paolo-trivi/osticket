@@ -1,0 +1,26 @@
+{
+  "doctor": {
+    "title": "Collegamento a osTicket",
+    "desc": "Controlli che verificano, prima di consentire le scritture, che TailTicket sia collegato in modo corretto e sicuro al database di osTicket.",
+    "loading": "Esecuzione dei controlli in corso...",
+    "writable": "Scrittura consentita: nessun controllo bloccante.",
+    "blocked": "Scrittura bloccata: {count, plural, one {# problema da risolvere} other {# problemi da risolvere}}.",
+    "summary": "{ok} ok, {warn} avvisi, {block} blocchi",
+    "legendTitle": "Legenda",
+    "levels": {
+      "block": "Blocco",
+      "warn": "Avviso",
+      "info": "Informazione",
+      "ok": "Ok"
+    },
+    "legend": {
+      "block": "le scritture non sono sicure finché il problema non è risolto",
+      "warn": "da conoscere, non impedisce le scritture (anche quando il controllo non è verificabile)",
+      "info": "solo informazione",
+      "ok": "verificato, nessun problema"
+    },
+    "hint": "Cosa fare",
+    "contentNote": "I risultati dei controlli sono in italiano. Password, salt, chiavi e token non vengono mai mostrati.",
+    "error": "Impossibile eseguire i controlli: {message}"
+  }
+}

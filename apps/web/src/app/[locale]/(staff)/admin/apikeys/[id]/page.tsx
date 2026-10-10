@@ -5,18 +5,22 @@ import BackLink from "@/components/adminsys/BackLink";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
 import { PageHeader } from "@/components/common/DataTable";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 
 import { requireAdmin } from "../../guard";
 import { saveApiKeyAction } from "../actions";
 import { ApiKeyFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("apikeys");
 
 export default async function EditApiKeyPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);
-  const keyId = Number(id);
-  const k = Number.isInteger(keyId) && keyId > 0 ? await db().selectFrom("api_key").selectAll().where("id", "=", keyId).executeTakeFirst() : null;
+  const keyId = idOrNotFound(id);
+  const k = await db().selectFrom("api_key").selectAll().where("id", "=", keyId).executeTakeFirst();
   if (!k) notFound();
   const t = await getTranslations("asys.apikeys");
   const c = await getTranslations("asys.common");

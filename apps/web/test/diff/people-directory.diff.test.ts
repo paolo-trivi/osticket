@@ -9,7 +9,7 @@ import { importUsers } from "@/server/domain/directory/users-import";
 import { loadAgent } from "@/server/domain/staff/staff";
 import { deleteTicketViaDeletedStatus } from "@/server/domain/ticket/delete";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
@@ -27,7 +27,7 @@ afterAll(closeDb);
 async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
 /** Token casuali (config pwreset) resi confrontabili. */
@@ -41,7 +41,9 @@ const clean = <T extends { html: string; to: string[]; subject: string }>(list: 
 
 async function passwdOf(dbName: string, userId: number): Promise<string> {
   const { sql } = await import("kysely");
-  const { rows } = await sql<{ passwd: string }>`SELECT passwd FROM ${sql.raw(`\`${dbName}\`.ost_user_account`)} WHERE user_id = ${userId}`.execute(db());
+  const { rows } = await sql<{
+    passwd: string;
+  }>`SELECT passwd FROM ${sql.raw(`\`${dbName}\`.ost_user_account`)} WHERE user_id = ${userId}`.execute(db());
   return rows[0]?.passwd ?? "";
 }
 

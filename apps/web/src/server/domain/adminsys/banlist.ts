@@ -1,8 +1,6 @@
 import "server-only";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { intval, isset, str, truthy, type PhpVars } from "../../php/values";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
@@ -120,7 +118,7 @@ export async function massBanRules(executor: DbOrTx, action: BanMassAction, ids:
       .where("isactive", "<>", value)
       .executeTakeFirstOrThrow();
     // UPDATE diretto senza `updated` (come il PHP)
-    await sql`UPDATE ${table("filter_rule")} SET isactive=${value} WHERE filter_id=${filterId} AND id IN (${sql.join(ids)})`.execute(executor);
+    await executor.updateTable("filter_rule").set({ isactive: value }).where("filter_id", "=", filterId).where("id", "in", ids).execute();
     const num = Number(changed.n);
     return num ? { ok: true, num } : { ok: false, num: 0, error: "failed" };
   }

@@ -31,6 +31,8 @@ npx next build
 
 Con APCu installato in PHP serve `apc.enable_cli=1`, come in CI.
 
+Screenshot del sito e del README (`docs/assets/screenshots`): `scripts/docs-demo.sh up` (stack demo isolato `tailticket-demo` su http://localhost:28080 con i dati di `dev/seed.php`), poi `npm run docs:screenshots`; dettagli in testa ai due script.
+
 ## Aggiungere o cambiare una scrittura
 
 1. Leggere il codice PHP di riferimento in `legacy/include/class.*.php` e la knowledge base (`docs/reverse-engineering/`).

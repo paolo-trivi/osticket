@@ -7,12 +7,15 @@ import { loadAgent } from "../domain/staff/staff";
 import { sendStaffResetEmail, verifyStaffResetToken } from "../domain/staff/password-reset";
 import { phpJsonDecode, phpJsonEncode } from "../format/php-json";
 import { logSystem } from "../system/syslog";
+import { canWrite, withWriteScope } from "../system/write-mode";
 import { EMAIL_2FA, newMfaKey, prepare2faEmail, validateOtp, type OtpCheck } from "./mfa";
 import { clearSession, clientIp, readSession, writeSession } from "./session";
 
 /**
  * Recupero accesso e secondo fattore degli agenti (scp/login.php do=2fa, scp/pwreset.php).
  * Le scritture sul DB sono quelle del PHP; lo stato di sessione è nel cookie firmato della app.
+ * Scritture "operational" (write-mode.ts): reset della password e login con il token richiedono di
+ * scrivere (token, cambio password obbligatorio) e in sola lettura rispondono "read_only".
  */
 
 /** Sessione con 2FA pendente (login riuscito, codice non ancora verificato). */
@@ -53,21 +56,27 @@ export async function cancelPendingLogin(): Promise<void> {
  * scp/pwreset.php do=sendmail: nessuna informazione sull'esistenza dell'agente (stessa risposta) e
  * tempo minimo di risposta di 1,4 s + jitter, come il PHP.
  */
-export async function requestStaffPasswordReset(userid: string): Promise<{ error?: "unavailable" | "disabled" }> {
+export async function requestStaffPasswordReset(userid: string): Promise<{ error?: "unavailable" | "disabled" | "read_only" }> {
   const start = Date.now();
   const cfg = await coreConfig();
   if (!cfg.bool("allow_pw_reset")) return { error: "disabled" };
+  if (!(await canWrite("operational"))) return { error: "read_only" };
   await detectDbTimezone(db());
   const ip = await clientIp();
   let send: (() => Promise<void>) | undefined;
   let error: "unavailable" | undefined;
-  await db()
-    .transaction()
-    .execute(async (tx) => {
-      const r = await sendStaffResetEmail(tx, cfg, userid.trim(), ip);
-      send = r.send;
-      error = r.error;
-    });
+  await withWriteScope(
+    "operational",
+    () =>
+      db()
+        .transaction()
+        .execute(async (tx) => {
+          const r = await sendStaffResetEmail(tx, cfg, userid.trim(), ip);
+          send = r.send;
+          error = r.error;
+        }),
+    { op: "agent.pwreset.request" },
+  );
   if (send) {
     try {
       await send();
@@ -86,7 +95,16 @@ export async function requestStaffPasswordReset(userid: string): Promise<{ error
  * e login (syslog "Agent Login … via PasswordResetTokenBackend", Staff::onLogin; il token resta fino
  * al cambio password). Restituisce l'esito; in caso di successo la sessione porta il token di reset.
  */
-export async function staffResetTokenLogin(userid: string, token: string): Promise<{ ok: true; mfa: boolean } | { ok: false; error: "invalid_user" | "invalid_token" | "inactive" }> {
+export async function staffResetTokenLogin(
+  userid: string,
+  token: string,
+): Promise<
+  | { ok: true; mfa: boolean }
+  | {
+      ok: false;
+      error: "invalid_user" | "invalid_token" | "inactive" | "read_only";
+    }
+> {
   const ip = await clientIp();
   const r = await performResetTokenLogin({ userid, token, ip });
   if (!r.ok) return r;
@@ -104,8 +122,24 @@ export async function staffResetTokenLogin(userid: string, token: string): Promi
 
 /** Parte di dominio di staffResetTokenLogin (senza cookie): usata anche dall'harness. */
 export async function performResetTokenLogin(input: { userid: string; token: string; ip: string }): Promise<
-  { ok: true; staffId: number; passwdVersion: string; mfaKey?: string } | { ok: false; error: "invalid_user" | "invalid_token" | "inactive" }
+  | { ok: true; staffId: number; passwdVersion: string; mfaKey?: string }
+  | {
+      ok: false;
+      error: "invalid_user" | "invalid_token" | "inactive" | "read_only";
+    }
 > {
+  // il login con il token impone il cambio password: senza scritture non si può completare
+  if (!(await canWrite("operational"))) return { ok: false, error: "read_only" };
+  return withWriteScope("operational", () => resetTokenLoginWrites(input), {
+    op: "agent.pwreset.login",
+  });
+}
+
+async function resetTokenLoginWrites(input: {
+  userid: string;
+  token: string;
+  ip: string;
+}): Promise<{ ok: true; staffId: number; passwdVersion: string; mfaKey?: string } | { ok: false; error: "invalid_user" | "invalid_token" | "inactive" }> {
   const cfg = await coreConfig();
   await detectDbTimezone(db());
   const { ip } = input;

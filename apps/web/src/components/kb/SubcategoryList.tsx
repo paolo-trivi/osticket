@@ -1,5 +1,5 @@
 import { Link } from "@/i18n/navigation";
-import { FolderIcon } from "@/icons";
+import { Folder } from "lucide-react";
 
 import VisibilityBadge, { type VisibilityLabels } from "./VisibilityBadge";
 
@@ -11,20 +11,12 @@ interface SubcategoryEntry {
 }
 
 /** Sottocategorie con numero di FAQ e visibilità (Category::children). */
-export default function SubcategoryList({
-  items,
-  labels,
-  countLabel,
-}: {
-  items: readonly SubcategoryEntry[];
-  labels: VisibilityLabels;
-  countLabel: (n: number) => string;
-}) {
+export default function SubcategoryList({ items, labels, countLabel }: { items: readonly SubcategoryEntry[]; labels: VisibilityLabels; countLabel: (n: number) => string }) {
   return (
     <ul className="space-y-2">
       {items.map((c) => (
         <li key={c.id} className="flex flex-wrap items-center gap-2">
-          <FolderIcon className="size-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden />
+          <Folder className="size-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden />
           <Link href={`/agent/kb/category/${c.id}`} className="min-w-0 text-sm font-medium break-words text-brand-600 hover:underline dark:text-brand-400">
             {c.name}
           </Link>

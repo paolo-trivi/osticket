@@ -22,7 +22,12 @@ import { connectionErrors, connectionOf, probeMailbox, probeSmtp, type Credentia
  *
  * Differenze annotate:
  * - OAuth2 (plugin osTicket) non è gestito: la scelta di un backend `oauth2:*` restituisce
- *   l'errore `oauth_unsupported` e la configurazione resta al pannello PHP.
+ *   l'errore `oauth_unsupported` e la configurazione resta al pannello PHP. Lo stesso per i tipi di
+ *   autenticazione di altri plugin (`auth_unsupported`, senza registrare l'errore sull'account).
+ * - Un account con autenticazione non gestita (OAuth2, plugin, o SMTP "come la casella" con casella
+ *   OAuth2) i cui campi non sono stati modificati non viene toccato (accountUnchanged): il resto del
+ *   form si salva, le credenziali e i token restano quelli scritti dal PHP. Il PHP rifarebbe la
+ *   prova di connessione con il token e azzererebbe contatore e ultimo errore.
  * - Le prove di connessione (IMAP/POP3/SMTP) sono fatte da mail-probe.ts: i messaggi d'errore
  *   delle eccezioni di Laminas non sono identici.
  */
@@ -36,6 +41,35 @@ const ACCOUNT_VARS: Record<AccountType, string[]> = {
 };
 
 const strcasecmp = (a: PhpVal, b: PhpVal) => str(a).toLowerCase() !== str(b).toLowerCase();
+
+/** Tipi di autenticazione gestiti da TailTicket (EmailAccount::getCredentials): gli altri restano al PHP. */
+const KNOWN_AUTH = ["basic", "none", "mailbox"];
+
+/** Autenticazione non gestita: `oauth2:*` o tipo di un plugin (vuoto = nessuna, gestita). */
+export function isUnsupportedAuth(bk: PhpVal): boolean {
+  const type = str(bk).split(":")[0].toLowerCase();
+  return !!type && !KNOWN_AUTH.includes(type);
+}
+
+/** Campo dell'account come lo rappresenta il form (null = "", porta 0 = "", flag = "1"/"0"). */
+function formValue(field: string, value: PhpVal): string {
+  if (field === "active" || field === "allow_spoofing") return truthy(value) ? "1" : "0";
+  if (field === "port") return truthy(value) && str(value) !== "0" ? str(value) : "";
+  return value === null || value === undefined ? "" : str(value);
+}
+
+/**
+ * I campi dell'account inviati dal form (`<tipo>_<campo>`) sono uguali a quelli salvati? Il
+ * protocollo SMTP è fisso e non fa parte del form.
+ */
+export function accountUnchanged(type: AccountType, stored: Record<string, PhpVal>, vars: PhpVars): boolean {
+  return ACCOUNT_VARS[type].filter((k) => !(type === "smtp" && k === "protocol")).every((k) => formValue(k, stored[k] ?? null) === formValue(k, vars[`${type}_${k}`] ?? null));
+}
+
+/** Valori salvati dell'account (per accountUnchanged). */
+function storedValues(acc: OrmRow, type: AccountType): Record<string, PhpVal> {
+  return Object.fromEntries(ACCOUNT_VARS[type].map((k) => [k, pv(acc.get(k)) as PhpVal]));
+}
 
 /** Email::getMailBoxAccount / getSmtpAccount (autoinit: account nuovo non salvato). */
 export async function loadAccount(executor: DbOrTx, emailId: number, type: AccountType): Promise<OrmRow> {
@@ -98,6 +132,8 @@ async function credentialsOf(ctx: AccountCtx, acc: OrmRow, auth: string | null):
     case "mailbox": {
       const mb = ctx.mailbox ?? (await loadAccount(ctx.executor, ctx.emailId, "mailbox"));
       const bk = str(pv(mb.get("auth_bk")));
+      // casella con l'autenticazione di un plugin: nessuna credenziale, senza registrare errori
+      if (isUnsupportedAuth(bk) && !bk.toLowerCase().startsWith("oauth2")) return null;
       return bk ? credentialsOf(ctx, mb, bk) : null;
     }
     case "none":
@@ -113,11 +149,23 @@ async function credentialsOf(ctx: AccountCtx, acc: OrmRow, auth: string | null):
   }
 }
 
+/**
+ * credentialsOf per il form: un tipo scelto non gestito e diverso da OAuth2 (plugin) non arriva a
+ * credentialsOf, che registrerebbe "Unknown Credential Type" sull'account: per il PHP con il plugin
+ * il tipo è valido, quindi TailTicket rifiuta il salvataggio senza scrivere nulla.
+ */
+async function credentialsFor(ctx: AccountCtx, acc: OrmRow, auth: string): Promise<Creds | "unsupported"> {
+  if (isUnsupportedAuth(auth) && !auth.toLowerCase().startsWith("oauth2")) return "unsupported";
+  return credentialsOf(ctx, acc, auth);
+}
+
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** MailBoxAccount::setInfo */
 export async function mailboxSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars, errors: Errors): Promise<boolean> {
-  let creds: Creds = null;
+  // autenticazione non gestita e campi invariati: l'account resta com'è (nessuna scrittura)
+  if (!acc.isNew && isUnsupportedAuth(pv(acc.get("auth_bk"))) && accountUnchanged("mailbox", storedValues(acc, "mailbox"), vars)) return true;
+  let creds: Creds | "unsupported" = null;
   const protocol = vars.mailbox_protocol;
   if (truthy(vars.mailbox_active)) {
     if (!truthy(vars.mailbox_host)) errors.mailbox_host = "host_required";
@@ -136,8 +184,9 @@ export async function mailboxSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars
     else if (!strcasecmp(vars.mailbox_folder, vars.mailbox_archivefolder)) errors.mailbox_postfetch = "archive_same_folder";
   }
   if (truthy(vars.mailbox_auth_bk)) {
-    creds = await credentialsOf(ctx, acc, str(vars.mailbox_auth_bk));
+    creds = await credentialsFor(ctx, acc, str(vars.mailbox_auth_bk));
     if (creds === "oauth") errors.mailbox_auth_bk = "oauth_unsupported";
+    else if (creds === "unsupported") errors.mailbox_auth_bk = "auth_unsupported";
     else if (!creds) errors.mailbox_auth_bk = "configure_auth";
   }
   if (Object.keys(errors).length) return false;
@@ -157,7 +206,7 @@ export async function mailboxSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars
   // switch ($vars['mailbox_postfetch']) { case 'archive': … default: null }
   acc.set("archivefolder", phpLooseEquals(vars.mailbox_postfetch ?? null, "archive") ? (vars.mailbox_archivefolder === undefined ? null : str(vars.mailbox_archivefolder)) : null);
 
-  if (truthy(pv(acc.get("active"))) && creds && creds !== "oauth") {
+  if (truthy(pv(acc.get("active"))) && creds && creds !== "oauth" && creds !== "unsupported") {
     try {
       const conn = connectionOf(str(pv(acc.get("host"))), str(pv(acc.get("port"))), str(pv(acc.get("protocol"))));
       const folder = str(pv(acc.get("folder")));
@@ -175,7 +224,14 @@ export async function mailboxSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars
 
 /** SmtpAccount::setInfo */
 export async function smtpSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars, errors: Errors): Promise<boolean> {
-  let creds: Creds = null;
+  // autenticazione non gestita (propria o della casella, con "mailbox") e campi invariati: nessuna scrittura
+  const storedAuth = pv(acc.get("auth_bk"));
+  const mailboxAuth = ctx.mailbox ? pv(ctx.mailbox.get("auth_bk")) : null;
+  const viaMailbox = str(storedAuth).toLowerCase() === "mailbox" && isUnsupportedAuth(mailboxAuth);
+  // con "mailbox" serve anche l'autenticazione della casella invariata (altrimenti controlli normali)
+  const mailboxAuthKept = !viaMailbox || str(vars.mailbox_auth_bk) === str(mailboxAuth);
+  if (!acc.isNew && (isUnsupportedAuth(storedAuth) || viaMailbox) && mailboxAuthKept && accountUnchanged("smtp", storedValues(acc, "smtp"), vars)) return true;
+  let creds: Creds | "unsupported" = null;
   const e: Errors = {};
   const auth = vars.smtp_auth_bk;
   if (truthy(vars.smtp_active)) {
@@ -183,13 +239,15 @@ export async function smtpSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars, e
     if (!truthy(vars.smtp_port)) e.smtp_port = "port_required";
     if (!truthy(auth)) e.smtp_auth_bk = "select_auth";
     else {
-      creds = await credentialsOf(ctx, acc, str(auth));
+      creds = await credentialsFor(ctx, acc, str(auth));
       if (creds === "oauth") e.smtp_auth_bk = "oauth_unsupported";
+      else if (creds === "unsupported") e.smtp_auth_bk = "auth_unsupported";
       else if (!creds) e.smtp_auth_bk = phpLooseEquals(auth ?? null, "mailbox") ? "configure_mailbox_auth" : "configure_auth";
     }
   } else if (truthy(auth) && strcasecmp(auth, "mailbox")) {
-    creds = await credentialsOf(ctx, acc, str(auth));
+    creds = await credentialsFor(ctx, acc, str(auth));
     if (creds === "oauth") e.smtp_auth_bk = "oauth_unsupported";
+    else if (creds === "unsupported") e.smtp_auth_bk = "auth_unsupported";
     else if (!creds) e.smtp_auth_bk = "configure_auth";
   }
   // Strict matching con mailbox OAuth2: senza token OAuth (non gestito) il controllo fallisce
@@ -205,7 +263,7 @@ export async function smtpSetInfo(ctx: AccountCtx, acc: OrmRow, vars: PhpVars, e
     acc.set("last_activity", null);
     acc.set("last_error_msg", null);
     acc.set("num_errors", 0);
-    if (truthy(pv(acc.get("active"))) && creds && creds !== "oauth") {
+    if (truthy(pv(acc.get("active"))) && creds && creds !== "oauth" && creds !== "unsupported") {
       try {
         await probeSmtp(connectionOf(str(pv(acc.get("host"))), str(pv(acc.get("port"))), "SMTP"), creds);
       } catch (ex) {

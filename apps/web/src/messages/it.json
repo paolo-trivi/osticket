@@ -12,7 +12,33 @@
     "yes": "Sì",
     "no": "No",
     "none": "Nessuno",
-    "legacyPanel": "Pannello classico"
+    "legacyPanel": "Pannello classico",
+    "pagination": "Paginazione"
+  },
+  "writeMode": {
+    "banner": {
+      "readonly": "Sola lettura: le modifiche vanno fatte nel pannello classico.",
+      "admin": "L'amministrazione è in sola lettura in questa installazione.",
+      "portal": "Il centro di assistenza è momentaneamente in sola consultazione: puoi leggere i ticket, ma non inviare nuove richieste o risposte.",
+      "legacy": "Apri il pannello classico",
+      "reason": "Motivo: {reason}"
+    },
+    "reasons": {
+      "schema": "lo schema del database osTicket non è fra quelli verificati da TailTicket.",
+      "schemaUnreadable": "non è stato possibile leggere la versione dello schema del database osTicket.",
+      "tablePrefix": "le tabelle di osTicket non corrispondono al prefisso configurato.",
+      "secretSalt": "il SECRET_SALT non corrisponde a quello di osTicket.",
+      "timezone": "il fuso orario del database non è coerente con quello di TailTicket o di osTicket.",
+      "critical": "un controllo critico dell'installazione non è superato (Amministrazione > Sistema).",
+      "doctorFailed": "non è stato possibile completare i controlli critici dell'installazione.",
+      "other": "un controllo di sicurezza ha disattivato le scritture."
+    },
+    "hint": "Non disponibile: TailTicket è in sola lettura.",
+    "hintAdmin": "Non disponibile: l'amministrazione è in sola lettura.",
+    "notice": "Operazione non disponibile: TailTicket è in sola lettura. Le modifiche vanno fatte nel pannello classico.",
+    "noticeAdmin": "Le modifiche non si possono salvare: l'amministrazione è in sola lettura in questa installazione.",
+    "noticePortal": "Al momento non è possibile inviare richieste o modifiche: il centro di assistenza è in sola consultazione. Riprova più tardi.",
+    "boardDrag": "Sola lettura: lo spostamento delle card è disattivato."
   },
   "nav": {
     "groups": {
@@ -41,13 +67,15 @@
   },
   "header": {
     "searchPlaceholder": "Cerca ticket…",
+    "searchLabel": "Cerca ticket",
     "toggleSidebar": "Mostra/nascondi menu",
     "signOut": "Esci",
     "profile": "Il mio profilo",
     "language": "Lingua",
     "admin": "Amministratore",
     "home": "Vai alla dashboard",
-    "menu": "Altre azioni"
+    "menu": "Altre azioni",
+    "toggleTheme": "Cambia tema chiaro/scuro"
   },
   "auth": {
     "agentLoginTitle": "Accesso agenti",
@@ -59,6 +87,7 @@
     "sideTitle": "TailTicket",
     "sideText": "L'helpdesk moderno, compatibile con osTicket: nuova interfaccia, stessi dati del pannello classico.",
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "invalid": "Credenziali non valide",
       "locked_out": "Numero massimo di tentativi raggiunto: riprova più tardi",
       "too_many": "Troppi tentativi falliti. Hai dimenticato le credenziali? Contatta l'amministratore.",
@@ -66,7 +95,9 @@
       "backend": "Questo account usa un sistema di autenticazione esterno non ancora supportato: usa il pannello classico",
       "mfa_unsupported": "La verifica in due passaggi non è ancora disponibile qui: usa il pannello classico"
     },
-    "sessionExpired": "Sessione scaduta: accedi di nuovo"
+    "sessionExpired": "Sessione scaduta: accedi di nuovo",
+    "showPassword": "Mostra password",
+    "hidePassword": "Nascondi password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -130,6 +161,7 @@
       "deleted": "Eliminati",
       "merged": "Uniti",
       "linked": "Collegati",
+      "unlinked": "Scollegati",
       "login": "Accessi",
       "logout": "Uscite",
       "message": "Messaggi",
@@ -139,7 +171,8 @@
   "notFound": {
     "error": "ERRORE",
     "message": "La pagina richiesta non esiste.",
-    "backHome": "Torna alla home"
+    "backHome": "Torna alla home",
+    "title": "Pagina non trovata"
   },
   "admin": {
     "home": "Amministrazione",
@@ -150,6 +183,8 @@
       "colors": "Colore principale",
       "colorsDesc": "La scala completa viene generata automaticamente dal colore scelto.",
       "customColor": "Colore personalizzato",
+      "hexLabel": "Codice esadecimale del colore",
+      "hexInvalid": "Inserisci un colore esadecimale valido, ad esempio #465fff.",
       "presets": {
         "osticket": "Arancio osTicket",
         "hospital": "Ospedaliero",
@@ -203,7 +238,7 @@
         "custom": "personalizzato",
         "default": "predefinito TailTicket"
       },
-      "logosHint": "I loghi si caricano dal pannello classico (Admin › Impostazioni › Sistema): la nuova interfaccia li usa automaticamente.",
+      "logosHint": "I loghi si caricano dal pannello classico (Impostazioni › Azienda): la nuova interfaccia li usa automaticamente.",
       "openLegacy": "Apri nel pannello classico",
       "preview": "Anteprima",
       "sample": {
@@ -229,6 +264,14 @@
     "sortBy": "Ordina per",
     "apply": "Applica",
     "tooManyWords": "La ricerca può contenere al massimo 3 parole",
+    "done": {
+      "assign": "Ticket #{number} assegnato a {assignee}.",
+      "transfer": "Ticket #{number} trasferito al reparto {dept}.",
+      "status": "Stato del ticket #{number} cambiato in {status}.",
+      "delete": "Ticket #{number} eliminato.",
+      "deleteGeneric": "Ticket eliminato.",
+      "generic": "Operazione sul ticket completata."
+    },
     "empty": "Nessun ticket in questa coda",
     "pageOf": "Pagina {page} di {pages}",
     "prev": "Precedente",
@@ -271,6 +314,9 @@
     "Department": "Reparto",
     "Last Message": "Ultimo messaggio",
     "Last Response": "Ultima risposta",
+    "Date Closed": "Data di chiusura",
+    "Closed By": "Chiuso da",
+    "Last Update": "Ultimo aggiornamento",
     "Team": "Team"
   },
   "ticket": {
@@ -279,6 +325,8 @@
     "answered": "Con risposta",
     "locked": "In modifica da un altro agente",
     "openLegacy": "Apri nel pannello classico",
+    "created": "Ticket creato.",
+    "closeNotice": "Chiudi",
     "details": "Dettagli",
     "department": "Reparto",
     "helpTopic": "Argomento",
@@ -306,7 +354,10 @@
     "message": "Messaggio",
     "editedBy": "modificato da",
     "via": "via",
-    "tasks": "Task ({count})"
+    "tasks": "Task ({count})",
+    "pageTitle": "Ticket",
+    "merged": "Unito ad altri ticket",
+    "linked": "Collegato ad altri ticket"
   },
   "events": {
     "created": "Creato da <b>{somebody}</b>",
@@ -324,17 +375,49 @@
     "statusChanged": "<b>{somebody}</b> ha cambiato lo stato in <b>{status}</b>",
     "edited": "Aggiornato da <b>{somebody}</b>",
     "collab": "<b>{somebody}</b> ha modificato i collaboratori",
+    "collabAdded": "<b>{somebody}</b> ha aggiunto <b>{names}</b> come collaboratori",
+    "collabRemoved": "<b>{somebody}</b> ha rimosso <b>{names}</b> dai collaboratori",
+    "collabOrg": "Collaboratori dell'organizzazione <b>{org}</b> aggiunti",
+    "collabVia": "{name} via {src}",
+    "ownerChanged": "<b>{somebody}</b> ha cambiato il proprietario in <b>{owner}</b>",
+    "editedChanges": "Aggiornato da <b>{somebody}</b> — <changes></changes>",
+    "changeFromTo": "<b>{field}</b> cambiato da <b>{old}</b> a <b>{new}</b>",
+    "changeSet": "<b>{field}</b> impostato a <b>{new}</b>",
+    "changeUnset": "<b>{field}</b> rimosso",
+    "fields": {
+      "topic_id": "Argomento",
+      "sla_id": "SLA",
+      "duedate": "Scadenza",
+      "user_id": "Proprietario del ticket",
+      "source": "Origine"
+    },
+    "slaName": "{name} ({hours} ore - {active, select, yes {attivo} other {disattivato}})",
+    "filterSet": "Il filtro <b>{filter}</b> ha impostato {type} a <b>{value}</b>",
+    "filterSetEmpty": "Il filtro <b>{filter}</b> ha impostato {type}",
+    "filterTypes": {
+      "Department": "il reparto",
+      "Priority": "la priorità",
+      "SLA": "lo SLA",
+      "Team": "il team",
+      "Agent": "l'agente",
+      "Topic": "l'argomento",
+      "Ticket Status": "lo stato del ticket"
+    },
     "merged": "<b>{somebody}</b> ha unito i ticket",
+    "mergedWith": "<b>{somebody}</b> ha unito questo ticket con <ticket></ticket>",
     "linked": "<b>{somebody}</b> ha collegato i ticket",
+    "linkedWith": "<b>{somebody}</b> ha collegato questo ticket con <ticket></ticket>",
+    "unlinked": "<b>{somebody}</b> ha scollegato i ticket",
+    "unlinkedFrom": "<b>{somebody}</b> ha scollegato questo ticket da <ticket></ticket>",
     "resent": "<b>{somebody}</b> ha inviato di nuovo una risposta",
     "deleted": "Eliminato da <b>{somebody}</b>"
   },
   "directory": {
     "users": "Utenti",
     "orgs": "Organizzazioni",
-    "usersCount": "{n} utenti",
-    "orgsCount": "{n} organizzazioni",
-    "searchUsers": "Cerca per nome, email, organizzazione…",
+    "usersCount": "{n, plural, one {# utente} other {# utenti}}",
+    "orgsCount": "{n, plural, one {# organizzazione} other {# organizzazioni}}",
+    "searchUsers": "Nome, email, organizzazione…",
     "searchOrgs": "Cerca organizzazione…",
     "noAccess": "Non hai accesso alla directory utenti (permesso user.dir).",
     "empty": "Nessun risultato",
@@ -354,6 +437,7 @@
     "accountLocked": "Bloccato",
     "accountPending": "In attesa di conferma",
     "viewTickets": "Vedi ticket ({n})",
+    "newTicketForUser": "Nuovo ticket",
     "orgTickets": "Ticket dell'organizzazione",
     "domain": "Dominio",
     "prev": "Precedente",
@@ -472,6 +556,7 @@
     "posted": "Inviato correttamente.",
     "lockedBy": "Il ticket è in modifica da {name}: risposta e note sono bloccate finché non scade il lock.",
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "session_expired": "Sessione scaduta: accedi di nuovo.",
       "not_found": "Ticket non trovato o non accessibile.",
       "denied": "Azione negata: il tuo ruolo non consente di rispondere.",
@@ -480,7 +565,9 @@
       "lock_required": "Questa azione richiede il lock del ticket. Riprova.",
       "locked_by_other": "Azione negata: il ticket è bloccato da un altro agente.",
       "lock_expired": "Il tuo lock è scaduto. Riprova.",
-      "banned": "L'email dell'utente è nella ban list: rimuovila per rispondere."
+      "banned": "L'email dell'utente è nella ban list: rimuovila per rispondere.",
+      "forbidden": "Accesso negato: accedi di nuovo come agente.",
+      "generic": "Operazione non riuscita. Riprova."
     },
     "editor": {
       "bold": "Grassetto",
@@ -490,13 +577,16 @@
       "numbers": "Elenco numerato",
       "link": "Collegamento",
       "quote": "Citazione",
-      "linkPrompt": "Indirizzo del collegamento"
+      "linkPrompt": "Indirizzo del collegamento",
+      "linkApply": "Applica",
+      "linkInvalid": "Usa un indirizzo che inizi con https://, http:// o mailto:"
     }
   },
   "adminNav": {
     "dashboard": "Pannello",
     "logs": "Log di sistema",
     "system": "Informazioni di sistema",
+    "changes": "Modifiche recenti",
     "company": "Azienda",
     "systemSettings": "Sistema",
     "ticketsSettings": "Ticket",
@@ -578,5 +668,12 @@
       "search_all": "cercare in tutti i ticket",
       "stats_agents": "statistiche degli altri agenti"
     }
+  },
+  "errorPage": {
+    "title": "Si è verificato un errore",
+    "message": "Non è stato possibile completare la richiesta. Riprova; se il problema persiste contatta l'amministratore.",
+    "code": "Codice errore: {code}",
+    "retry": "Riprova",
+    "backHome": "Torna alla home"
   }
 }

@@ -4,6 +4,7 @@ import { burnPasswordCheck, checkPassword } from "../../auth/passwd";
 import { db } from "../../db";
 import { type ClientAuthOutcome, denied, lockedOut, loginWrites, prepare } from "./auth";
 import { isUserId, lookupAccountByUsername } from "./identity";
+import { withWriteScope } from "../../system/write-mode";
 
 /** Login dei clienti con nome utente (o email) e password (osTicketClientAuthentication). */
 
@@ -13,6 +14,12 @@ import { isUserId, lookupAccountByUsername } from "./identity";
  * Account con backend esterno (LDAP/OAuth): non gestiti dalla app.
  */
 export async function performClientLogin(input: { login: string; password: string; ip: string }): Promise<ClientAuthOutcome> {
+  return withWriteScope("operational", () => clientLogin(input), {
+    op: "client.login",
+  });
+}
+
+async function clientLogin(input: { login: string; password: string; ip: string }): Promise<ClientAuthOutcome> {
   const cfg = await prepare();
   const username = input.login.trim();
   const { ip } = input;

@@ -39,7 +39,11 @@ export async function FilterFields({ info }: { info: Info | null }) {
     sla_id: [unchanged, ...slas],
     team_id: [unchanged, ...teams],
     staff_id: [unchanged, ...staff],
-    topic_id: [unchanged, ...topics],
+    // FA_AssignTopic: Topic::getHelpTopics(false, false) più l'argomento già configurato se disattivato
+    topic_id: [
+      unchanged,
+      ...topics.filter((x) => x.active || String(phpJsonDecode<Record<string, unknown>>(info?.actions.find((a) => a.type === "topic")?.configuration, {}).topic_id) === x.value),
+    ],
     status_id: [unchanged, ...statuses],
     from: emails,
   };

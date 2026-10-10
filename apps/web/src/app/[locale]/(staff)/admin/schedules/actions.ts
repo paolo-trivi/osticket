@@ -2,6 +2,7 @@
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
 import { adminFormResult, massRedirect } from "@/server/actions/result";
+import type { MassResult } from "@/server/domain/admin/common";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
 import { str, truthy } from "@/server/php/values";
 import { addSchedule, deleteScheduleEntries, deleteSchedules, saveScheduleEntry, updateSchedule } from "@/server/domain/admin/schedule";
@@ -51,8 +52,11 @@ export async function saveEntryAction(scheduleId: number, entryId: number | null
 export async function deleteEntriesAction(scheduleId: number, form: FormData): Promise<void> {
   const { locale } = await requireAdminAction();
   const ids = selectedIds(parsePhpForm(form));
-  const num = await adminWrite((tx) => deleteScheduleEntries(tx, scheduleId, ids));
-  massRedirect(`/admin/schedules/${scheduleId}`, locale, { ok: num > 0, num, error: num ? undefined : "select" }, "delete");
+  const r = await adminWrite(async (tx): Promise<MassResult> => {
+    const num = await deleteScheduleEntries(tx, scheduleId, ids);
+    return { ok: num > 0, num, error: num ? undefined : "select" };
+  });
+  massRedirect(`/admin/schedules/${scheduleId}`, locale, r, "delete");
 }
 
 /** scp/schedules.php do=mass_process a=delete */

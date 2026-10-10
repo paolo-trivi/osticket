@@ -1,7 +1,7 @@
 import { useTranslations } from "next-intl";
 
 import { Link } from "@/i18n/navigation";
-import { ChatIcon } from "@/icons";
+import { Flag, LinkIcon, Lock, Merge, MessageSquare, Paperclip } from "lucide-react";
 import { safeColor } from "@/lib/color";
 import { Ticket } from "@/lib/osticket/flags";
 import type { QueueColumnDef } from "@/server/domain/queue/columns";
@@ -20,6 +20,8 @@ interface Props {
   locale: string;
   assigneeName: string;
   staffName: string;
+  /** testo per una cella senza valore (schede su mobile: "—" invece di una riga vuota) */
+  empty?: string;
 }
 
 function rawValue(path: string, row: TicketRow, names: { assignee: string; staff: string }): string | null {
@@ -97,15 +99,16 @@ function conditionStyle(column: QueueColumnDef, row: TicketRow): React.CSSProper
 
 const SOURCES = ["Email", "Web", "Phone", "API", "Other"] as const;
 
-export default function TicketCell({ column, row, tz, locale, assigneeName, staffName }: Props) {
+export default function TicketCell({ column, row, tz, locale, assigneeName, staffName, empty }: Props) {
   const tSource = useTranslations("ticketEdit.sources");
+  const tFlag = useTranslations("ticket");
   const sourceLabel = (SOURCES as readonly string[]).includes(row.source) ? tSource(row.source as (typeof SOURCES)[number]) : row.source;
   const names = { assignee: assigneeName, staff: staffName };
   let value = rawValue(column.primary, row, names);
   if (!value && column.secondary) value = rawValue(column.secondary, row, names);
 
   const filter = column.filter ?? "";
-  let content: React.ReactNode = value ?? "";
+  let content: React.ReactNode = value || empty || "";
   if (filter.startsWith("date:") && value) {
     const style = (filter.slice(5) === "human" ? "human" : filter.slice(5) === "short" ? "short" : "full") as DateStyle;
     content = (
@@ -145,13 +148,18 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         if (row.thread_count > 1)
           target.push(
             <span key={a.c} className="inline-flex items-center gap-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
-              <ChatIcon className="size-3.5" aria-hidden />
+              <MessageSquare className="size-3.5" aria-hidden />
               {row.thread_count}
             </span>,
           );
         break;
       case "ThreadAttachmentCount":
-        if (row.attachment_count) target.push(<span key={a.c} title={String(row.attachment_count)}>📎</span>);
+        if (row.attachment_count)
+          target.push(
+            <span key={a.c} role="img" title={String(row.attachment_count)} aria-label={String(row.attachment_count)} className="inline-flex text-gray-400 dark:text-gray-500">
+              <Paperclip className="size-3.5" />
+            </span>,
+          );
         break;
       case "ThreadCollaboratorCount":
         if (row.collaborator_count)
@@ -162,10 +170,20 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
           );
         break;
       case "OverdueFlagDecoration":
-        if (row.isoverdue) target.push(<span key={a.c} className="text-error-500" title="Overdue">⚑</span>);
+        if (row.isoverdue)
+          target.push(
+            <span key={a.c} className="inline-flex text-error-500" role="img" title={tFlag("overdue")} aria-label={tFlag("overdue")}>
+              <Flag className="size-3.5" />
+            </span>,
+          );
         break;
       case "LockDecoration":
-        if (row.locked_by_other) target.push(<span key={a.c} title="Locked">🔒</span>);
+        if (row.locked_by_other)
+          target.push(
+            <span key={a.c} className="inline-flex text-warning-500" role="img" title={tFlag("locked")} aria-label={tFlag("locked")}>
+              <Lock className="size-3.5" />
+            </span>,
+          );
         break;
       case "TicketSourceDecoration":
         target.push(
@@ -175,10 +193,20 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         );
         break;
       case "MergedFlagDecoration":
-        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) target.push(<span key={a.c} title="Merged">⇉</span>);
+        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS))
+          target.push(
+            <span key={a.c} role="img" title={tFlag("merged")} aria-label={tFlag("merged")} className="inline-flex text-gray-400 dark:text-gray-500">
+              <Merge className="size-3.5" />
+            </span>,
+          );
         break;
       case "LinkedFlagDecoration":
-        if (row.flags & Ticket.LINKED) target.push(<span key={a.c} title="Linked">🔗</span>);
+        if (row.flags & Ticket.LINKED)
+          target.push(
+            <span key={a.c} className="inline-flex text-gray-400 dark:text-gray-500" role="img" title={tFlag("linked")} aria-label={tFlag("linked")}>
+              <LinkIcon className="size-3.5" />
+            </span>,
+          );
         break;
     }
   }

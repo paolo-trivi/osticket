@@ -1,3 +1,4 @@
+import { Paperclip } from "lucide-react";
 import { renderThreadBody } from "@/components/common/thread-body";
 import { ThreadEntry } from "@/lib/osticket/flags";
 import { ThreadEntryType } from "@/lib/osticket/object-types";
@@ -46,7 +47,7 @@ export default function PortalThread({
       {items.map((it) =>
         it.kind === "event" ? (
           <p key={`v${it.v.id}`} className="text-center text-theme-xs text-gray-500 dark:text-gray-400">
-            {labels.events[it.v.name] ?? it.v.name} · {formatDbDate(it.v.timestamp, tz, locale, "short")}
+            {labels.events[it.v.name] ?? it.v.name} · {formatDbDate(it.v.timestamp, tz, locale)}
           </p>
         ) : (
           <article
@@ -59,8 +60,7 @@ export default function PortalThread({
           >
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-inherit px-5 py-3">
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                {it.e.staff_id && hideStaffName ? labels.staff : it.e.poster}{" "}
-                <span className="font-normal text-gray-500 dark:text-gray-400">{labels.posted}</span>
+                {it.e.staff_id && hideStaffName ? labels.staff : it.e.poster} <span className="font-normal text-gray-500 dark:text-gray-400">{labels.posted}</span>
                 {it.e.title && <span className="ms-2 font-normal text-gray-400">{it.e.title}</span>}
               </p>
               <time dateTime={isoOf(it.e.created)} className="text-theme-xs text-gray-500 dark:text-gray-400">
@@ -79,7 +79,7 @@ export default function PortalThread({
                       href={withBase(`/api/portal/file/${a.key}`)}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                     >
-                      📎 {a.name} <span className="text-gray-400">{humanSize(a.size)}</span>
+                      <Paperclip className="size-3.5 text-gray-400" /> {a.name} <span className="text-gray-400">{humanSize(a.size)}</span>
                     </a>
                   ))}
               </footer>

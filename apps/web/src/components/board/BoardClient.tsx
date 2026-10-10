@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useRef, useTransition } from "react";
 
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -42,12 +42,21 @@ export default function BoardClient({
   const [pending, startTransition] = useTransition();
   const query = boardSearchParams(params).toString();
 
-  const navigate = (next: BoardParams) =>
+  // Scelte già inviate ma non ancora arrivate dal server: la barra passa solo i campi cambiati, che si
+  // applicano sopra quelli ancora in attesa (due cambi ravvicinati, es. colonne e swimlane, restano entrambi).
+  const pendingRef = useRef<BoardParams | null>(null);
+  useEffect(() => {
+    pendingRef.current = null;
+  }, [query]);
+  const navigate = (patch: Partial<BoardParams>) => {
+    const next: BoardParams = { ...(pendingRef.current ?? params), ...patch };
+    pendingRef.current = next;
     startTransition(() =>
       router.replace(boardHref(parseBoardParams(boardSearchParams(next))), {
         scroll: false,
       }),
     );
+  };
 
   // Ripristino dell'ultima vista (solo se l'URL non contiene scelte esplicite)
   useEffect(() => {

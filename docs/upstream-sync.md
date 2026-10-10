@@ -44,7 +44,7 @@ Cosa guardare:
 3. Rigenerare i tipi del DB: `npm run db:codegen` (in `apps/web/`).
 4. Adeguare i servizi TypeScript alle nuove colonne o tabelle, sempre replicando il PHP.
 5. Eseguire **tutti** i test differenziali (`npm run test:diff`) e aggiungere scenari per i comportamenti nuovi.
-6. Aggiungere la nuova firma a `VERIFIED_SCHEMAS` in `apps/web/src/server/system/schema-compat.ts` e aggiornare la tabella in [compatibility.md](compatibility.md).
+6. Aggiungere la nuova firma a `KNOWN_SCHEMAS`, con `verifiedOn`, in `apps/web/src/server/system/schema-compat.ts` e aggiornare la tabella in [compatibility.md](compatibility.md#versioni-di-osticket).
 
 Finché il punto 6 non è fatto, un TailTicket in produzione collegato a un DB aggiornato resta in **sola lettura**: è il comportamento sicuro.
 

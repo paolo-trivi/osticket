@@ -1,4 +1,5 @@
 import { sql } from "kysely";
+import { getTranslations } from "next-intl/server";
 
 import { ThreadEntry, Ticket, TicketStatus } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
@@ -15,6 +16,7 @@ import { mergeTypeOf } from "@/server/domain/ticket/merge-flags";
 import { emailInBanList } from "@/server/domain/ticket/overdue";
 import { ticketStatusChoices } from "@/server/domain/ticket/ticket-state";
 import { loadCollaborators, loadThreadEntries, roleOn, type TicketDetail } from "@/server/domain/ticket/ticket";
+import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import TicketExtraMenu from "./edit/TicketExtraMenu";
 import type { TicketExtraData } from "./edit/types";
@@ -24,8 +26,10 @@ import type { TicketExtraData } from "./edit/types";
  * proprietario, collaboratori, merge/link, segna come scaduto, ban dell'email, eliminazione,
  * modifica delle voci del thread. Le voci seguono le condizioni di include/staff/ticket-view.inc.php.
  */
-export default async function TicketExtraActions({ ticket, agent }: { ticket: TicketDetail; agent: Agent; locale: string }) {
+export default async function TicketExtraActions({ ticket, agent, locale }: { ticket: TicketDetail; agent: Agent; locale: string }) {
   const executor = db();
+  const tz = await agentTimeZone(agent);
+  const te = await getTranslations({ locale, namespace: "ticketEdit" });
   const cfg = await coreConfig();
   const dbZone = await detectDbTimezone(executor);
   const role = roleOn(ticket, agent);
@@ -126,6 +130,7 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
   const data: TicketExtraData = {
     ticketId: ticket.ticket_id,
     number: ticket.number,
+    subject: ticket.subject,
     can,
     edit: {
       userId: ticket.user_id,
@@ -134,10 +139,14 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
       source: ticket.source,
       topicId: ticket.topic_id,
       slaId: ticket.sla_id,
-      duedate: dbDateToInput(duedateRow?.duedate ?? null, dbZone),
+      duedate: dbDateToInput(duedateRow?.duedate ?? null, dbZone, tz),
       isClosed: ticket.status_state === "closed",
       topics,
-      slas: options?.slas ?? [],
+      // tutti gli SLA come ticket-edit.inc.php: il disattivato attuale resta selezionato e non si perde al salvataggio
+      slas: (options?.slas ?? []).map((x) => ({
+        id: x.id,
+        name: x.active ? x.name : `${x.name} ${te("slaDisabled")}`,
+      })),
       sources: [...TICKET_SOURCE_KEYS],
       forms,
       values,
@@ -153,7 +162,15 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
     banned,
     deletedStatusId: deleted?.id ?? null,
     hasChildren: !!(ticket.flags & Ticket.PARENT) && children.length > 0,
-    entries: editable.map((e) => ({ id: e.id, type: e.type, poster: e.poster, created: e.created, title: e.title ?? "", body: e.body })),
+    // data nel fuso e nella lingua dell'agente, come nel thread
+    entries: editable.map((e) => ({
+      id: e.id,
+      type: e.type,
+      poster: e.poster,
+      created: formatDbDate(e.created, tz, locale, "short"),
+      title: e.title ?? "",
+      body: e.body,
+    })),
   };
   if (!can.delete || !data.deletedStatusId) data.can.delete = false;
 

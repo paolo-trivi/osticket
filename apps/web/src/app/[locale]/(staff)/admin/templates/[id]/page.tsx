@@ -7,6 +7,7 @@ import SysNotice from "@/components/adminsys/SysNotice";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { groupTemplates, loadGroup, TEMPLATE_GROUPS, TEMPLATE_NAMES } from "@/server/domain/adminsys/template";
 
@@ -14,14 +15,17 @@ import { dateFormatter } from "../../_sys/server";
 import { requireAdmin } from "../../guard";
 import { updateTemplateGroupAction } from "../actions";
 import { TemplateGroupFields } from "../fields";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 /** Set di template: proprietà e messaggi (include/staff/template.inc.php). */
 export default async function TemplateSetPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAdmin(locale);
-  const tplId = Number(id);
-  const group = Number.isInteger(tplId) && tplId > 0 ? await loadGroup(db(), tplId) : null;
+  const tplId = idOrNotFound(id);
+  const group = await loadGroup(db(), tplId);
   if (!group) notFound();
   const t = await getTranslations("asys.templates");
   const c = await getTranslations("asys.common");

@@ -56,6 +56,7 @@
       "openNew": "Open a new ticket"
     },
     "errors": {
+      "read_only": "Not available: the help center is temporarily view-only. Please try again later.",
       "required": "Valid username or email address is required",
       "invalid_userid": "Invalid username or email",
       "invalid_email": "Valid email address required",
@@ -137,7 +138,8 @@
       "registerSubtitle": "Create an account to follow all your requests.",
       "profileTitle": "My profile",
       "profileSubtitle": "Update the information we have on file for you.",
-      "pwchangeRequired": "Password change required to continue"
+      "pwchangeRequired": "Password change required to continue",
+      "profileSaved": "Profile updated successfully"
     },
     "pwreset": {
       "title": "Forgot my password",
@@ -178,6 +180,7 @@
       "register": "Register",
       "created": "Ticket created",
       "posted": "Message posted successfully",
+      "editSaved": "Ticket updated successfully",
       "edit": "Edit",
       "basic": "Basic ticket information",
       "status": "Status",
@@ -230,7 +233,9 @@
         "login_required": "You need an account to open a ticket",
         "captcha_unsupported": "Without an account use the classic portal (captcha enabled) or sign in"
       },
-      "signIn": "Sign in"
+      "signIn": "Sign in",
+      "topicLoadError": "The help topic fields could not be loaded.",
+      "retry": "Try again"
     },
     "kb": {
       "title": "Knowledge base",

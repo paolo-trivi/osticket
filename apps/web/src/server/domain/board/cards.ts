@@ -10,7 +10,9 @@ import { agentsName, usersName } from "../../format/persons-name";
 import type { Agent } from "../staff/staff";
 import { lockEnabled } from "../ticket/lock";
 import { loadTicketRows, type TicketRow } from "../ticket/rows";
-import { cardPermissions, initials, isDueSoon, safeColor } from "./grouping";
+import { initials } from "@/lib/format/initials";
+
+import { cardPermissions, isDueSoon, safeColor } from "./grouping";
 import type { BoardCard, StatusState } from "./types";
 
 /**

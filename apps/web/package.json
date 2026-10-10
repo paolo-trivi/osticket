@@ -1,6 +1,6 @@
 {
   "name": "tailticket",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,7 +15,8 @@
     "dev:services": "bash dev/start-services.sh",
     "dev:osticket": "bash dev/setup-osticket.sh",
     "test:diff": "vitest run -c vitest.diff.config.mts",
-    "docs:contracts": "node scripts/merge-contracts.mjs"
+    "docs:contracts": "node scripts/merge-contracts.mjs",
+    "docs:screenshots": "node scripts/docs-screenshots.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -26,6 +27,7 @@
     "html-to-text": "^9.0.5",
     "jose": "^6.2.12",
     "kysely": "^0.29.6",
+    "lucide-react": "^1.55.0",
     "luxon": "^3.7.2",
     "mysql2": "^3.24.5",
     "next": "^16.3.4",

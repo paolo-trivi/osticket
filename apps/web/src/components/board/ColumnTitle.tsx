@@ -1,4 +1,4 @@
-import { GroupIcon } from "@/icons";
+import { Users } from "lucide-react";
 import type { BoardColumn } from "@/server/domain/board/types";
 import { cn } from "@/utils";
 
@@ -17,31 +17,12 @@ export function ColumnMark({ column }: { column: BoardColumn }) {
           avatarTone(column.assigneeKind, id),
         )}
       >
-        {column.assigneeKind === "team" ? (
-          <GroupIcon viewBox="0 0 24 24" className="size-3.5" />
-        ) : (
-          column.initials
-        )}
+        {column.assigneeKind === "team" ? <Users className="size-3.5" /> : column.initials}
       </span>
     );
   }
-  if (column.special === "unassigned")
-    return (
-      <span
-        aria-hidden
-        className="inline-flex size-6 shrink-0 rounded-full border border-dashed border-gray-300 dark:border-gray-600"
-      />
-    );
-  if (column.state)
-    return (
-      <span
-        aria-hidden
-        className={cn(
-          "size-2.5 shrink-0 rounded-full",
-          column.state === "closed" ? "bg-success-500" : "bg-blue-light-500",
-        )}
-      />
-    );
+  if (column.special === "unassigned") return <span aria-hidden className="inline-flex size-6 shrink-0 rounded-full border border-dashed border-gray-300 dark:border-gray-600" />;
+  if (column.state) return <span aria-hidden className={cn("size-2.5 shrink-0 rounded-full", column.state === "closed" ? "bg-success-500" : "bg-blue-light-500")} />;
   if (column.color !== undefined)
     return (
       <span

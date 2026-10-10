@@ -9,6 +9,7 @@ import Input from "@/components/form/input/InputField";
 import Alert from "@/components/ui/alert/Alert";
 import Button from "@/components/ui/button/Button";
 import { Link } from "@/i18n/navigation";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 function Frame({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
@@ -69,7 +70,7 @@ export function ResetForms({ token }: { token?: string }) {
             <Alert variant="error" title={t(`errors.${login.error}`)} message="" />
           </div>
         )}
-        <form action={loginAction} className="space-y-6">
+        <form onSubmit={submitKeepingValues(loginAction)} className="space-y-6">
           <input type="hidden" name="token" value={token} />
           <div>
             <Label htmlFor="userid">
@@ -92,9 +93,11 @@ export function ResetForms({ token }: { token?: string }) {
         </div>
       )}
       {req.sent ? (
-        <Alert variant="success" title={t("sent")} message={t("sentMessage")} />
+        <div>
+          <Alert variant="success" title={t("sent")} message={t("sentMessage")} />
+        </div>
       ) : (
-        <form action={reqAction} className="space-y-6">
+        <form onSubmit={submitKeepingValues(reqAction)} className="space-y-6">
           <div>
             <Label htmlFor="userid">
               {t("userid")} <span className="text-error-500">*</span>

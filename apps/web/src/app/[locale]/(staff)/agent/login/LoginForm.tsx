@@ -4,7 +4,7 @@ import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Alert from "@/components/ui/alert/Alert";
 import Button from "@/components/ui/button/Button";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
+import { Eye, EyeOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
 
@@ -70,13 +70,10 @@ export default function LoginForm({ next, expired }: { next?: string; expired?: 
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute end-4 top-1/2 z-30 -translate-y-1/2 cursor-pointer"
-                  aria-label="password"
+                  aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                  aria-pressed={showPassword}
                 >
-                  {showPassword ? (
-                    <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-                  ) : (
-                    <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-                  )}
+                  {showPassword ? <Eye className="size-5 text-gray-500 dark:text-gray-400" /> : <EyeOff className="size-5 text-gray-500 dark:text-gray-400" />}
                 </button>
               </div>
             </div>

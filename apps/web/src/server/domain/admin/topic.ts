@@ -5,7 +5,7 @@ import { sql } from "kysely";
 import { Dept, Topic } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
 
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
@@ -74,8 +74,12 @@ export function sortByName<T extends { name: string }>(items: T[], lang: string)
 async function updateSortOrder(executor: DbOrTx, names: TopicInfo[], lang: string): Promise<void> {
   const sorted = sortByName(names, lang);
   if (!sorted.length) return;
-  const values = sql.join(sorted.map((t, idx) => sql`(${t.id}, ${idx + 1})`));
-  await sql`INSERT INTO ${table("help_topic")} (topic_id, \`sort\`) VALUES ${values} ON DUPLICATE KEY UPDATE \`sort\` = VALUES(\`sort\`)`.execute(executor);
+  // INSERT … ON DUPLICATE KEY UPDATE `sort` = VALUES(`sort`) con il query builder (annullabile: changes/)
+  await executor
+    .insertInto("help_topic")
+    .values(sorted.map((t, idx) => ({ topic_id: t.id, sort: idx + 1 })) as never)
+    .onDuplicateKeyUpdate({ sort: sql`VALUES(\`sort\`)` } as never)
+    .execute();
 }
 
 /** Topic::getIdByName($name, $pid) */

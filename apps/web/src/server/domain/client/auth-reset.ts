@@ -7,6 +7,7 @@ import { db, type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
 import { type ClientAuthOutcome, denied, lockedOut, loginWrites, prepare } from "./auth";
 import { lookupAccountByUsername } from "./identity";
+import { canWrite, withWriteScope } from "../../system/write-mode";
 
 /**
  * Token di reset della password dei clienti (ClientPasswordResetTokenBackend): lettura e scadenza del
@@ -34,6 +35,14 @@ async function tokenExpired(executor: DbOrTx, cfg: ConfigNamespace, updated: str
  * pagina nel PHP ($errors passato per valore): l'esito è "Unknown user" con uno strike; qui il codice.
  */
 export async function performResetTokenLogin(input: { userid: string; token: string; ip: string }): Promise<ClientAuthOutcome> {
+  // il login con il token impone il cambio password: senza scritture non si può completare
+  if (!(await canWrite("operational"))) return { ok: false, error: "read_only" };
+  return withWriteScope("operational", () => resetTokenLogin(input), {
+    op: "client.pwreset.login",
+  });
+}
+
+async function resetTokenLogin(input: { userid: string; token: string; ip: string }): Promise<ClientAuthOutcome> {
   const cfg = await prepare();
   const { ip } = input;
   if (lockedOut(cfg, ip)) return denied(cfg, "", ip, "locked_out");

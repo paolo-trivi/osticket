@@ -1,5 +1,7 @@
 "use server";
 
+import { getTranslations } from "next-intl/server";
+
 import type { SysFormState } from "@/components/adminsys/SysForm";
 import { massRedirect, sysFormResult } from "@/server/actions/result";
 import { str } from "@/server/php/values";
@@ -40,5 +42,10 @@ export async function sendTestEmailAction(_prev: SysFormState, form: FormData): 
   const { locale } = await requireAdminAction();
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => sendTestEmail(tx, vars));
-  return sysFormResult(r, { locale });
+  const state = await sysFormResult(r, { locale });
+  // è un invio, non un salvataggio: nessun "Annulla modifica" (le bozze cancellate restano in Modifiche recenti)
+  delete state.change;
+  // "Impossibile inviare" al posto di "Impossibile salvare"
+  if (state.status === "error" && !state.message) state.message = (await getTranslations("asys.diagnostic"))("fixErrors");
+  return state;
 }

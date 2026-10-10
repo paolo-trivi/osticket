@@ -13,6 +13,7 @@ import { detectDbTimezone } from "../db/time";
 import type { ClientLogin } from "../domain/client/auth";
 import { accountIsActive, loadClientIdentity, passwordVersion, type ClientIdentity, type GuestAccess } from "../domain/client/identity";
 import { logSystem } from "../system/syslog";
+import { canWrite } from "../system/write-mode";
 import { clearSession, clientIp, readSession, writeSession, type SessionPayload } from "./session";
 
 /**
@@ -81,7 +82,7 @@ export const sessionClient = cache(async (): Promise<ClientIdentity | null> => {
 });
 
 /** Account con il cambio password obbligatorio (UserAccount::isPasswdResetForced). */
-export function clientMustChangePassword(client: ClientIdentity): boolean {
+function clientMustChangePassword(client: ClientIdentity): boolean {
   return !!client.account && (client.account.status & UserAccountStatus.REQUIRE_PASSWD_RESET) !== 0;
 }
 
@@ -92,13 +93,22 @@ export function clientMustChangePassword(client: ClientIdentity): boolean {
  */
 export const currentClient = cache(async (): Promise<ClientIdentity | null> => {
   const client = await sessionClient();
-  return client && !clientMustChangePassword(client) ? client : null;
+  return client && !(await clientPasswordChangeEnforced(client)) ? client : null;
 });
+
+/**
+ * Cambio password obbligatorio da imporre ora: solo se la modalità di scrittura lo consente
+ * (write-mode.ts). In sola lettura il profilo non può salvare: il cliente naviga in consultazione e
+ * il cambio torna obbligatorio appena le scritture sono di nuovo permesse.
+ */
+export async function clientPasswordChangeEnforced(client: ClientIdentity): Promise<boolean> {
+  return clientMustChangePassword(client) && (await canWrite("operational"));
+}
 
 /** Sessione aperta ma bloccata dal cambio password obbligatorio (le azioni da visitatore vanno negate). */
 export async function passwordChangePending(): Promise<boolean> {
   const client = await sessionClient();
-  return !!client && clientMustChangePassword(client);
+  return !!client && (await clientPasswordChangeEnforced(client));
 }
 
 /** Rinnova il timestamp di attività (Server Actions e route handler) */

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import MenuButton from "@/components/common/MenuButton";
 import { menuButtonClass, menuItemClass } from "@/components/common/menu-classes";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
+import { useWriteMode } from "@/context/WriteModeContext";
 import { cn } from "@/utils";
 
 import type { MassData, MassKind } from "./types";
@@ -15,10 +16,21 @@ interface MassActionMenuProps {
   onOpen: (kind: MassKind) => void;
 }
 
-/** Pulsanti e menu delle azioni di massa ammesse dai permessi dell'agente. */
+/** Pulsanti e menu delle azioni di massa ammesse dai permessi dell'agente (in sola lettura solo l'export). */
 export default function MassActionMenu({ data, onOpen }: MassActionMenuProps) {
   const t = useTranslations("ticketEdit.mass");
-  const { can } = data;
+  const writable = useWriteMode().canWrite("operational");
+  const can = writable
+    ? data.can
+    : {
+        ...data.can,
+        status: false,
+        assign: false,
+        merge: false,
+        link: false,
+        transfer: false,
+        delete: false,
+      };
   const item = (label: string, k: MassKind, c: () => void) => (
     <DropdownItem key={typeof k === "object" ? `s${k.status}` : k} baseClassName={menuItemClass} onClick={() => onOpen(k)} onItemClick={c}>
       {label}

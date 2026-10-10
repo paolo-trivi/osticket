@@ -3,6 +3,7 @@
     "cancel": "Annulla",
     "working": "Attendere…",
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "generic": "Operazione non riuscita. Riprova.",
       "session_expired": "Sessione scaduta: accedi di nuovo.",
       "not_found": "Elemento inesistente o non accessibile.",
@@ -38,7 +39,11 @@
       "token": "Token di reset non valido: esci e riprova.",
       "invalid_code": "Codice non valido.",
       "code_missing": "Nessun codice in attesa: richiedine uno nuovo.",
-      "code_expired": "Codice scaduto o troppi tentativi: richiedine uno nuovo."
+      "code_expired": "Codice scaduto o troppi tentativi: richiedine uno nuovo.",
+      "org_required": "Seleziona un'organizzazione.",
+      "lock_guest": "Solo gli account registrati possono essere bloccati.",
+      "unlock_guest": "Solo gli account registrati possono essere sbloccati.",
+      "reset_guest": "Solo gli account registrati possono ricevere il reset della password."
     },
     "fieldErrors": {
       "required": "Campo obbligatorio",
@@ -65,6 +70,46 @@
       "phone_ext_missing": "Interno senza numero di telefono",
       "files_max": "Troppi file",
       "date_past": "La data deve essere nel futuro"
+    },
+    "dismiss": "Chiudi",
+    "done": {
+      "task_created": "Task #{number} creato.",
+      "task_deleted": "Task #{number} eliminato.",
+      "task_claimed": "Task assegnato a te.",
+      "task_assigned": "Task assegnato a {name}.",
+      "task_transferred": "Task trasferito al reparto {dept}.",
+      "task_closed": "Task chiuso.",
+      "task_reopened": "Task riaperto.",
+      "task_edited": "Task aggiornato.",
+      "task_due": "Scadenza del task aggiornata.",
+      "user_created": "Utente {name} aggiunto.",
+      "user_updated": "Utente aggiornato.",
+      "user_deleted": "Utente eliminato.",
+      "user_org": "Organizzazione dell'utente aggiornata.",
+      "account_registered": "Account registrato.",
+      "account_updated": "Account aggiornato.",
+      "confirm_sent": "Email di attivazione dell'account inviata.",
+      "reset_sent": "Email per il reset della password inviata.",
+      "locked": "Account bloccato.",
+      "unlocked": "Account sbloccato.",
+      "imported": "{n, plural, one {Importato # utente} other {Importati # utenti}}.",
+      "org_created": "Organizzazione {name} aggiunta.",
+      "org_deleted": "Organizzazione eliminata.",
+      "org_updated": "Organizzazione aggiornata.",
+      "org_settings": "Impostazioni dell'organizzazione aggiornate.",
+      "org_user_added": "Utente aggiunto all'organizzazione.",
+      "org_users_removed": "{n, plural, one {# utente rimosso} other {# utenti rimossi}} dall'organizzazione.",
+      "mass_done": "{n, plural, one {# elemento selezionato elaborato} other {# elementi selezionati elaborati}}.",
+      "mass_partial": "{n} di {total} elementi selezionati elaborati: non tutti sono stati aggiornati."
+    },
+    "importErrors": {
+      "badData": "Dati non validi: ogni riga deve contenere {fields}.",
+      "required": "Per ogni utente servono sia il nome sia l'email.",
+      "empty": "Nessuna riga CSV da importare.",
+      "header": "{header}: intestazione non associabile a un campo dell'utente.",
+      "variable": "{header}: il campo deve avere un nome di variabile per essere importato.",
+      "user": "Impossibile importare l'utente: {data}",
+      "parse": "Impossibile leggere il CSV inviato."
     }
   },
   "peopleTasks": {
@@ -97,6 +142,9 @@
       "assign": "Assegna",
       "assignAgent": "Assegna ad agente",
       "assignTeam": "Assegna a team",
+      "reassign": "Riassegna",
+      "reassignAgent": "Riassegna ad agente",
+      "reassignTeam": "Riassegna a team",
       "transfer": "Trasferisci",
       "close": "Chiudi",
       "reopen": "Riapri",
@@ -140,6 +188,27 @@
     "postNote": "Pubblica nota",
     "replyPosted": "Aggiornamento pubblicato.",
     "notePosted": "Nota interna pubblicata."
+  },
+  "peopleTaskEvents": {
+    "created": "Creato da <b>{somebody}</b>",
+    "assignedStaff": "<b>{somebody}</b> ha assegnato il task a <b>{target}</b>",
+    "assignedTeam": "<b>{somebody}</b> ha assegnato il task al team <b>{target}</b>",
+    "claimed": "<b>{somebody}</b> ha preso in carico il task",
+    "assigned": "Assegnatario cambiato da <b>{somebody}</b>",
+    "released": "<b>{somebody}</b> ha rilasciato l'assegnazione",
+    "referred": "<b>{somebody}</b> ha condiviso il task con <b>{target}</b>",
+    "closedStatus": "Chiuso da <b>{somebody}</b> con stato <b>{status}</b>",
+    "closed": "Chiuso da <b>{somebody}</b>",
+    "reopened": "Riaperto da <b>{somebody}</b>",
+    "overdue": "Segnalato come scaduto dal sistema",
+    "transferred": "<b>{somebody}</b> ha trasferito il task a <b>{target}</b>",
+    "statusChanged": "<b>{somebody}</b> ha cambiato lo stato in <b>{status}</b>",
+    "edited": "Aggiornato da <b>{somebody}</b>",
+    "collab": "<b>{somebody}</b> ha modificato i collaboratori",
+    "merged": "<b>{somebody}</b> ha unito i task",
+    "linked": "<b>{somebody}</b> ha collegato i task",
+    "resent": "<b>{somebody}</b> ha inviato di nuovo una risposta",
+    "deleted": "Eliminato da <b>{somebody}</b>"
   },
   "peopleDir": {
     "newUser": "Nuovo utente",
@@ -335,6 +404,7 @@
     "login": "Accedi",
     "backToLogin": "Torna al login",
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "invalid_code": "Codice non valido",
       "reset_disabled": "Il reset della password è disattivato.",
       "reset_unavailable": "Impossibile reimpostare la password: contatta l'amministratore.",

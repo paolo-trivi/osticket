@@ -14,6 +14,9 @@ import { listBanRules } from "@/server/domain/adminsys/banlist";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { addBanAction, massBanAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("banlist");
 
 /** Ban list (include/staff/banlist.inc.php + banrule.inc.php per l'aggiunta). */
 export default async function BanlistPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -84,7 +87,7 @@ export default async function BanlistPage({ params, searchParams }: { params: Pr
                   {r.isactive ? c("active") : c("disabled")}
                 </Badge>
               ),
-              created: date(r.created),
+              created: date(r.created, "date"),
               updated: date(r.updated),
             },
           }))}

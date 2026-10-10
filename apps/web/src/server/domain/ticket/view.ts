@@ -1,6 +1,6 @@
 import "server-only";
 
-import { TicketStatus, ThreadEntry } from "@/lib/osticket/flags";
+import { SLA, TicketStatus, ThreadEntry } from "@/lib/osticket/flags";
 import { ObjectType } from "@/lib/osticket/object-types";
 
 import { coreConfig } from "../../config/config";
@@ -8,7 +8,9 @@ import { db } from "../../db";
 import { agentTimeZone } from "../../format/datetime";
 import { listCanned } from "../kb/kb";
 import { TicketPerm, type Agent, type RoleInfo } from "../staff/staff";
+import { plainLabel } from "../forms/fields";
 import { listTasks, type TaskRow } from "../task/tasks";
+import { EDIT_EVENT_COLUMNS, eventCollabs, eventPair, eventRef, eventValueText, type EditEventColumn } from "./event-refs";
 import { formatAgentName } from "./rows";
 import {
   checkStaffPerm,
@@ -28,12 +30,34 @@ import {
  * caricamento per la pagina, che poi si limita a comporre le sezioni di components/tickets/view.
  */
 
-/** Nomi degli oggetti citati da un evento del thread (assegnatario, team, reparto, stato); "" se assente. */
+/** Modifica descritta da EditEvent: colonna del ticket (`column`) o campo dei form (`label`). */
+export interface ThreadEventChange {
+  column: EditEventColumn | null;
+  label: string;
+  old: string;
+  new: string;
+}
+
+/**
+ * Nomi degli oggetti citati da un evento del thread (assegnatario, team, reparto, stato…); "" se assente.
+ * I campi facoltativi li calcola solo la vista ticket (la timeline dei task usa i quattro di base).
+ */
 export interface ThreadEventRefs {
   staff: string;
   team: string;
   dept: string;
   status: string;
+  /** EditEvent `owner` (User) */
+  owner?: string;
+  /** CollaboratorEvent `org` (Organization) */
+  org?: string;
+  /** CollaboratorEvent: aggiunti (con l'origine) e rimossi */
+  collabAdded?: { name: string; src: string }[];
+  collabRemoved?: string[];
+  /** EditEvent `fields` / topic_id / sla_id / duedate / user_id / source */
+  changes?: ThreadEventChange[];
+  /** sla_id: [nome, ore di tolleranza, attivo] per la descrizione dello SLA come SLA::getSLAs() */
+  slas?: Record<string, { name: string; hours: number; active: boolean }>;
 }
 
 export type TimelineEvent = ThreadEventView & { refs: ThreadEventRefs };
@@ -49,7 +73,12 @@ export interface TicketComposerData {
   lockMode: number;
   statuses: { id: number; name: string; state: string }[];
   currentStatusId: number;
-  collaborators: { userId: number; name: string; email: string; active: boolean }[];
+  collaborators: {
+    userId: number;
+    name: string;
+    email: string;
+    active: boolean;
+  }[];
   canned: { id: number; title: string }[];
   hasMySignature: boolean;
   deptSignature: boolean;
@@ -160,27 +189,130 @@ export async function loadTicketView(agent: Agent, ticketId: number): Promise<Ti
 }
 
 /** Numero del ticket per il titolo della pagina (null se inesistente). */
-export async function ticketViewNumber(ticketId: number): Promise<string | null> {
-  const row = await db().selectFrom("ticket").select("number").where("ticket_id", "=", ticketId).executeTakeFirst();
-  return row ? row.number : null;
+export async function ticketViewNumber(agent: Agent, ticketId: number): Promise<string | null> {
+  // stesso controllo della vista: il numero non si rivela a chi non può vedere il ticket
+  const ticket = await loadTicket(ticketId, agent.id);
+  return ticket && (await checkStaffPerm(ticket, agent)) ? ticket.number : null;
+}
+
+/**
+ * Esito di assegnazione, trasferimento o cambio di stato mostrato nella lista dopo il ritorno dalla vista
+ * (il messaggio di sessione di scp/tickets.php): dati attuali del ticket, solo se l'agente lo vede ancora.
+ */
+export async function ticketDoneSummary(
+  agent: Agent,
+  ticketId: number,
+): Promise<{
+  number: string;
+  dept: string;
+  assignee: string;
+  status: string;
+} | null> {
+  const ticket = await loadTicket(ticketId, agent.id);
+  if (!ticket || !(await checkStaffPerm(ticket, agent))) return null;
+  const staff = ticket.staff_id ? await formatAgentName(ticket.staff_first, ticket.staff_last) : "";
+  return {
+    number: ticket.number,
+    dept: ticket.dept_name ?? "",
+    assignee: staff || ticket.team_name || "",
+    status: ticket.status_name,
+  };
 }
 
 const REF_KINDS = ["staff", "team", "dept", "status"] as const;
 
-/** Nomi degli oggetti citati negli eventi (assegnatari, team, reparti, stati). */
-async function withEventRefs(events: ThreadEventView[]): Promise<TimelineEvent[]> {
-  const ids = { staff: new Set<number>(), team: new Set<number>(), dept: new Set<number>(), status: new Set<number>() };
+/** Nomi degli oggetti citati negli eventi (ThreadEvent::template: `{<Tipo>data.x}` con id o [id, nome]). */
+export async function withEventRefs(events: ThreadEventView[]): Promise<TimelineEvent[]> {
+  const ids = {
+    staff: new Set<number>(),
+    team: new Set<number>(),
+    dept: new Set<number>(),
+    status: new Set<number>(),
+  };
+  const users = new Set<number>();
+  const topics = new Set<number>();
+  const slas = new Set<number>();
+  const fields = new Set<number>();
+  const orgs = new Set<number>();
+  const add = (set: Set<number>, v: unknown) => {
+    const { id } = eventRef(v);
+    if (id) set.add(id);
+  };
   for (const ev of events) {
-    for (const k of REF_KINDS) {
-      const v = ev.data[k];
-      if (typeof v === "number" || (typeof v === "string" && /^\d+$/.test(v))) ids[k].add(Number(v));
+    const d = ev.data;
+    for (const k of REF_KINDS) add(ids[k], d[k]);
+    if (ev.name === "collab") {
+      add(orgs, d.org);
+      const { added, removed } = eventCollabs(d);
+      for (const c of [...added, ...removed]) if (c.id) users.add(c.id);
     }
+    if (ev.name !== "edited") continue;
+    add(users, d.owner);
+    for (const v of eventPair(d.user_id)) add(users, v);
+    for (const v of eventPair(d.topic_id)) add(topics, v);
+    for (const v of eventPair(d.sla_id)) add(slas, v);
+    if (d.fields && typeof d.fields === "object") for (const k of Object.keys(d.fields)) add(fields, k);
   }
-  const [staffRows, teamRows, deptRows, statusRows] = await Promise.all([
-    ids.staff.size ? db().selectFrom("staff").select(["staff_id", "firstname", "lastname"]).where("staff_id", "in", [...ids.staff]).execute() : [],
-    ids.team.size ? db().selectFrom("team").select(["team_id", "name"]).where("team_id", "in", [...ids.team]).execute() : [],
-    ids.dept.size ? db().selectFrom("department").select(["id", "name"]).where("id", "in", [...ids.dept]).execute() : [],
-    ids.status.size ? db().selectFrom("ticket_status").select(["id", "name"]).where("id", "in", [...ids.status]).execute() : [],
+  const ex = db();
+  const [staffRows, teamRows, deptRows, statusRows, userRows, topicRows, slaRows, fieldRows, orgRows] = await Promise.all([
+    ids.staff.size
+      ? ex
+          .selectFrom("staff")
+          .select(["staff_id", "firstname", "lastname"])
+          .where("staff_id", "in", [...ids.staff])
+          .execute()
+      : [],
+    ids.team.size
+      ? ex
+          .selectFrom("team")
+          .select(["team_id", "name"])
+          .where("team_id", "in", [...ids.team])
+          .execute()
+      : [],
+    ids.dept.size
+      ? ex
+          .selectFrom("department")
+          .select(["id", "name"])
+          .where("id", "in", [...ids.dept])
+          .execute()
+      : [],
+    ids.status.size
+      ? ex
+          .selectFrom("ticket_status")
+          .select(["id", "name"])
+          .where("id", "in", [...ids.status])
+          .execute()
+      : [],
+    users.size
+      ? ex
+          .selectFrom("user")
+          .select(["id", "name"])
+          .where("id", "in", [...users])
+          .execute()
+      : [],
+    // Topic::getTopicName: nome completo con i genitori
+    topics.size ? ex.selectFrom("help_topic").select(["topic_id", "topic_pid", "topic"]).execute() : [],
+    slas.size
+      ? ex
+          .selectFrom("sla")
+          .select(["id", "name", "grace_period", "flags"])
+          .where("id", "in", [...slas])
+          .execute()
+      : [],
+    fields.size
+      ? ex
+          .selectFrom("form_field")
+          .select(["id", "label"])
+          .where("id", "in", [...fields])
+          .execute()
+      : [],
+    orgs.size
+      ? ex
+          .selectFrom("organization")
+          .select(["id", "name"])
+          .where("id", "in", [...orgs])
+          .execute()
+      : [],
   ]);
   const staffName = new Map<number, string>();
   for (const s of staffRows) staffName.set(s.staff_id, await formatAgentName(s.firstname, s.lastname));
@@ -190,19 +322,71 @@ async function withEventRefs(events: ThreadEventView[]): Promise<TimelineEvent[]
     dept: new Map(deptRows.map((r) => [r.id, r.name])),
     status: new Map(statusRows.map((r) => [r.id, r.name])),
   };
-  return events.map((ev) => ({
-    ...ev,
-    refs: {
-      staff: names.staff.get(Number(ev.data.staff)) ?? "",
-      team: names.team.get(Number(ev.data.team)) ?? "",
-      dept: names.dept.get(Number(ev.data.dept)) ?? "",
-      status: names.status.get(Number(ev.data.status)) ?? "",
-    },
-  }));
+  const userName = new Map(userRows.map((r) => [r.id, r.name]));
+  const topicById = new Map(topicRows.map((r) => [r.topic_id, r]));
+  const topicName = (id: number) => {
+    const parts: string[] = [];
+    for (let t = topicById.get(id), n = 0; t && n < 10; t = t.topic_pid ? topicById.get(t.topic_pid) : undefined, n++) parts.unshift(t.topic);
+    return parts.join(" / ");
+  };
+  const slaInfo = Object.fromEntries(slaRows.map((r) => [String(r.id), { name: r.name, hours: r.grace_period, active: !!(r.flags & SLA.ACTIVE) }]));
+  const fieldLabel = new Map(fieldRows.map((r) => [r.id, plainLabel(r.label ?? "")]));
+  const orgName = new Map(orgRows.map((r) => [r.id, r.name]));
+  // `{<Tipo>data.x}`: nome attuale, altrimenti il nome registrato nell'evento
+  const ref = (map: Map<number, string>, v: unknown) => {
+    const { id, fallback } = eventRef(v);
+    return (id ? map.get(id) : undefined) || fallback;
+  };
+
+  return events.map((ev) => {
+    const d = ev.data;
+    const collabs = ev.name === "collab" ? eventCollabs(d) : { added: [], removed: [] };
+    const changes: ThreadEventChange[] = [];
+    if (ev.name === "edited") {
+      if (d.fields && typeof d.fields === "object") {
+        for (const [k, pair] of Object.entries(d.fields as Record<string, unknown>)) {
+          // campi inesistenti (es. "Ticket Owner" del cambio di proprietario) saltati come nel PHP
+          const label = fieldLabel.get(Number(k));
+          if (!label) continue;
+          const [o, n] = eventPair(pair);
+          changes.push({
+            column: null,
+            label,
+            old: eventValueText(o),
+            new: eventValueText(n),
+          });
+        }
+      }
+      for (const col of EDIT_EVENT_COLUMNS) {
+        if (!(col in d)) continue;
+        const [o, n] = eventPair(d[col]);
+        const show = (v: unknown) => (col === "topic_id" ? (eventRef(v).id ? topicName(eventRef(v).id!) : "") : col === "user_id" ? ref(userName, v) : eventValueText(v));
+        changes.push({ column: col, label: col, old: show(o), new: show(n) });
+      }
+    }
+    return {
+      ...ev,
+      refs: {
+        staff: ref(names.staff, d.staff),
+        team: ref(names.team, d.team),
+        dept: ref(names.dept, d.dept),
+        status: ref(names.status, d.status),
+        owner: ref(userName, d.owner),
+        org: ref(orgName, d.org),
+        collabAdded: collabs.added.map((c) => ({
+          name: (c.id ? userName.get(c.id) : undefined) || c.name,
+          src: c.src,
+        })),
+        collabRemoved: collabs.removed.map((c) => (c.id ? userName.get(c.id) : undefined) || c.name),
+        changes,
+        slas: slaInfo,
+      },
+    };
+  });
 }
 
 /** Timeline: entry ed eventi in ordine cronologico (a parità di istante prima l'evento, es. "Creato"). */
-function sortTimeline(items: TimelineItem[]): TimelineItem[] {
+export function sortTimeline(items: TimelineItem[]): TimelineItem[] {
   return items.sort((a, x) => {
     const ta = a.kind === "entry" ? a.created : a.timestamp;
     const tx = x.kind === "entry" ? x.created : x.timestamp;

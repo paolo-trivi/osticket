@@ -189,6 +189,18 @@
     cursor: pointer;
   }
 
+  /* Icone: un solo kit (Lucide, lucide-react), tratto unico per tutta l'interfaccia; le utility stroke-* lo cambiano */
+  svg.lucide {
+    stroke-width: 1.75;
+    flex-shrink: 0;
+  }
+
+  /* Header fisso di portale e pannelli: il campo che il browser porta in vista (focus, validazione nativa,
+     ancore) resta sotto l'header e non coperto. */
+  :where(input, select, textarea, [contenteditable="true"], [id]) {
+    scroll-margin-top: 6rem;
+  }
+
   body {
     @apply relative z-1 bg-gray-50 font-outfit font-normal;
   }
@@ -211,11 +223,11 @@
 }
 
 @utility menu-item-icon-active {
-  @apply text-brand-500 dark:text-brand-400;
+  @apply text-brand-500 dark:text-brand-400 [&>svg]:size-5;
 }
 
 @utility menu-item-icon-inactive {
-  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300 [&>svg]:size-5;
 }
 
 @utility menu-dropdown-item {
@@ -535,12 +547,61 @@ span.flatpickr-weekday,
 
 /* Corpo dei messaggi di thread (HTML proveniente da osTicket) */
 /* contenimento: niente del messaggio (fixed, transform, margini negativi) può disegnare fuori dal riquadro */
-.thread-body { contain: paint; }
-.thread-body p { margin: 0 0 0.75em; }
-.thread-body ul { list-style: disc; padding-inline-start: 1.5em; margin-bottom: 0.75em; }
-.thread-body ol { list-style: decimal; padding-inline-start: 1.5em; margin-bottom: 0.75em; }
-.thread-body blockquote { border-inline-start: 3px solid var(--color-gray-300); padding-inline-start: 0.75em; color: var(--color-gray-500); margin: 0.5em 0; }
-.thread-body a { color: var(--color-brand-600); text-decoration: underline; }
-.thread-body table { border-collapse: collapse; margin-bottom: 0.75em; }
-.thread-body td, .thread-body th { border: 1px solid var(--color-gray-200); padding: 0.25em 0.5em; }
-.thread-body img { max-width: 100%; height: auto; }
+.thread-body {
+  contain: paint;
+}
+.thread-body p {
+  margin: 0 0 0.75em;
+}
+.thread-body ul {
+  list-style: disc;
+  padding-inline-start: 1.5em;
+  margin-bottom: 0.75em;
+}
+.thread-body ol {
+  list-style: decimal;
+  padding-inline-start: 1.5em;
+  margin-bottom: 0.75em;
+}
+.thread-body blockquote {
+  border-inline-start: 3px solid var(--color-gray-300);
+  padding-inline-start: 0.75em;
+  color: var(--color-gray-500);
+  margin: 0.5em 0;
+}
+.thread-body a {
+  color: var(--color-brand-600);
+  text-decoration: underline;
+}
+.thread-body table {
+  border-collapse: collapse;
+  margin-bottom: 0.75em;
+}
+.thread-body td,
+.thread-body th {
+  border: 1px solid var(--color-gray-200);
+  padding: 0.25em 0.5em;
+}
+.thread-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tema scuro: controlli nativi (checkbox, radio, select, barre di scorrimento) nella variante scura del
+   browser, invece del riquadro bianco pieno. Il tema chiaro resta quello predefinito. */
+.dark {
+  color-scheme: dark;
+}
+
+/* Tema scuro: stati disabilitati leggibili. Le opacità basse (30–50%) e bg-brand-300 sono pensate per lo
+   sfondo chiaro; su quello scuro diventano macchie a basso contrasto. Regole fuori dai layer: prevalgono
+   sulle utility disabled:* senza toccare il tema chiaro. */
+.dark :is(button, input, select, textarea):disabled {
+  opacity: 0.6;
+}
+.dark :is(button, input[type="submit"], input[type="button"]):disabled:is([class*="bg-brand-500"], [class*="bg-brand-600"]) {
+  background-color: var(--color-gray-700);
+  color: var(--color-gray-400);
+  box-shadow: none;
+  opacity: 1;
+}

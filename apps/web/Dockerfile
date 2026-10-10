@@ -25,18 +25,22 @@ RUN --mount=type=secret,id=build_ca,required=false \
 
 FROM ${NODE_IMAGE} AS run
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+# il sotto-percorso (già compilato nella build) serve anche a runtime: healthcheck e doctor
+ARG NEXT_BASE_PATH=""
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 NEXT_BASE_PATH=${NEXT_BASE_PATH}
 # msmtp fa da "sendmail" verso il relay SMTP quando non si usano gli account SMTP di osTicket
 RUN apk add --no-cache msmtp tzdata && addgroup -S app && adduser -S app -G app
 COPY --from=build --chown=app:app /app/.next/standalone ./
 COPY --from=build --chown=app:app /app/.next/static ./.next/static
 COPY --from=build --chown=app:app /app/public ./public
+# registro delle scritture (TAILTICKET_JOURNAL_DIR): un volume nominato eredita il proprietario della cartella
+RUN mkdir -p /var/lib/tailticket/journal && chown app:app /var/lib/tailticket/journal
 USER app
 EXPOSE 3000
 LABEL org.opencontainers.image.title="TailTicket" \
       org.opencontainers.image.description="L'helpdesk moderno, compatibile con osTicket" \
       org.opencontainers.image.licenses="GPL-2.0-only"
-# risponde 200 se l'app è su e raggiunge il DB (logo configurato o redirect al logo predefinito)
+# /api/health: 200 se l'app è su e raggiunge il DB (anche in sola lettura, "degraded"), 503 se il DB non risponde
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
-  CMD node -e "fetch('http://127.0.0.1:3000'+(process.env.NEXT_BASE_PATH||'')+'/api/branding/staff-logo',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000'+(process.env.NEXT_BASE_PATH||'')+'/api/health',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "server.js"]

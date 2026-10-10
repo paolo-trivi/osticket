@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import PhpLink from "@/components/adminsys/PhpLink";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
 import Callout from "@/components/common/Callout";
@@ -12,6 +13,9 @@ import { listPlugins } from "@/server/domain/adminsys/plugin";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massInstanceAction, massPluginAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("plugins");
 
 /** Plugin installati (include/staff/plugins.inc.php). Installazione e configurazione restano al PHP. */
 export default async function PluginsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -27,7 +31,9 @@ export default async function PluginsPage({ params, searchParams }: { params: Pr
     <div className="space-y-6">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
       <SysNotice sp={sp} />
-      <Callout tone="info">{t("phpNote")}</Callout>
+      <Callout tone="info">
+        {t("phpNote")} <PhpLink path="/scp/plugins.php" label={t("openPhp")} />
+      </Callout>
       <form action={massPluginAction} className="space-y-4">
         <MassBar
           actions={[

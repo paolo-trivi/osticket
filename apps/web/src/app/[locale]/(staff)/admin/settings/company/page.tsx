@@ -2,6 +2,9 @@ import { setRequestLocale } from "next-intl/server";
 
 import { requireAdmin } from "../../guard";
 import SettingsView from "../_shared/SettingsView";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("company");
 
 /** Impostazioni › company (scp/settings.php?t=pages). */
 export default async function CompanySettingsPage({ params }: { params: Promise<{ locale: string }> }) {

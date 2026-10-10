@@ -7,11 +7,13 @@ import { useTranslations } from "next-intl";
 import DynamicForm from "@/components/forms/dynamic/DynamicForm";
 import FieldShell from "@/components/forms/dynamic/FieldShell";
 import { inputCls, selectCls } from "@/components/forms/dynamic/styles";
+import { ReadOnlyNotice, WriteGate } from "@/components/common/WriteGate";
 import Alert from "@/components/ui/alert/Alert";
 import { Link } from "@/i18n/navigation";
 import type { DynamicFormView } from "@/lib/forms/dynamic-field";
 
 import { profileAction, registerAction, type ProfileState, type RegisterState } from "@/app/[locale]/(client)/actions";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 interface Props {
   mode: "register" | "profile";
@@ -32,13 +34,29 @@ interface Props {
   doneContent?: { title: string; html: string } | null;
 }
 
+/** In sola lettura un avviso per i clienti prende il posto del form. */
+export default function AccountForm(props: Props) {
+  return (
+    <WriteGate fallback={<ReadOnlyNotice portal />}>
+      <AccountFormInner {...props} />
+    </WriteGate>
+  );
+}
+
 /** Form account (register.inc.php) e profilo (profile.inc.php) del cliente. */
-export default function AccountForm({ mode, userForm, values, timezone, lang, languages, showPassword, requireCurrent, lockEmail, notice, doneContent }: Props) {
+function AccountFormInner({ mode, userForm, values, timezone, lang, languages, showPassword, requireCurrent, lockEmail, notice, doneContent }: Props) {
   const t = useTranslations("portal.account");
   const te = useTranslations("portal.errors");
   const tf = useTranslations("portal.fieldErrors");
   const [state, action, pending] = useActionState<RegisterState | ProfileState, FormData>(mode === "register" ? registerAction : profileAction, {});
   const tzRef = useRef<HTMLSelectElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  // errore in cima e pulsante in fondo: dopo un invio fallito il messaggio viene portato in vista
+  useEffect(() => {
+    if (!state.error) return;
+    errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    errorRef.current?.focus({ preventScroll: true });
+  }, [state]);
   // register.inc.php: fuso rilevato dal browser (jstz) se non indicato
   useEffect(() => {
     const el = tzRef.current;
@@ -82,12 +100,17 @@ export default function AccountForm({ mode, userForm, values, timezone, lang, la
     if (code) dynErrors[f.id] = [code];
   }
   const vals = state.values ? Object.fromEntries(Object.entries(state.values).map(([k, v]) => [k, [v]])) : values;
+  const submit = submitKeepingValues(action);
   const hidden = lockEmail ? (userForm?.fields.filter((f) => f.name === "email").map((f) => f.id) ?? []) : [];
 
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={submit} className="space-y-6">
       {notice && <Alert variant="info" title={notice} message="" />}
-      {state.error && <Alert variant="error" title={te.has(state.error) ? te(state.error) : state.error} message="" />}
+      {state.error && (
+        <div ref={errorRef} tabIndex={-1} className="scroll-mt-24 outline-none">
+          <Alert variant="error" title={te.has(state.error) ? te(state.error) : state.error} message="" />
+        </div>
+      )}
 
       {userForm && (
         <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">

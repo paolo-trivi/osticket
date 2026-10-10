@@ -7,17 +7,22 @@ import HtmlContent from "@/components/kb/HtmlContent";
 import KbBreadcrumb from "@/components/kb/KbBreadcrumb";
 import SubcategoryList from "@/components/kb/SubcategoryList";
 import VisibilityBadge from "@/components/kb/VisibilityBadge";
+import { idOrNotFound } from "@/lib/route-id";
 import { getCategory } from "@/server/domain/kb/categories";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../../guard";
+
+export async function generateMetadata() {
+  return { title: (await getTranslations("kb"))("title") };
+}
 
 /** kb.php?cid=N (faq-category.inc.php) in sola lettura. */
 export default async function KbCategoryPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
-  const category = await getCategory(agent, /^\d+$/.test(id) ? Number(id) : 0);
+  const category = await getCategory(agent, idOrNotFound(id));
   if (!category) notFound();
   const [t, tk, tz] = await Promise.all([getTranslations("kb"), getTranslations("kbAgent"), agentTimeZone(agent)]);
   const vis = { featured: t("featured"), public: t("public"), internal: t("internal") };

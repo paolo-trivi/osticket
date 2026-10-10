@@ -14,6 +14,10 @@ TailTicket è un'opera derivata di osTicket ed è distribuito con la **GNU Gener
 - Base grafica dell'interfaccia (componenti e stili in `apps/web/src/components`, `apps/web/src/app/globals.css`).
 - Licenza MIT: [apps/web/LICENSE-TailAdmin-MIT](apps/web/LICENSE-TailAdmin-MIT).
 
+## Lucide
+- Icone dell'interfaccia (`lucide-react`): https://lucide.dev
+- Licenza ISC, © Lucide Icons and Contributors; le icone derivate da Feather hanno licenza MIT, © Cole Bemis. Testo completo nel pacchetto (`node_modules/lucide-react/LICENSE`).
+
 ## Altre dipendenze
 Le librerie JavaScript usate da TailTicket hanno le proprie licenze, compatibili con la GPL v2. L'elenco è in `apps/web/package.json` e `apps/web/package-lock.json`. Le librerie PHP incluse in osTicket sono elencate in `legacy/`.
 

@@ -16,7 +16,9 @@ import { TicketPerm } from "@/server/domain/staff/staff";
 import type { CreateErrors } from "@/server/domain/ticket/create";
 import { openTicket } from "@/server/domain/ticket/create-open";
 import { formDataToVars, searchUsers, topicFormsView, usersByIds, type UserHit } from "@/server/domain/ticket/create-ui";
+import { agentLocalToIso } from "@/server/domain/ticket/edit-values";
 import { runWrite } from "@/server/domain/write";
+import { agentTimeZone } from "@/server/format/datetime";
 
 export interface OpenTicketState {
   /** codice dell'errore generale (o testo originale del PHP se non riconosciuto) */
@@ -80,6 +82,8 @@ export async function openTicketAction(_prev: OpenTicketState, fd: FormData): Pr
   for (const k of ["source", "topicId", "deptId", "slaId", "duedate", "assignId", "statusId", "reply-to", "response", "signature", "note"]) {
     if (fd.has(k) && formStr(fd, k) !== "") vars[k] = formStr(fd, k);
   }
+  // scadenza dal campo datetime-local, nel fuso dell'agente come in modifica (agentLocalToIso)
+  if (typeof vars.duedate === "string") vars.duedate = agentLocalToIso(vars.duedate, await agentTimeZone(agent));
   const ccs = formIds(fd, "ccs");
   if (ccs.length) vars.ccs = ccs;
   const owner = `S${agent.id}`;
@@ -89,9 +93,11 @@ export async function openTicketAction(_prev: OpenTicketState, fd: FormData): Pr
   const res = await runWrite({ agent, ip: await clientIp() }, (ctx) => openTicket(ctx, vars));
   if (res.ok) {
     const locale = await getLocale();
-    redirect({ href: `/agent/tickets/${res.ticketId}`, locale });
+    // la vista mostra "Ticket creato" (msg di scp/tickets.php a=open)
+    redirect({ href: `/agent/tickets/${res.ticketId}?created=1`, locale });
   }
   if (res.ok) return {};
+  if ("error" in res) return { error: res.error, values, nonce: Date.now() };
   const { err, fields, errno: _errno, ...rest } = res.errors;
   void _errno;
   const picked = await usersByIds(db(), [uid, ...ccs].filter(Boolean));

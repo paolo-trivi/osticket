@@ -2,7 +2,7 @@
 
 Lo stato dettagliato per milestone è in [apps/web/RESTART.md](../apps/web/RESTART.md).
 
-## Fatto (v0.1)
+## Fatto (v1.0)
 
 - [x] **Fondamenta**:
   - DB condiviso senza DDL;
@@ -12,8 +12,14 @@ Lo stato dettagliato per milestone è in [apps/web/RESTART.md](../apps/web/RESTA
 - [x] **Pannello agenti** completo: code, ticket, azioni, creazione, massa, export, task, utenti, organizzazioni, profilo, 2FA.
 - [x] **Portale clienti** completo.
 - [x] **Area amministrazione**: impostazioni, oggetti, email, template, filtri, form, liste, pagine, API, log, plugin.
-- [x] **Compatibilità**: 308 scenari differenziali in CI; sola lettura su schemi osTicket non verificati.
+- [x] **Compatibilità**: 351 scenari differenziali in CI; sola lettura su schemi osTicket non verificati.
+- [x] **Board Kanban, statistiche, knowledge base** e profili con permessi effettivi.
+- [x] **Qualità del codice**: refactoring YAGNI/SSOT/SRP, knip in CI, audit di sicurezza e collaudo E2E prima della release.
 - [x] **Fork strutturato**: `legacy/` e `apps/web/`, brand TailTicket, documentazione, deploy Docker in un comando.
+- [x] **Collegamento a un osTicket in produzione** (modalità attach): sola lettura all'avvio, gate unico delle scritture, doctor, tre modalità di scrittura, prova generale, backup, registro delle scritture, interruttore d'emergenza.
+- [x] **Annulla modifica** per ogni salvataggio dell'area admin (interfaccia, pagina *Modifiche recenti*, `./tailticket undo`).
+- [x] **osTicket 1.17** supportato in lettura e scrittura (harness differenziale completo su 1.17.8); versioni precedenti riconosciute dal doctor, in sola lettura.
+- [x] **Correzioni dal collaudo visivo** su installazione pulita e icone da un solo kit (Lucide).
 
 ## Prossimi passi
 
@@ -27,11 +33,13 @@ Lo stato dettagliato per milestone è in [apps/web/RESTART.md](../apps/web/RESTA
 
 ### Scalabilità e operatività
 - [ ] Stato condiviso (codici 2FA, tentativi falliti) fuori dalla memoria, per più istanze, sempre senza DDL: righe `config` `nextui.*` o uno store esterno opzionale.
-- [ ] Endpoint di health e metriche.
-- [ ] Immagini firmate e rilasci versionati su GHCR.
+- [x] Endpoint di health (`/api/health`) e doctor del collegamento a osTicket.
+- [ ] Metriche.
+- [x] Rilasci versionati su GHCR (`v1.0.0`).
+- [ ] Immagini firmate.
 
 ### Ecosistema osTicket
-- [ ] Verifica e supporto delle prossime versioni 1.18.x e 1.19 di osTicket ([upstream-sync.md](upstream-sync.md)).
+- [ ] Verifica e supporto delle prossime versioni di osTicket (1.19, 2.x): procedura in [compatibility.md](compatibility.md).
 - [ ] OAuth2 per gli account email.
 - [ ] Altre lingue oltre a italiano e inglese.
 

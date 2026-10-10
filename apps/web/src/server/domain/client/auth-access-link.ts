@@ -11,6 +11,7 @@ import { isEmail } from "../forms/validator";
 import { type ClientAuthError, type ClientAuthOutcome, type ClientLogin, denied, lockedOut, loginWrites, prepare, strike } from "./auth";
 import type { GuestAccess } from "./identity";
 import { sendAccessLinkMail } from "./mails";
+import { withWriteScope } from "../../system/write-mode";
 
 /**
  * Accesso dei clienti come ospiti di un ticket: link di accesso con email e numero del ticket
@@ -45,6 +46,12 @@ type AccessLinkOutcome = { ok: true; sent: true } | ({ ok: true; sent: false } &
  * come ospite. Ogni fallimento è un tentativo (strike).
  */
 export async function performAccessLink(input: { email: string; number: string; ip: string }): Promise<AccessLinkOutcome> {
+  return withWriteScope("operational", () => accessLink(input), {
+    op: "client.accesslink",
+  });
+}
+
+async function accessLink(input: { email: string; number: string; ip: string }): Promise<AccessLinkOutcome> {
   const cfg = await prepare();
   const { ip } = input;
   const email = input.email.trim();
@@ -126,6 +133,12 @@ async function lookupByAuthToken(executor: DbOrTx, token: string): Promise<{ use
  * processSignOn senza autenticazione forzata: token non valido = nessun accesso, senza strike.
  */
 export async function performTokenSignOn(input: { auth?: string; t?: string; e?: string; a?: string; ip: string }): Promise<ClientAuthOutcome | null> {
+  return withWriteScope("operational", () => tokenSignOn(input), {
+    op: "client.authtoken",
+  });
+}
+
+async function tokenSignOn(input: { auth?: string; t?: string; e?: string; a?: string; ip: string }): Promise<ClientAuthOutcome | null> {
   const cfg = await prepare();
   const { ip } = input;
   if (lockedOut(cfg, ip)) return denied(cfg, "", ip, "locked_out");

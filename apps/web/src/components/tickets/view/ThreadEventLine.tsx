@@ -16,7 +16,7 @@ export default function ThreadEventLine({ description, timestamp, tz, locale }: 
     <div className="flex items-center gap-3 px-2 text-theme-sm text-gray-500 dark:text-gray-400">
       <span className="size-2 rounded-full bg-gray-300 dark:bg-gray-600" />
       <span>{description}</span>
-      <span className="text-theme-xs text-gray-400">{formatDbDate(timestamp, tz, locale, "short")}</span>
+      <span className="text-theme-xs text-gray-400">{formatDbDate(timestamp, tz, locale)}</span>
     </div>
   );
 }

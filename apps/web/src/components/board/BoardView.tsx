@@ -1,8 +1,9 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { useWriteMode } from "@/context/WriteModeContext";
 import { canMoveAnywhere, dropBlock } from "@/server/domain/board/grouping";
 import { RECENT_CLOSED_DAYS } from "@/server/domain/board/params";
 import { cellKey, type BoardCell, type BoardColumn, type BoardData } from "@/server/domain/board/types";
@@ -63,12 +64,23 @@ export default function BoardView({
   const [previewId, setPreviewId] = useState<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
-  const statusColumns = data.dragEnabled ? columns : [];
+  // All'apertura e quando cambiano le colonne la griglia parte dalla prima colonna: su mobile lo
+  // scorrimento a scatti (snap) e il ripristino del browser potevano lasciarla spostata e tagliata
+  const columnsKey = columns.map((c) => c.key).join("|");
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = 0;
+  }, [columnsKey]);
+
+  // in sola lettura niente spostamenti (trascinamento e menu "Sposta")
+  const writable = useWriteMode().canWrite("operational");
+  const dragEnabled = data.dragEnabled && writable;
+  const statusColumns = dragEnabled ? columns : [];
   const hasLanes = data.lane !== "none";
   const closePreview = useCallback(() => setPreviewId(null), []);
 
   const { drag, start, shouldSuppressClick, ghostRef } = useBoardDrag({
-    enabled: data.dragEnabled,
+    enabled: dragEnabled,
     scroller,
     onDrop,
   });
@@ -90,41 +102,18 @@ export default function BoardView({
     return { state: drag.over === key ? "over" : "allowed" };
   };
 
-  const anyMovable = useMemo(
-    () =>
-      data.dragEnabled &&
-      Object.values(data.cells).some((cell) =>
-        cell.cards.some((c) => canMoveAnywhere(c, columns)),
-      ),
-    [data, columns],
-  );
+  const anyMovable = useMemo(() => dragEnabled && Object.values(data.cells).some((cell) => cell.cards.some((c) => canMoveAnywhere(c, columns))), [data, columns, dragEnabled]);
   const previewCard = findCard(previewId);
 
   return (
-    <div
-      className={cn(
-        "relative transition-opacity",
-        pending && "pointer-events-none opacity-60",
-      )}
-      aria-busy={pending}
-    >
-      <BoardNotices dragEnabled={data.dragEnabled} total={data.total} anyMovable={anyMovable} />
+    <div className={cn("relative transition-opacity", pending && "pointer-events-none opacity-60")} aria-busy={pending}>
+      <BoardNotices dragEnabled={data.dragEnabled} readOnly={!writable} total={data.total} anyMovable={anyMovable} />
 
       {columns.length > 0 && (
         <BoardGrid scrollerRef={scroller} columnCount={columns.length}>
           {columns.map((col) => {
-            const block = drag
-              ? dropBlock(drag.card, col, drag.card.lane)
-              : null;
-            return (
-              <BoardColumnHeader
-                key={`h-${col.key}`}
-                column={col}
-                count={columnTotal(col.key)}
-                dimmed={!!drag && block !== null && block !== "same"}
-                isMeLabel
-              />
-            );
+            const block = drag ? dropBlock(drag.card, col, drag.card.lane) : null;
+            return <BoardColumnHeader key={`h-${col.key}`} column={col} count={columnTotal(col.key)} dimmed={!!drag && block !== null && block !== "same"} isMeLabel />;
           })}
 
           {data.lanes.map((lane) => {
@@ -166,11 +155,11 @@ export default function BoardView({
                           <BoardCardEntry
                             key={card.id}
                             card={card}
-                            movable={data.dragEnabled && !moving.has(card.id) && canMoveAnywhere(card, columns)}
+                            movable={dragEnabled && !moving.has(card.id) && canMoveAnywhere(card, columns)}
                             dragging={drag?.card.id === card.id}
                             pending={moving.has(card.id)}
                             statusColumns={statusColumns}
-                            moveEnabled={data.dragEnabled && !moving.has(card.id)}
+                            moveEnabled={dragEnabled && !moving.has(card.id)}
                             onPointerDown={start}
                             onPreview={setPreviewId}
                             onMove={(c, column) => void move(c, column)}
@@ -187,24 +176,12 @@ export default function BoardView({
         </BoardGrid>
       )}
 
-      {drag && (
-        <BoardDragGhost
-          card={drag.card}
-          left={drag.left}
-          top={drag.top}
-          width={drag.width}
-          dx={drag.dx}
-          dy={drag.dy}
-          ghostRef={ghostRef}
-        />
-      )}
+      {drag && <BoardDragGhost card={drag.card} left={drag.left} top={drag.top} width={drag.width} dx={drag.dx} dy={drag.dy} ghostRef={ghostRef} />}
 
       <BoardPreviewPanel
         card={previewCard}
         statusColumns={statusColumns}
-        moveEnabled={
-          data.dragEnabled && !!previewCard && !moving.has(previewCard.id)
-        }
+        moveEnabled={dragEnabled && !!previewCard && !moving.has(previewCard.id)}
         onMove={(c, col) => void move(c, col)}
         onClose={closePreview}
         loadPreview={actions.preview}

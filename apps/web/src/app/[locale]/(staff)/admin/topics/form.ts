@@ -55,7 +55,8 @@ export async function topicSections(topicId: number | null): Promise<FormSection
           name: "topic_pid",
           label: t("parent"),
           value: String(topic?.topic_pid ?? 0),
-          options: [{ value: "0", label: t("topLevel") }, ...topics.filter((x) => x.value !== String(topicId))],
+          // Topic::getHelpTopics(): solo argomenti attivi (resta quello già impostato, per non perderlo al salvataggio)
+          options: [{ value: "0", label: t("topLevel") }, ...topics.filter((x) => x.value !== String(topicId) && (x.active || x.value === String(topic?.topic_pid ?? 0)))],
         },
         { kind: "select", name: "status", label: t("status"), value: status, options: ["active", "disabled", "archived"].map((s) => ({ value: s, label: u(`status.${s}`) })) },
         {

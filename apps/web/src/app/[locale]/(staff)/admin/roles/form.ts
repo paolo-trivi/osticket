@@ -7,6 +7,8 @@ import { db } from "@/server/db";
 import { phpJsonDecode } from "@/server/format/php-json";
 import { ALL_PERMISSIONS } from "@/server/domain/admin/role";
 
+import { permLabel } from "./perm-label";
+
 /** Sezioni del form ruolo (include/staff/role.inc.php): permessi non "primari" per gruppo. */
 export async function roleSections(roleId: number | null): Promise<FormSection[] | null> {
   const t = await getTranslations("admRoles");
@@ -37,7 +39,7 @@ export async function roleSections(roleId: number | null): Promise<FormSection[]
           options: [],
           groups: roleGroups.map((g) => ({
             title: t.has(`groups.${g}`) ? t(`groups.${g}`) : g,
-            options: ALL_PERMISSIONS.filter((p) => !p.primary && p.group === g).map((p) => ({ value: p.key, label: `${p.title} — ${p.desc}` })),
+            options: ALL_PERMISSIONS.filter((p) => !p.primary && p.group === g).map((p) => ({ value: p.key, label: permLabel(t, p) })),
           })),
         },
       ],

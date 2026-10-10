@@ -6,6 +6,7 @@ import { createPool, type Pool } from "mysql2";
 import { installConfig } from "../env";
 import type { DB } from "./schema.gen";
 import { TablePrefixPlugin } from "./table-prefix-plugin";
+import { withWriteGate } from "./write-gate";
 
 export type Db = Kysely<DB>;
 export type Tx = Transaction<DB>;
@@ -41,12 +42,15 @@ function createDb(): Db {
   g.__ostPool = pool;
 
   return new Kysely<DB>({
-    dialect: new MysqlDialect({
-      pool,
-      async onCreateConnection(connection) {
-        await connection.executeQuery(CompiledQuery.raw(SESSION_INIT));
-      },
-    }),
+    // gate delle scritture (TAILTICKET_MODE) e registro delle scritture: write-gate.ts
+    dialect: withWriteGate(
+      new MysqlDialect({
+        pool,
+        async onCreateConnection(connection) {
+          await connection.executeQuery(CompiledQuery.raw(SESSION_INIT));
+        },
+      }),
+    ),
     plugins: [new TablePrefixPlugin(cfg.tablePrefix)],
   });
 }

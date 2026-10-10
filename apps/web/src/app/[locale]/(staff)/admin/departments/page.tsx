@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import AdminNotice from "@/components/admin/AdminNotice";
 import MassBar from "@/components/admin/MassBar";
+import NewLink from "@/components/admin/NewLink";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
@@ -13,6 +14,9 @@ import { deptOptions } from "@/server/domain/admin/lookups";
 
 import { requireAdmin } from "../guard";
 import { massDeptAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("departments");
 
 /** Elenco reparti (include/staff/departments.inc.php). */
 export default async function DepartmentsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -25,7 +29,13 @@ export default async function DepartmentsPage({ params, searchParams }: { params
   const cfg = await coreConfig();
   const defaultId = cfg.int("default_dept_id");
   const names = new Map((await deptOptions()).map((d) => [d.value, d.label]));
-  const { rows } = await sql<{ id: number; flags: number; ispublic: number; members: number; manager: string | null }>`
+  const { rows } = await sql<{
+    id: number;
+    flags: number;
+    ispublic: number;
+    members: number;
+    manager: string | null;
+  }>`
     SELECT d.id, d.flags, d.ispublic, (SELECT count(*) FROM ${table("staff")} s WHERE s.dept_id = d.id) AS members,
       (SELECT CONCAT_WS(' ', m.firstname, m.lastname) FROM ${table("staff")} m WHERE m.staff_id = d.manager_id) AS manager
     FROM ${table("department")} d`.execute(db());
@@ -33,16 +43,8 @@ export default async function DepartmentsPage({ params, searchParams }: { params
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={
-          <Link href="/admin/departments/new" className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600">
-            {t("new")}
-          </Link>
-        }
-      />
-      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} />
+      <PageHeader title={t("title")} subtitle={t("subtitle")} actions={<NewLink href="/admin/departments/new" label={t("new")} />} />
+      <AdminNotice ok={sp.ok} n={sp.n} err={sp.err} cs={sp.cs} />
       <form action={massDeptAction} className="space-y-4">
         <MassBar
           actions={[

@@ -8,10 +8,15 @@ import { coreConfig } from "@/server/config/config";
 import { db, table } from "@/server/db";
 import { deptOptions, roleOptions } from "@/server/domain/admin/lookups";
 import { AGENT_PERMISSIONS } from "@/server/domain/admin/staff-admin";
+import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 import { PersonsName } from "@/server/format/persons-name";
 
 import { requireAdmin } from "../guard";
+import { permLabel } from "../roles/perm-label";
 import { massAgentsAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("agentsList");
 
 const control = "h-9 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 const button =
@@ -21,9 +26,11 @@ const button =
 export default async function AgentsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  await requireAdmin(locale);
+  const admin = await requireAdmin(locale);
+  const tz = await agentTimeZone(admin);
   const t = await getTranslations("admAgents");
   const u = await getTranslations("admUi");
+  const roleT = await getTranslations("admRoles");
   const sp = await searchParams;
   const fmt = (await coreConfig()).str("agent_name_format");
   const depts = await deptOptions();
@@ -91,7 +98,7 @@ export default async function AgentsPage({ params, searchParams }: { params: Pro
                 )}
               </span>
             ),
-            lastlogin: r.lastlogin ?? "—",
+            lastlogin: formatDbDate(r.lastlogin, tz, locale) || "—",
           },
         };
       })}
@@ -103,7 +110,7 @@ export default async function AgentsPage({ params, searchParams }: { params: Pro
               {AGENT_PERMISSIONS.map((p) => (
                 <label key={p.key} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <input type="checkbox" name="perms[]" value={p.key} className="mt-0.5 h-4 w-4 accent-brand-500" />
-                  {p.title} — {p.desc}
+                  {permLabel(roleT, p)}
                 </label>
               ))}
               <div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useState } from "react";
 
 import { useTranslations } from "next-intl";
@@ -28,10 +29,24 @@ interface Props {
 /** Richiedente (esistente o nuovo), collaboratori in Cc e destinatari dell'avviso di apertura. */
 export default function UserSection({ userForm, search, values, fieldErrors, errors, initialUser, initialCcs }: Props) {
   const t = useTranslations("createTicket");
-  const [mode, setMode] = useState<"existing" | "new">(values && !first(values, "uid") && userForm ? "new" : "existing");
+  // dopo un errore si torna sulla modalità scelta (userMode), non su "Nuovo utente" solo perché manca uid
+  const sent = first(values, "userMode");
+  const [mode, setMode] = useState<"existing" | "new">(sent === "new" && userForm ? "new" : sent === "existing" || !values || first(values, "uid") || !userForm ? "existing" : "new");
   const [user, setUser] = useState<PickedUser | null>(initialUser ?? null);
   const [ccs, setCcs] = useState<PickedUser[]>(initialCcs ?? []);
-  const userErrors = [errors.user, errors.email, errors.name].filter((e): e is string => !!e);
+  // errori dell'invio `values` già corretti scegliendo un utente
+  const [fixedFor, setFixedFor] = useState<SubmittedValues | undefined | null>(null);
+  const fixed = !!values && fixedFor === values;
+  // Ticket::open senza uid chiede email e nome (come il PHP): in "Utente esistente" significa che non è stato scelto nessuno
+  const userErrors = fixed
+    ? []
+    : mode === "existing" && !user && (errors.email || errors.name)
+      ? [t("user.selectUser"), errors.user].filter((e): e is string => !!e)
+      : [errors.user, errors.email, errors.name].filter((e): e is string => !!e);
+  const pickUser = (u: PickedUser) => {
+    setUser(u);
+    setFixedFor(values);
+  };
 
   const tab = (m: "existing" | "new", label: string) => (
     <button
@@ -48,6 +63,7 @@ export default function UserSection({ userForm, search, values, fieldErrors, err
 
   return (
     <ComponentCard title={t("sections.user")}>
+      <input type="hidden" name="userMode" value={mode} />
       {userForm && (
         <div className="flex gap-2">
           {tab("existing", t("user.existingUser"))}
@@ -66,7 +82,7 @@ export default function UserSection({ userForm, search, values, fieldErrors, err
               </button>
             </div>
           ) : (
-            <UserPicker id="user-search" placeholder={t("user.searchPlaceholder")} search={search} onPick={setUser} />
+            <UserPicker id="user-search" placeholder={t("user.searchPlaceholder")} search={search} onPick={pickUser} />
           )}
         </FieldShell>
       ) : (
@@ -91,7 +107,7 @@ export default function UserSection({ userForm, search, values, fieldErrors, err
                 <input type="hidden" name="ccs" value={c.id} />
                 {c.name} &lt;{c.email}&gt;
                 <button type="button" aria-label={t("user.remove")} onClick={() => setCcs((p) => p.filter((x) => x.id !== c.id))} className="text-gray-400 hover:text-error-500">
-                  ×
+                  <X className="size-3.5" />
                 </button>
               </li>
             ))}

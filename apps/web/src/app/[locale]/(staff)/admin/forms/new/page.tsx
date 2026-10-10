@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import { requireAdmin } from "../../guard";
 import { saveFormAction } from "../actions";
 import { FormFields, formLabels } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("forms");
 
 export default async function NewFormPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

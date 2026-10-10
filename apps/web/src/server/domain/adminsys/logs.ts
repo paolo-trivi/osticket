@@ -1,8 +1,6 @@
 import "server-only";
 
-import { sql } from "kysely";
-
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import type { MassResult } from "../admin/common";
 
 /**
@@ -55,7 +53,7 @@ export async function listLogs(executor: DbOrTx, f: LogFilter) {
 /** scp/logs.php do=mass_process a=delete */
 export async function deleteLogs(executor: DbOrTx, ids: number[]): Promise<MassResult> {
   if (!ids.length) return { ok: false, num: 0, error: "select_one" };
-  const res = await sql`DELETE FROM ${table("syslog")} WHERE log_id IN (${sql.join(ids)})`.execute(executor);
-  const num = Number(res.numAffectedRows ?? 0);
+  const res = await executor.deleteFrom("syslog").where("log_id", "in", ids).executeTakeFirst();
+  const num = Number(res.numDeletedRows ?? 0);
   return num ? { ok: true, num } : { ok: false, num: 0, error: "failed" };
 }

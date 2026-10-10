@@ -33,7 +33,11 @@ export async function cancelMfaAction(): Promise<void> {
 /** scp/pwreset.php do=sendmail: stessa risposta per agenti esistenti o no */
 export async function requestResetAction(_prev: RecoveryState, form: FormData): Promise<RecoveryState> {
   const r = await requestStaffPasswordReset(String(form.get("userid") ?? ""));
-  if (r.error) return { error: r.error === "disabled" ? "reset_disabled" : "reset_unavailable", nonce: Date.now() };
+  if (r.error)
+    return {
+      error: r.error === "read_only" ? "read_only" : r.error === "disabled" ? "reset_disabled" : "reset_unavailable",
+      nonce: Date.now(),
+    };
   return { sent: true, nonce: Date.now() };
 }
 

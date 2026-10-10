@@ -70,6 +70,8 @@ export async function saveEmail(executor: DbOrTx, emailId: number | null, vars: 
   email.set("name", stripTags(name));
   email.set("dept_id", intval(vars.dept_id));
   email.set("priority_id", isset(vars, "priority_id") ? intval(vars.priority_id) : 0);
+  // Nuovo indirizzo con "Predefinito di sistema" (0): per l'ORM del PHP null == 0 non è una modifica,
+  // quindi l'INSERT prende il default della colonna (2, Normal); comportamento del PHP mantenuto
   email.set("topic_id", intval(vars.topic_id));
   email.set("noautoresp", intval(vars.noautoresp));
   email.set("notes", sanitizeText(str(vars.notes)));

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { BoundedStore } from "./bounded-store";
+import { sharedStore } from "./bounded-store";
 
 /**
  * Contatore dei tentativi di login falliti (equivalente di StaffAuthStrikeBackend/UserAuthStrikeBackend).
@@ -17,7 +17,7 @@ interface StrikeState {
 const STRIKE_TTL = 24 * 3600;
 const MAX_ENTRIES = 100_000;
 
-const store = new BoundedStore<StrikeState>(MAX_ENTRIES);
+const store = sharedStore<StrikeState>("login-strikes", MAX_ENTRIES);
 
 function key(realm: string, ip: string, login: string): string {
   return `${realm}|${ip}|${login.toLowerCase()}`;

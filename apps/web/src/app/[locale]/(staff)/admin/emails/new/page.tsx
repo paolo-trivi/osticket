@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import { requireAdmin } from "../../guard";
 import { saveEmailAction } from "../actions";
 import { EmailFields, emailLabels } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("emailAccounts");
 
 export default async function NewEmailPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

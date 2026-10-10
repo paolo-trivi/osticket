@@ -1,4 +1,4 @@
-import { setRequestLocale } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 
 import TicketAnswersCard from "@/components/tickets/view/TicketAnswersCard";
@@ -10,28 +10,35 @@ import TicketHeader from "@/components/tickets/view/TicketHeader";
 import TicketTasksCard from "@/components/tickets/view/TicketTasksCard";
 import TicketThread from "@/components/tickets/view/TicketThread";
 import TicketUserCard from "@/components/tickets/view/TicketUserCard";
+import { parseId, idOrNotFound } from "@/lib/route-id";
+import { currentAgent } from "@/server/auth/staff-auth";
 import { loadTicketView, ticketViewNumber } from "@/server/domain/ticket/view";
 
 import { requireAgent } from "../../../guard";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const number = await ticketViewNumber(Number(id));
-  return { title: number ? `#${number}` : "Ticket" };
+  const title = (await getTranslations("ticket"))("pageTitle");
+  // il numero va nel titolo solo per un agente autenticato che può vedere il ticket
+  const ticketId = parseId(id);
+  const agent = ticketId ? await currentAgent() : null;
+  const number = agent && ticketId ? await ticketViewNumber(agent, ticketId) : null;
+  return { title: number ? `#${number}` : title };
 }
 
-export default async function TicketViewPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
+export default async function TicketViewPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ created?: string }> }) {
   const { locale, id } = await params;
+  const { created } = await searchParams;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
-  const view = await loadTicketView(agent, Number(id));
+  const view = await loadTicketView(agent, idOrNotFound(id));
   // Come scp/tickets.php: ticket inesistente o non accessibile → stesso messaggio
   if (!view) notFound();
   const { ticket, tz } = view;
 
   return (
     <div className="space-y-6">
-      <TicketHeader ticket={ticket} agent={agent} locale={locale} taskCount={view.taskCount} legacyUrl={view.legacyUrl} />
+      <TicketHeader ticket={ticket} agent={agent} locale={locale} taskCount={view.taskCount} legacyUrl={view.legacyUrl} created={created === "1"} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
