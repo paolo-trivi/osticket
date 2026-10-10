@@ -5,6 +5,7 @@ import { sql } from "kysely";
 import { table, type DbOrTx } from "../../db";
 import { loadConfigNamespace } from "../../config/config";
 import { htmlSearchable, searchable } from "../../format/text";
+import { requestDates } from "../forms/entry";
 import { cleanFromDb, fieldConfig, fieldToString, type DateFormatOptions, type FieldDef } from "../forms/fields";
 
 /**
@@ -33,9 +34,11 @@ const NOT_SEARCHABLE = new Set(["priority", "topic", "sla", "timezone", "departm
 
 /**
  * Signal model.updated/created per un Ticket (SearchBackend::updateModel): titolo "numero oggetto",
- * contenuto = risposte dei form del ticket indicizzabili, una per riga.
+ * contenuto = risposte dei form del ticket indicizzabili, una per riga. `userDates`: formati e fuso
+ * dell'utente corrente ($cfg->getTimezone()) per le date; senza, quelli della richiesta legata
+ * all'executor (bindRequestContext), altrimenti il fuso predefinito.
  */
-export async function reindexTicket(executor: DbOrTx, ticketId: number): Promise<void> {
+export async function reindexTicket(executor: DbOrTx, ticketId: number, userDates?: DateFormatOptions): Promise<void> {
   const t = await executor.selectFrom("ticket").select(["number"]).where("ticket_id", "=", ticketId).executeTakeFirst();
   if (!t) return;
   // DynamicFormEntryAnswer: ordinamento predefinito per field__sort
@@ -49,13 +52,14 @@ export async function reindexTicket(executor: DbOrTx, ticketId: number): Promise
   const answers = new Map<string, { type: string; value: string | null; configuration: string | null; fieldId: number }>();
   for (const r of rows) answers.set(r.name ? r.name.toLowerCase() : `field.${r.field_id}`, { type: r.type, value: r.value, configuration: r.configuration, fieldId: r.field_id });
   const content: string[] = [];
-  let dates: DateFormatOptions | null = null;
+  let dates: DateFormatOptions | null = userDates ?? null;
   for (const a of answers.values()) {
     if (NOT_SEARCHABLE.has(a.type) || a.value === null) continue;
     let v: string;
     if (a.type === "memo") v = htmlSearchable(a.value);
     else if (a.type === "bool" || a.type === "datetime" || a.type === "phone") {
-      // FormField::searchable → toString: Yes/No, data formattata (fuso predefinito), telefono formattato
+      // FormField::searchable → toString: Yes/No, data formattata (fuso dell'utente), telefono formattato
+      dates ??= await requestDates(executor);
       if (!dates) {
         const cfg = await loadConfigNamespace("core", executor);
         dates = { cfg, timezone: cfg.str("default_timezone") || "UTC" };

@@ -9,7 +9,7 @@ import { listDetail } from "@/server/domain/adminsys/list";
 
 import { requireAdmin } from "../../../../guard";
 import { saveListItemAction } from "../../../actions";
-import { ItemFields } from "../../../items";
+import { ItemFields, propertyLabels } from "../../../items";
 
 export default async function ListItemPage({ params }: { params: Promise<{ locale: string; id: string; itemId: string }> }) {
   const { locale, id, itemId } = await params;
@@ -23,7 +23,7 @@ export default async function ListItemPage({ params }: { params: Promise<{ local
   return (
     <div className="space-y-6">
       <PageHeader title={item.value} subtitle={t("editItem")} actions={<BackLink href={`/admin/lists/${listId}`} label={t("backToList")} />} />
-      <SysForm action={saveListItemAction.bind(null, listId, item.id)} labels={{ value: t("value"), extra: t("abbrev") }}>
+      <SysForm action={saveListItemAction.bind(null, listId, item.id)} labels={{ value: t("value"), extra: t("abbrev"), ...propertyLabels(detail.properties) }}>
         <ItemFields item={item} properties={detail.properties} />
       </SysForm>
     </div>

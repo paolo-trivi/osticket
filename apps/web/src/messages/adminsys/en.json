@@ -119,7 +119,14 @@
       "unknown_item": "Unknown list item.",
       "default_queue": "The default queue cannot be deleted.",
       "email": "Not a valid email address.",
-      "number": "Must be a number."
+      "number": "Must be a number.",
+      "phone": "Not a valid phone number.",
+      "ip": "Not a valid IP address.",
+      "regex": "Invalid value.",
+      "phone_ext": "Invalid extension.",
+      "phone_ext_missing": "Extension without a phone number.",
+      "files_max": "Too many files.",
+      "date_past": "The date must be in the future."
     },
     "emailSettings": {
       "title": "Email settings",

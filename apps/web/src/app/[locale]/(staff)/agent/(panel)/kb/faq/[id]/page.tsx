@@ -9,7 +9,7 @@ import KbBreadcrumb from "@/components/kb/KbBreadcrumb";
 import VisibilityBadge from "@/components/kb/VisibilityBadge";
 import Badge from "@/components/ui/badge/Badge";
 import { agentFileUrl } from "@/server/domain/kb/html";
-import { getFaq } from "@/server/domain/kb/kb";
+import { getFaq } from "@/server/domain/kb/faq";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../../guard";

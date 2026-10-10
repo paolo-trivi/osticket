@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
 import { detectDbTimezone } from "@/server/db/time";
-import { adhocQueue, listQueueTickets, loadQueues, navigableQueues, orderKeyValues, queueCounts, quickSearchCriteria } from "@/server/domain/queue/engine";
+import { listQueueTickets, queueCounts } from "@/server/domain/queue/engine";
+import { orderKeyValues } from "@/server/domain/queue/order";
+import { adhocQueue, loadQueues, navigableQueues, quickSearchCriteria } from "@/server/domain/queue/queues";
 import { keywordTicketIds } from "@/server/domain/queue/search";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { findStaffIdForLogin, loadAgent } from "@/server/domain/staff/staff";

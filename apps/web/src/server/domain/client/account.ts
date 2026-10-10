@@ -5,30 +5,23 @@ import { FormType } from "@/lib/osticket/object-types";
 
 import { hashPassword, checkPassword } from "../../auth/passwd";
 import { coreConfig, type ConfigNamespace } from "../../config/config";
-import { NOW, db, type DbOrTx } from "../../db";
+import { db, type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
 import { phpLooseEquals, str } from "../../php/values";
 import { checkPasswordPolicy, type PasswordError } from "../directory/accounts";
-import { addMissingAnswers, entriesFor, saveEntryAnswers, createEntry, defaultFormOf, type FormEntry } from "../forms/answers";
-import { reindexUser } from "../directory/users";
 import { FormInstance } from "../forms/entry";
-import { hasAnswerRow, isEditableTo, isRequiredFor, isVisibleTo, type FieldErrorCode } from "../forms/fields";
+import { isRequiredFor, isVisibleTo, type FieldErrorCode } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
-import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
-import { resetTokenValid } from "./auth";
-import {
-  isUserId,
-  loadClientAccount,
-  lookupAccountByUsername,
-  passwordVersion,
-  type ClientAccountRow,
-  type ClientIdentity,
-} from "./identity";
+import { lookupUserByEmail, userFromVars } from "../ticket/create-user";
+import { resetTokenValid } from "./auth-reset";
+import { loadClientAccount, lookupAccountByUsername, passwordVersion, type ClientAccountRow, type ClientIdentity } from "./identity";
 import { prepareUnlockMail } from "./mails";
+import { updateUserInfoForClient } from "./profile-info";
 
 /**
- * Account dei clienti dal portale: registrazione (account.php), reset password (pwreset.php
- * do=sendmail), profilo (profile.php → ClientAccount::update + User::updateInfo).
+ * Account dei clienti dal portale: registrazione (account.php) e profilo (profile.php →
+ * ClientAccount::update + User::updateInfo, in profile-info.ts). La richiesta di reset della
+ * password (pwreset.php do=sendmail) è in password-reset.ts.
  */
 
 export type AccountFieldError =
@@ -48,7 +41,7 @@ interface AccountErrors {
   fields?: Record<string, AccountFieldError>;
 }
 
-type AccountResult<T = object> = ({ ok: true } & T) | ({ ok: false } & AccountErrors);
+export type AccountResult<T = object> = ({ ok: true } & T) | ({ ok: false } & AccountErrors);
 
 /** Variabili del form account/profilo (POST di account.php e profile.php) */
 interface ClientAccountVars {
@@ -131,89 +124,6 @@ async function clientAccountUpdate(
   return { ok: true, passwd };
 }
 
-/** Campo modificabile dal cliente (DynamicFormField::isEditableToUsers) */
-const clientEditable = (f: Parameters<typeof isEditableTo>[0]) => isEditableTo(f, "client");
-
-/** $cfg->getTimezone() per il cliente: fuso dell'account, altrimenti quello predefinito. */
-async function clientTimezone(tx: DbOrTx, cfg: ConfigNamespace, userId: number): Promise<string> {
-  const a = await tx.selectFrom("user_account").select("timezone").where("user_id", "=", userId).executeTakeFirst();
-  return a?.timezone || cfg.str("default_timezone") || "UTC";
-}
-
-/** User::getDynamicData($create): entry del form utente, creata vuota se manca */
-async function userEntries(tx: DbOrTx, userId: number): Promise<FormEntry[]> {
-  const entries = await entriesFor(tx, "U", userId);
-  if (entries.length) return entries;
-  const form = await defaultFormOf(tx, "U");
-  if (!form) return [];
-  await createEntry(tx, form, "U", "U", userId, {});
-  return entriesFor(tx, "U", userId);
-}
-
-/**
- * User::updateInfo($vars, $errors, $staff=false): validazione isValidForClient(true) dei campi
- * modificabili dai clienti, email non assegnata ad altri, nome ed email predefinita, risposte del
- * form, poi User::save (nome normalizzato, updated, indice).
- */
-async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId: number, input: Record<string, unknown>): Promise<AccountResult> {
-  const user = await tx.selectFrom("user").select(["id", "name", "default_email_id"]).where("id", "=", userId).forUpdate().executeTakeFirst();
-  if (!user) return { ok: false, err: "unable" };
-  const entries = await userEntries(tx, userId);
-  const timezone = await clientTimezone(tx, cfg, userId);
-  // User::getForms: addMissingFields prima della validazione
-  for (const e of entries) await addMissingAnswers(tx, e, userId);
-  const fields: Record<string, AccountFieldError> = {};
-  for (const e of entries) {
-    const def = await loadFormDef(tx, cfg, { id: e.form_id }, "client");
-    if (!def) continue;
-    const inst = new FormInstance(def, input, 1, null, { timezone });
-    const errs = await inst.validate((f) => isEditableTo(f, "client"), (f) => isRequiredFor(f, "client"), cfg);
-    for (const [id, codes] of Object.entries(errs)) {
-      const f = def.fields.find((x) => x.id === Number(id));
-      fields[f?.name || id] = codes[0];
-    }
-    if (!Object.keys(errs).length && e.form_type === FormType.USER) {
-      const ef = def.fields.find((x) => x.name === "email");
-      const email = ef ? inst.get("email") : null;
-      if (ef && isEditableTo(ef, "client") && typeof email === "string" && email) {
-        const other = await lookupUserByEmail(tx, email);
-        if (other && other.id !== userId) fields.email = "in_use";
-      }
-    }
-  }
-  if (Object.keys(fields).length) return { ok: false, err: "profile", fields };
-
-  let name: string | undefined;
-  let touch = false;
-  for (const e of entries) {
-    if (e.form_type === FormType.USER) {
-      const def = await loadFormDef(tx, cfg, { id: e.form_id }, "client");
-      const inst = def ? new FormInstance(def, input, 1, null, { timezone }) : null;
-      const nf = e.fields.find((x) => x.name === "name");
-      if (inst && nf && clientEditable(nf) && input.name !== undefined) {
-        const v = inst.get("name");
-        name = (typeof v === "object" && v ? Object.values(v).join(", ") : str(v)).trim();
-      }
-      const ef = e.fields.find((x) => x.name === "email");
-      if (inst && ef && clientEditable(ef) && input.email !== undefined) {
-        const email = str(inst.get("email"));
-        const cur = await tx.selectFrom("user_email").select(["id", "address"]).where("id", "=", user.default_email_id).executeTakeFirst();
-        if (cur && cur.address !== email) await tx.updateTable("user_email").set({ address: email }).where("id", "=", cur.id).execute();
-      }
-    }
-    const r = await saveEntryAnswers(tx, e, userId, input, { isEditable: (f) => clientEditable(f) && hasAnswerRow(f), onlyProvided: true, timezone });
-    if (r.dirty) touch = true;
-  }
-  // User::save: nome "sporco" se diverso dal valore attuale (prima della normalizzazione)
-  const set: Record<string, unknown> = {};
-  if (name !== undefined && !phpLooseEquals(user.name, name)) set.name = normalizeUserName(name);
-  if (Object.keys(set).length || touch) {
-    set.updated = NOW;
-    await tx.updateTable("user").set(set as never).where("id", "=", userId).execute();
-    await reindexUser(tx, userId, undefined, { cfg, timezone });
-  }
-  return { ok: true };
-}
 
 /** Esito del profilo: nuova versione della password per aggiornare la sessione corrente */
 type ProfileResult = AccountResult<{ pwv: string; passwordChanged: boolean }>;
@@ -309,46 +219,4 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
     }
   }
   return res;
-}
-
-type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unavailable" | "failed" };
-
-/**
- * pwreset.php POST do=sendmail: nessuna informazione sull'esistenza dell'account (stessa risposta),
- * tempo minimo di risposta di 1,4 s più un ritardo casuale, come il PHP.
- */
-export async function requestClientPasswordReset(userid: string, opts: { pad?: boolean } = {}): Promise<ResetRequestResult> {
-  const start = Date.now();
-  const cfg = await coreConfig();
-  await detectDbTimezone(db());
-  let out: ResetRequestResult = { ok: true };
-  let send: (() => Promise<void>) | null = null;
-  const id = userid.trim();
-  if (isUserId(id)) {
-    await db()
-      .transaction()
-      .execute(async (tx) => {
-        const acct = await lookupAccountByUsername(tx, id);
-        if (!acct) return;
-        if (acct.status & UserAccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
-        else if (!acct.passwd || (acct.backend && acct.backend !== "client")) out = { ok: false, error: "unavailable" };
-        else {
-          send = await prepareUnlockMail(tx, cfg, acct.user_id, "pwreset-client");
-          if (!send) out = { ok: false, error: "failed" };
-        }
-      });
-  }
-  if (send) {
-    try {
-      await (send as () => Promise<void>)();
-    } catch (err) {
-      console.error("[portal] email di reset non inviata", err);
-    }
-  }
-  if (opts.pad !== false) {
-    const target = 1400 + Math.floor(Math.random() * 251);
-    const elapsed = Date.now() - start;
-    if (elapsed < target) await new Promise((r) => setTimeout(r, target - elapsed));
-  }
-  return out;
 }

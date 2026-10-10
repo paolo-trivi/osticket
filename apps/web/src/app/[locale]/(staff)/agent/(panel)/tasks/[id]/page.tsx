@@ -17,7 +17,7 @@ import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
 import { checkTaskPerm, loadTask } from "@/server/domain/task/tasks";
 import { missingRequiredFields } from "@/server/domain/task/write";
-import { selectableDepts } from "@/server/domain/ticket/assign";
+import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { loadThreadEntries } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 

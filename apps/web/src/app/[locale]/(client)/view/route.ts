@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { startClientSession } from "@/server/auth/client-auth";
 import { clientIp } from "@/server/auth/session";
-import { performTokenSignOn } from "@/server/domain/client/auth";
+import { performTokenSignOn } from "@/server/domain/client/auth-access-link";
 import { withBase } from "@/lib/base-path";
 
 /**

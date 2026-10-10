@@ -8,7 +8,9 @@ import Repeater from "@/components/adminsys/Repeater";
 import { db } from "@/server/db";
 import { phpJsonDecode } from "@/server/format/php-json";
 import { deptOptions, emailOptions, priorityOptions, slaOptions, staffOptions, statusOptions, teamOptions, topicOptions } from "@/server/domain/admin/lookups";
-import { ACTION_FIELDS, ACTION_TYPES, MATCH_TYPES, matchFieldList, TARGETS, type filterInfo } from "@/server/domain/adminsys/filter";
+import { TARGETS, type filterInfo } from "@/server/domain/adminsys/filter";
+import { ACTION_FIELDS, ACTION_TYPES } from "@/server/domain/adminsys/filter-actions";
+import { MATCH_TYPES, matchFieldList } from "@/server/domain/adminsys/filter-rules";
 
 type Info = NonNullable<Awaited<ReturnType<typeof filterInfo>>>;
 

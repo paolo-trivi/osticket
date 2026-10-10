@@ -5,7 +5,8 @@ import type { PhpVars } from "@/server/php/values";
 import { massRoles, saveRole, type RoleMassAction } from "@/server/domain/admin/role";
 import { massSla, saveSla, type SlaMassAction } from "@/server/domain/admin/sla";
 import { massTeams, saveTeam, type TeamMassAction } from "@/server/domain/admin/team";
-import { massTopics, saveTopic, type TopicMassAction } from "@/server/domain/admin/topic";
+import { saveTopic } from "@/server/domain/admin/topic";
+import { massTopics, type TopicMassAction } from "@/server/domain/admin/topic-mass";
 
 import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 

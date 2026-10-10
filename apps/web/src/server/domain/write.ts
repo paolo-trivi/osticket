@@ -4,6 +4,7 @@ import { loadConfigNamespace } from "../config/config";
 import { db } from "../db";
 import { detectDbTimezone } from "../db/time";
 import { assertWritableSchema } from "../system/schema-compat";
+import { bindRequestContext } from "./forms/entry";
 import type { Agent } from "./staff/staff";
 import { staffActor, type WriteContext } from "./ticket/context";
 import type { Actor } from "./ticket/events";
@@ -29,6 +30,7 @@ export async function runWrite<T>(who: { agent: Agent; ip: string } | { actor: A
         dbZone,
         after,
       };
+      bindRequestContext(ctx);
       return fn(ctx);
     });
   for (const job of after) {

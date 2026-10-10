@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
-import { clientAttachment } from "@/server/domain/client/tickets";
+import { clientAttachment } from "@/server/domain/client/ticket-view";
 import { kbEnabled, publicFaqFile } from "@/server/domain/client/kb";
 import { readStoredFile } from "@/server/domain/file/storage";
 

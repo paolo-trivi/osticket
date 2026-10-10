@@ -4,7 +4,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 16 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica valida/con campo non valido, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -20,15 +20,17 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 ## File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
+| Dominio | `src/server/domain/task/{model,vars,tasks}.ts`, `task/write.ts` (facciata) + `task/{common,alerts,posts,assign,create,edit,delete,mass}.ts` | task: modello e variabili, lista/visibilità; scritture divise per responsabilità (esiti comuni, avvisi, note/risposte/stato, assegnazione/claim/trasferimento, creazione, modifica dei campi e scadenza, eliminazione, azioni di massa) |
 | Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
-| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
-| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
+| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi in `fields.ts` (facciata di `field-def` definizione e flag, `field-dates`, `field-parse` lettura dell'input, `field-validate`, `field-convert` conversioni DB/testo), `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
+| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `reindexUser`, `userEntries` |
+| Dominio | `src/server/domain/directory/users-import.ts` | `importUsers` (User::importFromPost / CsvImporter); il testo è letto con `parseCsv` di `src/server/php/csv.ts` (fgetcsv di PHP 8, test `test/unit/php-csv.test.ts` con valori del PHP) |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
 | Dominio | `src/server/domain/directory/content-mail.ts` | email da pagine di contenuto (`Page::lookupByType` + `replaceTemplateVariables` + `Email::send`) |
 | Dominio | `src/server/domain/directory/ui.ts` | campi dei form per la UI (`toDynFields`, `editFormFields`, `formSource`) |
-| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword`, `sendStaffResetEmail`, `verifyStaffResetToken`, `setup2faEmail`, `verify2faSetup`, `updateStaffConfig` |
+| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword` |
+| Dominio | `src/server/domain/staff/{password-reset,two-factor,staff-write}.ts` | `sendStaffResetEmail`, `staffIdForResetToken`, `verifyStaffResetToken`; `setup2faEmail`, `verify2faSetup`, `setDefault2fa`; `updateStaffConfig`, `saveStaffChanges` |
 | Auth | `src/server/auth/mfa.ts` | backend 2FA email (`prepare2faEmail`, `validateOtp`, `staff2faConfig`) |
 | Auth | `src/server/auth/staff-recovery.ts` | verifica 2FA al login, reset password (richiesta, login con token), sessione dopo cambio password |
 | Auth (core, additivo) | `src/server/auth/staff-auth.ts`, `session.ts` | 2FA al login, avviso admin sui tentativi falliti, campi `mfk`/`rst` della sessione |
@@ -51,13 +53,21 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 - `organization.updated` è `ON UPDATE CURRENT_TIMESTAMP`: cambia a ogni UPDATE della riga.
 
 ## Task
-Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` da `sequence` o casuale),
+Vedi i commenti dei moduli di `src/server/domain/task/` (facciata `write.ts`). Tabelle: `task` (`number` da `sequence` o casuale),
 `task__cdata`, `form_entry(_values)`, `thread` (A), `thread_entry` (M con flag ORIGINAL, N, R), `thread_event`
 (`created`, `assigned` con `claim`/`staff`(AgentsName)/`team`, `transferred`, `closed`, `reopened` con annullamento,
 `edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso tramite `Ticket::reopen` di
 `ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
+Creazione (`createTask`): come `$form->isValid()` di ajax.tasks.php un errore in un campo qualsiasi del form del task
+blocca la creazione senza scritture (`title_required` per il titolo, altrimenti `invalid`, con `fields` nome → codice);
+`addDynamicData($form->getClean())` salva i valori puliti già validati (`FormInstance` + `saveFormEntry`, un solo parse):
+la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `setAnswer`) e la scelta multipla resta.
+Modifica (`updateTaskFields`, Task::update): gli errori di tutti i form del task (campi visibili e modificabili
+dall'agente) si uniscono e bloccano ogni scrittura, con lo stesso esito della creazione (`title_required`/`invalid` +
+`fields`). La UI invia gli altri campi del form del task (prefisso `f:`) sia in creazione sia in modifica e mostra
+l'errore accanto a ciascun campo.
 
 ## Utenti
 | Operazione | Scritture |
@@ -67,7 +77,7 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
 | Organizzazione (`setOrganization`) | `user.org_id`, `updated`, `_search` |
 | Rimozione dall'org (`Organization::removeUser`) | `user.org_id = 0` (NULL convertito da MySQL), bit `PRIMARY_ORG_CONTACT` tolto, `updated`, `_search` |
 | Eliminazione (`User::delete`) | rifiutata con ticket; `user_account`, `user_email`, `form_entry(_values)` (cdata restano), `user`, `_search` |
-| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato; per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT) |
+| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato (`"name, email\n "`, con lo spazio del PHP); per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT); righe lette come `fgetcsv` di PHP (riga chiusa solo da `\n`, virgolette letterali nei campi senza virgolette, spazi saltati solo davanti alle virgolette); stranezza replicata: una riga vuota ripropone il record precedente (il `continue` di CsvImportIterator::next esce dal `do … while (false)`) e lo conta di nuovo |
 | Registrazione account (`UserAccount::register`) | `user_account` (`user_id`, `timezone` o NULL, `backend`, `username` sanificato se diverso da `"Nome" <email>`, `passwd` bcrypt, `status` CONFIRMED [+ REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET]); con `sendemail` nessuna password, `status` 0 ed email di attivazione |
 | Gestione account (`UserAccount::update`) | `timezone`, `username` (sanificato), `passwd` + CONFIRMED, bit LOCKED/REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET da flag; UPDATE solo se cambia qualcosa |
 | Blocco/sblocco (massa) | `user_account.status` bit LOCKED |
@@ -119,9 +129,9 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
   `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
   `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
-  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter-actions.ts`, invio in
   `ticket/create-alerts.ts`).
-- **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
+- **Lettura dell'input dei form** (`forms/field-parse.ts`, esportato da `forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
   = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
   e proprietà delle liste (prima `forms/answers.ts parseInput` divergeva). Come il PHP: nessun trim di testo e telefono
   (un telefono di soli spazi non è valido), interno "0" accodato senza `X`, casella = `(bool)` del valore inviato

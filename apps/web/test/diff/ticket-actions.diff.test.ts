@@ -3,7 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db } from "@/server/db";
 import { loadAgent } from "@/server/domain/staff/staff";
-import { assignTicket, claimTicket, referTicket, releaseTicket, removeReferrals } from "@/server/domain/ticket/assign";
+import { assignTicket, claimTicket, releaseTicket } from "@/server/domain/ticket/assign";
+import { referTicket, removeReferrals } from "@/server/domain/ticket/referral";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { changeTicketStatus, markTicketAnswered } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";

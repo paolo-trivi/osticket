@@ -77,7 +77,8 @@ Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al P
 senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mailpit).
 
 ## Filtri — `/admin/filters` (scp/filters.php)
-`saveFilter(tx, id|null, vars)` = `Filter::update`:
+`saveFilter(tx, id|null, vars)` = `Filter::update` (`adminsys/filter.ts`; regole in `adminsys/filter-rules.ts`,
+azioni in `adminsys/filter-actions.ts`):
 - `filter`: isactive, flags, target (`Email` se il target è un id email → `email_id`), name,
   execorder, email_id, match_all_rules, stop_onmatch, notes (sanitize); `created` (nuovo),
   `updated=NOW()` se cambia.
@@ -115,6 +116,9 @@ senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mail
   controllo di unicità del PHP non blocca mai), enable/disable (bit status), delete (`list_id=NULL`).
 - Proprietà gestite: campi `text` e `memo`; altri tipi → `unsupported_property`. Lista degli stati dei
   ticket (handler) in sola lettura. Import CSV al PHP.
+- Errori come codici traducibili (`asys.errors`), uno per proprietà: valori non validi degli elementi
+  per id del campo proprietà (`required`, `email`, `formula`…; il PHP li unisce in un array numerico),
+  proprietà nuove della lista per `new-<i>` (`name_invalid`/`name_required`). Nessuna scrittura.
 
 ## Pagine — `/admin/pages` (scp/pages.php)
 - `content`: type, name (striptags), body/notes (sanitize), isactive 1/0, created/updated.

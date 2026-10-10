@@ -3,7 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db, type Tx } from "@/server/db";
 import type { PhpVars } from "@/server/php/values";
 import { deleteForms, saveForm } from "@/server/domain/adminsys/form";
-import { addList, addListItem, deleteLists, massListItems, updateList, updateListItem, type ItemMassAction } from "@/server/domain/adminsys/list";
+import { addList, deleteLists, updateList } from "@/server/domain/adminsys/list";
+import { addListItem, massListItems, updateListItem, type ItemMassAction } from "@/server/domain/adminsys/list-items";
 
 import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";
 
@@ -68,6 +69,26 @@ describe("liste personalizzate: PHP vs TypeScript", () => {
     const del2 = await runPhp<R>({ op: "adminsys.list", args: { agent: 1, vars: { do: "mass_process", a: "delete", ids: [String(id)] } } });
     const tdel2 = await tx((t) => deleteLists(t, [id]));
     expect(tdel2.num).toBe(del2.num);
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("proprietà degli elementi non valide: nessuna scrittura, un codice traducibile per proprietà", async () => {
+    const add: PhpVars = { do: "add", name: "Sedi", sort_mode: "Alpha", "prop-sort-new-0": "", "prop-label-new-0": "Referente", "type-new-0": "text", "name-new-0": "referente", "prop-sort-new-1": "", "prop-label-new-1": "Email", "type-new-1": "text", "name-new-1": "posta" };
+    const r = await both("adminsys.list", { vars: add }, (t) => addList(t, add));
+    const id = r.php.id!;
+    const props = await db().selectFrom("form_field").innerJoin("form", "form.id", "form_field.form_id").select(["form_field.id", "form_field.name"]).where("form.type", "=", `L${id}`).orderBy("form_field.id").execute();
+    const [ref, mail] = props.map((p) => p.id);
+    // referente obbligatorio per l'agente, email con validatore
+    await execBoth(
+      `UPDATE {p}form_field SET flags = flags | 0x4000 WHERE id = ${ref}`,
+      `UPDATE {p}form_field SET configuration = '{"validator":"email"}' WHERE id = ${mail}`,
+    );
+    // il PHP restituisce gli errori come array numerico (array_merge): si confrontano esito e righe
+    const vars = { value: "Nord", extra: "", [String(ref)]: "", [String(mail)]: "non-una-email" };
+    const bad = await both("adminsys.list.item", { list: id, action: "add", vars }, (t) => addListItem(t, id, vars), { keys: false });
+    expect(bad.php.ok).toBe(false);
+    expect(Object.keys(bad.php.errors ?? {})).toHaveLength(2);
+    expect(bad.ts.errors).toEqual({ [String(ref)]: "required", [String(mail)]: "email" });
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 });

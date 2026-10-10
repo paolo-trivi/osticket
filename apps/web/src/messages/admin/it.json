@@ -86,7 +86,17 @@
       "primary": "È già il reparto primario",
       "dept_access": "Accessi ai reparti non validi",
       "members": "Membri non validi",
-      "error": "Voce già esistente o in conflitto"
+      "error": "Voce già esistente o in conflitto",
+      "email": "Indirizzo email non valido",
+      "phone": "Numero di telefono non valido",
+      "ip": "Indirizzo IP non valido",
+      "number": "Inserisci un numero",
+      "regex": "Valore non valido",
+      "formula": "Il contenuto non può iniziare con = - + @",
+      "phone_ext": "Interno non valido",
+      "phone_ext_missing": "Interno senza numero di telefono",
+      "files_max": "Troppi file",
+      "date_past": "La data deve essere nel futuro"
     }
   },
   "admDepts": {

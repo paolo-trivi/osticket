@@ -11,7 +11,7 @@ import type { FormSection } from "@/lib/admin/form-schema";
 import { Schedule } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 import { scheduleOptions, timezoneOptions } from "@/server/domain/admin/lookups";
-import { FREQUENCIES } from "@/server/domain/admin/schedule";
+import { FREQUENCIES } from "@/server/domain/admin/schedule-entry-form";
 import { phpJsonDecode } from "@/server/format/php-json";
 
 import { requireAdmin } from "../../guard";

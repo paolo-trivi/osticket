@@ -143,6 +143,8 @@ Valore di partenza: 0. Si aggiungono:
 #### Ticket::save (`TicketRecord`)
 - Si scrivono solo i campi cambiati (confronto debole PHP), con `updated = NOW()`.
 - Poi si reindicizza `_search` (T): `title` = "numero oggetto", `content` = risposte indicizzabili del form, una per riga.
+  Date, Sì/No e telefoni sono formattati per l'utente della richiesta (fuso dell'agente o dell'utente, altrimenti
+  quello predefinito), come `$cfg->getTimezone()` del PHP.
 
 #### Ticket::setStatus (`status.ts`)
 **Chiusura**
@@ -158,7 +160,7 @@ Valore di partenza: 0. Si aggiungono:
 **Riapertura**
 - Se il ticket è riapribile: auto-assegnazione all'assegnatario o al penultimo agente che ha risposto (`LIMIT 1,1`, come il PHP), se disponibile e con accesso al reparto. Altrimenti `staff_id = 0`.
 - Aggiorna `closed = NULL`, `reopened = lastupdate = NOW()`.
-- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA.
+- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA (orari "floating" nel fuso dell'utente della richiesta).
 
 **Altri stati aperti**: evento `edited` `{"status":id}`. Se il ticket non era aperto: `isanswered = 0`.
 
@@ -225,7 +227,10 @@ OST_DIFF_TAG=actions MAILPIT_SMTP_PORT=1026 MAILPIT_HTTP_PORT=8026 \
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio, referral, rimozione referral, scelte dei form |
+| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio |
+| Dominio | `src/server/domain/ticket/assignees.ts` | agenti e team assegnabili, `Dept::canAssign`, reparti selezionabili (scelte dei form) |
+| Dominio | `src/server/domain/ticket/referral.ts` | referral, scelte del form di referral, elenco e rimozione dei referral |
+| Dominio | `src/server/domain/ticket/action-load.ts` | caricamento del ticket con controllo di sessione e permessi |
 | Dominio | `src/server/domain/ticket/transfer.ts` | trasferimento di reparto |
 | Dominio | `src/server/domain/ticket/ticket-state.ts` | cambio stato da menu, riapertura, segna risposto, stati del menu, avviso `isCloseable`, aggancio "deleted" |
 | Dominio | `src/server/domain/ticket/alerts.ts` | destinatari e invio degli avvisi agli agenti |
@@ -478,7 +483,7 @@ Dopo l'azione:
 
 Fonte: `apps/web/docs/contract/ticketedit.md`.
 
-Verificato con 60 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
+Verificato con 67 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
 `test/diff/php/ops/ticketedit.php`):
 
 ```
@@ -488,7 +493,7 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 
 | File di test | Scenari |
 |---|---|
-| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (13) |
+| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (20) |
 | `ticket-edit-delete.diff.test.ts` | eliminazione da stato "deleted" e Ticket::delete (6) |
 | `ticket-edit-collab.diff.test.ts` | collaboratori, segna scaduto, ban list (13) |
 | `ticket-edit-merge.diff.test.ts` | link, scollegamento, merge combinato/separato (8) |
@@ -499,7 +504,9 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
+| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId` |
+| Dominio | `src/server/domain/ticket/edit-answers.ts` | risposte dei form del ticket: lettura, risposte mancanti, salvataggio con cdata, rappresentazione per l'evento edited |
+| Dominio | `src/server/domain/ticket/edit-values.ts` | `TICKET_SOURCE_KEYS`, `phpAssocJson`, `userDateToDb`, `dbDateToInput`, corpo delle note, `truncate` |
 | Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
 | Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `childTickets` |
 | Dominio | `src/server/domain/thread/ids.ts` | thread di ticket e task: `ticketThread` (thread T o C), `currentTicketThreadId`, `ticketThreadId`, `taskThreadId` |
@@ -529,6 +536,13 @@ Permesso `ticket.edit`. Validazione come `Validator::process` + controlli del PH
 - form dinamici: campi memorizzabili, visibili e modificabili dall'agente (obbligatori per l'agente, validatori).
 Con errori nessuna scrittura (`{error:"invalid", fields}`).
 
+Campi dei form (qui e in `updateTicketField`): date lette nel fuso dell'agente (`$cfg->getTimezone()`, `currentTimezone`),
+anche per il testo di `_search` (che ogni `Ticket::save` riscrive nel fuso dell'utente della richiesta: `bindRequestContext`
+in `runWrite`, come il `$cfg->getTimezone()` globale del PHP). Un campo assente dall'input vale la risposta attuale per la validazione e il salvataggio
+(`getClean()` = `Widget::parseValue`, `parseFieldOrAnswer`), mentre le modifiche dell'evento leggono il solo widget
+(`getChanges`: assente → `null`, stranezza replicata); in `updateField` `FormField::save` salva proprio quel valore nullo.
+Il vecchio valore di un campo data `NULL` o non interpretabile compare come `0` nell'evento (`DatetimeField::to_php`).
+
 Scritture, in ordine:
 1. Risposte mancanti dei campi aggiunti al form (`form_entry_values` con `value = NULL`; il PHP lo fa all'apertura della
    pagina di modifica con `addMissingFields`).
@@ -540,8 +554,12 @@ Scritture, in ordine:
 5. Evento **edited** con le modifiche nell'ordine di assegnazione:
    `{"topic_id":[vecchio,nuovo],"sla_id":[...],"source":[...],"duedate":[...],"user_id":[...],"fields":{"<id>":[vecchio,nuovo]}}`;
    i valori nuovi sono quelli inviati (stringhe), le priorità `["Label",id]`. Nessun evento senza modifiche.
+   Come `DynamicFormEntry::getChanges` le modifiche includono anche i campi che l'agente non vede o non può
+   modificare: risultano cambiati nel valore nullo del widget (`[vecchio,null]`) anche se la risposta non si salva
+   (stranezza replicata).
 6. Se lo SLA non è stato cambiato e manca o è transitorio (`0x8`): `selectSLAId` (reparto → topic → `default_sla_id`).
-7. `updateEstDueDate` (est_duedate ricalcolata), reindicizzazione `_search`.
+7. `updateEstDueDate` (est_duedate ricalcolata; un orario lavorativo senza fuso, "floating", vale nel fuso
+   dell'agente: `$cfg->getTimezone()`), reindicizzazione `_search`.
 
 #### Ticket::updateField (ajax editField) — `updateTicketField`
 Permesso `ticket.edit`. Valore uguale all'attuale → `already_set` senza scritture.
@@ -652,7 +670,8 @@ Diff test: `test/diff/ticket-create.diff.test.ts` (43 scenari) con le op di `tes
 // src/server/domain/ticket/create.ts — da eseguire dentro runWrite()
 createTicket(ctx: WriteContext, input: CreateTicketVars, origin: "staff" | "web",
              opts?: { autorespond?: boolean; alertstaff?: boolean }): Promise<CreateResult>
-openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>   // agente
+// src/server/domain/ticket/create-open.ts — Ticket::open (agente)
+openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>
 
 type CreateResult =
   | { ok: true; ticketId: number; number: string; messageId: number | null; threadId: number }
@@ -671,12 +690,18 @@ logica di `src/app/api/agent/upload/route.ts`) con `signUploadToken(id, nome, "U
 verificano con `verifyUploadTokens(tokens, owner)`. Il portale deve anche eliminare le bozze
 `ticket.client.<ultimi 12 caratteri della sessione>` (open.php).
 
+Moduli di supporto di `createTicket` (che resta intera in `create.ts`): argomento, form del topic e priorità
+(`ticket/create-topic.ts`); `filterTicketData` (`ticket/create-filter.ts`); auto-assegnazione e assegnazione dal
+form di apertura (`ticket/create-assign.ts`); collaboratori e destinatari (`ticket/create-collab.ts`); utente e
+ticket aperti dell'utente (`ticket/create-user.ts`). Filtri: selezione e regole in `filter/ticket-filter.ts`, azioni
+in `filter/ticket-filter-actions.ts`.
+
 Altre API: `uploadFile`, `createAttachmentFile`, `attachFilesToEntry`, `signUploadToken`, `verifyUploadTokens`,
 `threadUploadRules` (`file/upload.ts`); `postCannedReply` (`ticket/create-canned.ts`); `sendFilterEmail`,
 `onOpenLimit`, `onNewTicket`, `onAssignAlert`, `sendNewTicketNotice` (`ticket/create-alerts.ts`);
 `formView`, `baseForms`, `topicFormsView`, `openTicketOptions`, `searchUsers`, `usersByIds`, `formDataToVars`
 (`ticket/create-ui.ts`); `FormInstance`, `saveFormEntry`, `ensureListPropertiesForm` (`forms/entry.ts`);
-`phpParseDateTime`, `phpTzAbbr`, `phpFormatDate` (`forms/fields.ts`); `prepareSupportedMatches`
+`phpParseDateTime`, `phpTzAbbr` (`forms/field-dates.ts`), `phpFormatDate` (`format/datetime.ts`); `prepareSupportedMatches`
 (`filter/ticket-filter.ts`); `adminAlertMail`, `logWithAdminAlert` (`system/admin-alert.ts`).
 
 #### Ordine delle scritture (Ticket::create)
@@ -730,8 +755,10 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 - FA_SendEmail: il PHP passa `"Nome" <email>` come stringa e il nome arriva codificato con le virgolette; qui senza.
 - Canned response con immagini `cid:`: `Format::viewableImages` non replicato.
 - Estensione del telefono: il PHP la legge solo con il nome "hash" del campo; Next la legge da `<nome>-ext`.
-- Formato delle date nei template (`%{ticket.create_date}`): `mail/objects.ts` FormattedDate usa `datetime_format` anche
-  quando `date_formats` non è `custom` (il PHP usa il formato breve ICU, es. "10/9/26 2:36 PM"): da correggere nel core.
+- Formato delle date (`%{ticket.create_date}` di FormattedDate e testo dei campi data per filtri e indice): un'unica
+  implementazione di Format::date/datetime/time/daydatetime, `phpFormatDate` in `server/format/datetime.ts` (formati ICU
+  della lingua di sistema con U+202F prima di AM/PM come ICU >= 72, pattern della config con `date_formats = custom`); la
+  modalità `date_formats = 24` non è gestita.
 
 #### Stranezze PHP replicate
 - Scadenza e date dei campi interpretate in UTC (default di bootstrap.php) anche senza offset; la UI invia ISO con offset.
@@ -751,7 +778,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 16 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica valida/con campo non valido, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -767,15 +794,17 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
+| Dominio | `src/server/domain/task/{model,vars,tasks}.ts`, `task/write.ts` (facciata) + `task/{common,alerts,posts,assign,create,edit,delete,mass}.ts` | task: modello e variabili, lista/visibilità; scritture divise per responsabilità (esiti comuni, avvisi, note/risposte/stato, assegnazione/claim/trasferimento, creazione, modifica dei campi e scadenza, eliminazione, azioni di massa) |
 | Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
-| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
-| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
+| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi in `fields.ts` (facciata di `field-def` definizione e flag, `field-dates`, `field-parse` lettura dell'input, `field-validate`, `field-convert` conversioni DB/testo), `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
+| Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `reindexUser`, `userEntries` |
+| Dominio | `src/server/domain/directory/users-import.ts` | `importUsers` (User::importFromPost / CsvImporter); il testo è letto con `parseCsv` di `src/server/php/csv.ts` (fgetcsv di PHP 8, test `test/unit/php-csv.test.ts` con valori del PHP) |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
 | Dominio | `src/server/domain/directory/content-mail.ts` | email da pagine di contenuto (`Page::lookupByType` + `replaceTemplateVariables` + `Email::send`) |
 | Dominio | `src/server/domain/directory/ui.ts` | campi dei form per la UI (`toDynFields`, `editFormFields`, `formSource`) |
-| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword`, `sendStaffResetEmail`, `verifyStaffResetToken`, `setup2faEmail`, `verify2faSetup`, `updateStaffConfig` |
+| Dominio | `src/server/domain/staff/profile.ts` | `updateStaffProfile`, `changeStaffPassword` |
+| Dominio | `src/server/domain/staff/{password-reset,two-factor,staff-write}.ts` | `sendStaffResetEmail`, `staffIdForResetToken`, `verifyStaffResetToken`; `setup2faEmail`, `verify2faSetup`, `setDefault2fa`; `updateStaffConfig`, `saveStaffChanges` |
 | Auth | `src/server/auth/mfa.ts` | backend 2FA email (`prepare2faEmail`, `validateOtp`, `staff2faConfig`) |
 | Auth | `src/server/auth/staff-recovery.ts` | verifica 2FA al login, reset password (richiesta, login con token), sessione dopo cambio password |
 | Auth (core, additivo) | `src/server/auth/staff-auth.ts`, `session.ts` | 2FA al login, avviso admin sui tentativi falliti, campi `mfk`/`rst` della sessione |
@@ -798,13 +827,21 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 - `organization.updated` è `ON UPDATE CURRENT_TIMESTAMP`: cambia a ogni UPDATE della riga.
 
 #### Task
-Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` da `sequence` o casuale),
+Vedi i commenti dei moduli di `src/server/domain/task/` (facciata `write.ts`). Tabelle: `task` (`number` da `sequence` o casuale),
 `task__cdata`, `form_entry(_values)`, `thread` (A), `thread_entry` (M con flag ORIGINAL, N, R), `thread_event`
 (`created`, `assigned` con `claim`/`staff`(AgentsName)/`team`, `transferred`, `closed`, `reopened` con annullamento,
 `edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso tramite `Ticket::reopen` di
 `ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
+Creazione (`createTask`): come `$form->isValid()` di ajax.tasks.php un errore in un campo qualsiasi del form del task
+blocca la creazione senza scritture (`title_required` per il titolo, altrimenti `invalid`, con `fields` nome → codice);
+`addDynamicData($form->getClean())` salva i valori puliti già validati (`FormInstance` + `saveFormEntry`, un solo parse):
+la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `setAnswer`) e la scelta multipla resta.
+Modifica (`updateTaskFields`, Task::update): gli errori di tutti i form del task (campi visibili e modificabili
+dall'agente) si uniscono e bloccano ogni scrittura, con lo stesso esito della creazione (`title_required`/`invalid` +
+`fields`). La UI invia gli altri campi del form del task (prefisso `f:`) sia in creazione sia in modifica e mostra
+l'errore accanto a ciascun campo.
 
 #### Utenti
 | Operazione | Scritture |
@@ -814,7 +851,7 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
 | Organizzazione (`setOrganization`) | `user.org_id`, `updated`, `_search` |
 | Rimozione dall'org (`Organization::removeUser`) | `user.org_id = 0` (NULL convertito da MySQL), bit `PRIMARY_ORG_CONTACT` tolto, `updated`, `_search` |
 | Eliminazione (`User::delete`) | rifiutata con ticket; `user_account`, `user_email`, `form_entry(_values)` (cdata restano), `user`, `_search` |
-| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato; per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT) |
+| Import CSV (`User::importFromPost`) | intestazione `name, email` anteposta al testo incollato (`"name, email\n "`, con lo spazio del PHP); per riga creazione o `updateInfo` dell'esistente (l'`org_id` predefinito vale solo per i nuovi); tutto o niente (SAVEPOINT); righe lette come `fgetcsv` di PHP (riga chiusa solo da `\n`, virgolette letterali nei campi senza virgolette, spazi saltati solo davanti alle virgolette); stranezza replicata: una riga vuota ripropone il record precedente (il `continue` di CsvImportIterator::next esce dal `do … while (false)`) e lo conta di nuovo |
 | Registrazione account (`UserAccount::register`) | `user_account` (`user_id`, `timezone` o NULL, `backend`, `username` sanificato se diverso da `"Nome" <email>`, `passwd` bcrypt, `status` CONFIRMED [+ REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET]); con `sendemail` nessuna password, `status` 0 ed email di attivazione |
 | Gestione account (`UserAccount::update`) | `timezone`, `username` (sanificato), `passwd` + CONFIRMED, bit LOCKED/REQUIRE_PASSWD_RESET/FORBID_PASSWD_RESET da flag; UPDATE solo se cambia qualcosa |
 | Blocco/sblocco (massa) | `user_account.status` bit LOCKED |
@@ -866,9 +903,9 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
   `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
   `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
-  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter-actions.ts`, invio in
   `ticket/create-alerts.ts`).
-- **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
+- **Lettura dell'input dei form** (`forms/field-parse.ts`, esportato da `forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
   = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
   e proprietà delle liste (prima `forms/answers.ts parseInput` divergeva). Come il PHP: nessun trim di testo e telefono
   (un telefono di soli spazi non è valido), interno "0" accodato senza `X`, casella = `(bool)` del valore inviato
@@ -897,7 +934,7 @@ UserAuthStrikeBackend, osTicketClientAuthentication, AccessLinkAuthentication, A
 ClientPasswordResetTokenBackend, ClientAcctConfirmationTokenBackend), `class.client.php` (TicketUser,
 EndUser, ClientAccount), `class.user.php` (User::updateInfo, UserAccount), `class.ticket.php`
 (postMessage, onMessage, notifyCollaborators, sendAccessLink, checkUserAccess), `include/client/*.inc.php`.
-Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (12),
+Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.ts` (13),
 `portal-open.diff.test.ts` (5) con le op di `test/diff/php/ops/portal.php`.
 
 #### API
@@ -907,22 +944,23 @@ Diff test: `test/diff/portal-auth.diff.test.ts` (20), `portal-message.diff.test.
 startClientSession(login: ClientLogin)        currentClient(): ClientIdentity | null   (cache per richiesta)
 touchClientSession() clientSessionKey() visitorKey(create?) clientResetToken() refreshClientSession(pwv) clientLogout()
 
-// Autenticazione (src/server/domain/client/auth.ts) — solo dominio, usabili dall'harness
-performClientLogin({login, password, ip})            → ClientAuthOutcome
-performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore
-performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null
-performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)
-performConfirm({token, ip})                          → ConfirmOutcome
-lookupByAuthToken(executor, token)  resetTokenValid(executor, cfg, token, userId)
+// Autenticazione (src/server/domain/client/auth*.ts) — solo dominio, usabili dall'harness
+// auth.ts: tipi (ClientLogin, ClientAuthError), tentativi falliti (strike), scritture del login (loginWrites)
+performClientLogin({login, password, ip})            → ClientAuthOutcome                       // auth-login.ts
+performAccessLink({email, number, ip})               → {ok, sent:true} | {ok, sent:false, ...ClientLogin} | errore   // auth-access-link.ts
+performTokenSignOn({auth | t,e,a, ip})               → ClientAuthOutcome | null                // auth-access-link.ts
+performResetTokenLogin({userid, token, ip})          → ClientAuthOutcome (resetToken in sessione)   // auth-reset.ts
+performConfirm({token, ip})                          → ConfirmOutcome                          // auth-confirm.ts
+lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(executor, cfg, token, userId) (auth-reset.ts)
 
-// Account (src/server/domain/client/account.ts)
-registerClientAccount(vars, guest?)  requestClientPasswordReset(userid, {pad?})
-updateClientProfile(client, vars, resetToken?)  updateUserInfoForClient(tx, cfg, userId, input)
+// Account (src/server/domain/client/{account,profile-info,password-reset}.ts)
+registerClientAccount(vars, guest?)  updateClientProfile(client, vars, resetToken?)
+updateUserInfoForClient(tx, cfg, userId, input)  requestClientPasswordReset(userid, {pad?})
 
-// Ticket (src/server/domain/ticket/message.ts, domain/client/*)
+// Ticket (src/server/domain/ticket/{message,message-mail}.ts, domain/client/{tickets,ticket-view,ticket-edit,reply}.ts)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
 postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
-editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(...)        // tickets.php a=edit
+editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(ctx, ...)     // tickets.php a=edit
 openPortalTicket(cfg, client|null, vars, {ip, sessionKey})                        // open.php → createTicket 'web'
 clientCanAccess, listClientTickets, clientTicketStats, loadClientTicketView, clientAttachment, clientEditForms
 kbEnabled, publicCategories, featuredCategories, searchFaqs, publicCategory, publicFaq, publicFaqFile, contentPage
@@ -945,7 +983,7 @@ Rotte: pagine in `src/app/[locale]/(client)/**` (`/`, `/login`, `/account`, `/pw
 | Accesso con token di reset | `user_account.status \|= 4` (REQUIRE_PASSWD_RESET), login (sopra) senza cancellare il token |
 | Profilo | `user_account` timezone/lang (solo se cambiano), con nuova password: passwd, `DELETE config pwreset c<uid>`, `status &= ~4`; `User::updateInfo`: `user_email.address`, `form_entry_values` dei campi modificabili dai clienti (`user__cdata`), `user.name` normalizzato + `updated`, `_search` U |
 | Messaggio (postMessage) | poster ≠ proprietario e non collaboratore: `thread_collaborator` flag 3 + evento `collab`; `thread_entry` M (recipients = partecipanti attivi tranne il poster, ordine collaboratori per nome; flag REPLY_ALL/REPLY_USER, COLLABORATOR, BALANCED), `_search` H, `attachment` H; `thread.lastmessage`; `ticket` isanswered 0, lastupdate, updated; se chiuso e riapribile `Ticket::reopen` (status, reopened, closed NULL, staff riassegnato, evento `reopened` che annulla `closed`, est_duedate); `DELETE draft` `ticket.client.<id>` (+ allegati D) |
-| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search` |
+| Modifica ticket (a=edit) | `form_entry_values` dei campi visibili e modificabili dai clienti + `ticket__cdata`; evento `edited` `{"fields":{"<id>":[vecchio,nuovo]}}` con l'utente (uid U) — senza `ticket.updated` né `_search`. Date nel fuso del cliente (`$cfg->getTimezone()`); un campo assente dal POST mantiene la risposta (validata e salvata come `getClean()`), ma nell'evento compare con nuovo valore `null` (`getChanges`, stranezza replicata) |
 | Apertura (open.php) | `DELETE draft ticket.client.<ultimi 12 della sessione>` (anche se la creazione fallisce) poi `createTicket(ctx, vars, "web")` (vedi `create.md`) |
 
 Email del messaggio (dopo il commit, ordine del PHP): `message.autoresp` al poster (proprietario in To classe U,
@@ -1007,13 +1045,18 @@ I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di rese
 | Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
 | Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
 | Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr), Validator::is_username (`usernameError`) |
-| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
+| Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings, updateSystemSettings, updatePagesSettings, updateKBSettings), `settingsValues` |
+| Dominio | `src/server/domain/admin/{settings-tickets,settings-people,settings-util}.ts` | updateTicketsSettings (con updateAutoresponderSettings e updateAlertsSettings), updateTasksSettings; updateAgentsSettings, updateUsersSettings; helper comuni (`v`, `isset1`, `needRecipients`) |
+| Dominio | `src/server/domain/admin/languages.ts` | `installedLanguages` (Internationalization::availableLanguages) |
 | Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
 | Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |
-| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `deleteTopic`, `massTopics`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic.ts` | `saveTopic`, `helpTopicsSnapshot`, `sortByName` |
+| Dominio | `src/server/domain/admin/topic-mass.ts` | `deleteTopic`, `massTopics` |
 | Dominio | `src/server/domain/admin/sla.ts` | `saveSla`, `deleteSla`, `massSla` |
-| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `processEntryForm`, `effectiveTimezone` |
-| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff`, `setAgentPassword`, `sendAgentResetEmail`, `deleteStaff`, `massStaff`, `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/schedule.ts` | `addSchedule`, `updateSchedule`, `deleteSchedules`, `saveScheduleEntry`, `deleteScheduleEntries`, `effectiveTimezone` |
+| Dominio | `src/server/domain/admin/schedule-entry-form.ts` | `processEntryForm` (ScheduleEntryForm), `FREQUENCIES` |
+| Dominio | `src/server/domain/admin/staff-admin.ts` | `saveStaff` (Staff::update), `AGENT_PERMISSIONS` |
+| Dominio | `src/server/domain/admin/{staff-password,staff-mass,staff-row}.ts` | `setAgentPassword`, `sendAgentResetEmail`, `setPassword`; `deleteStaff`, `massStaff`; riga staff e accessi estesi (`loadStaffRow`, `setDepartmentId`, `loadAccess`) |
 | Dominio | `src/server/domain/admin/team.ts` | `saveTeam`, `deleteTeam`, `massTeams` |
 | Dominio | `src/server/domain/admin/role.ts` | `saveRole`, `massRoles`, `roleInUse`, `ALL_PERMISSIONS`, `rebuildPermissions` |
 | Dominio | `src/server/domain/admin/filters.ts` | `filterActionsReferencing` (vedi "Filtri") |
@@ -1210,7 +1253,8 @@ Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al P
 senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mailpit).
 
 #### Filtri — `/admin/filters` (scp/filters.php)
-`saveFilter(tx, id|null, vars)` = `Filter::update`:
+`saveFilter(tx, id|null, vars)` = `Filter::update` (`adminsys/filter.ts`; regole in `adminsys/filter-rules.ts`,
+azioni in `adminsys/filter-actions.ts`):
 - `filter`: isactive, flags, target (`Email` se il target è un id email → `email_id`), name,
   execorder, email_id, match_all_rules, stop_onmatch, notes (sanitize); `created` (nuovo),
   `updated=NOW()` se cambia.
@@ -1248,6 +1292,9 @@ senza thread; poi bozze `email.diag`. Email identica al PHP (verificata via Mail
   controllo di unicità del PHP non blocca mai), enable/disable (bit status), delete (`list_id=NULL`).
 - Proprietà gestite: campi `text` e `memo`; altri tipi → `unsupported_property`. Lista degli stati dei
   ticket (handler) in sola lettura. Import CSV al PHP.
+- Errori come codici traducibili (`asys.errors`), uno per proprietà: valori non validi degli elementi
+  per id del campo proprietà (`required`, `email`, `formula`…; il PHP li unisce in un array numerico),
+  proprietà nuove della lista per `new-<i>` (`name_invalid`/`name_required`). Nessuna scrittura.
 
 #### Pagine — `/admin/pages` (scp/pages.php)
 - `content`: type, name (striptags), body/notes (sanitize), isactive 1/0, created/updated.

@@ -9,6 +9,7 @@ import { FormType, ObjectType } from "@/lib/osticket/object-types";
 import { NOW, table, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
 import { deleteDraftsForNamespace } from "../drafts";
+import { currentTimezone } from "../forms/entry";
 import { slaDueDate } from "../sla/sla";
 import { loadAgent, TicketPerm, type Agent, type RoleInfo } from "../staff/staff";
 import type { WriteContext } from "./context";
@@ -89,10 +90,16 @@ function clearOverdue(rec: TicketRecord, dbZone: string): void {
   if (rec.get("est_duedate") && dbDateIsPast(rec.get("est_duedate"), dbZone)) rec.set("est_duedate", null);
 }
 
-/** Ticket::updateEstDueDate */
+/**
+ * Ticket::updateEstDueDate. Gli orari lavorativi senza fuso ("floating") si leggono nel fuso
+ * dell'agente o dell'utente della richiesta ($cfg->getTimezone()), come nel PHP.
+ */
 export async function updateEstDueDate(ctx: WriteContext, rec: TicketRecord, clear = true): Promise<void> {
   if (rec.get("isoverdue") && clear) clearOverdue(rec, ctx.dbZone);
-  const due = await slaDueDate({ slaId: rec.get("sla_id"), deptId: rec.get("dept_id"), start: rec.get("reopened") || rec.get("created") }, ctx.tx);
+  const due = await slaDueDate(
+    { slaId: rec.get("sla_id"), deptId: rec.get("dept_id"), start: rec.get("reopened") || rec.get("created"), userTimezone: await currentTimezone(ctx) },
+    ctx.tx,
+  );
   rec.set("est_duedate", due ?? null);
   await rec.save();
 }

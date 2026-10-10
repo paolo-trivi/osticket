@@ -2,7 +2,8 @@ import { getTranslations } from "next-intl/server";
 
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
-import { adhocQueue, listQueueTickets } from "@/server/domain/queue/engine";
+import { listQueueTickets } from "@/server/domain/queue/engine";
+import { adhocQueue } from "@/server/domain/queue/queues";
 import type { Criterion } from "@/server/domain/queue/fields";
 import type { Agent } from "@/server/domain/staff/staff";
 import { formatAgentName, loadTicketRows } from "@/server/domain/ticket/rows";

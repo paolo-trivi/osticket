@@ -3,7 +3,8 @@
 import type { SysFormState } from "@/components/adminsys/SysForm";
 import { massRedirect, sysFormResult } from "@/server/actions/result";
 import { str } from "@/server/php/values";
-import { massDeleteEmails, saveBasicAuth, saveEmail } from "@/server/domain/adminsys/email";
+import { massDeleteEmails, saveEmail } from "@/server/domain/adminsys/email";
+import { saveBasicAuth } from "@/server/domain/adminsys/email-account";
 import { sendTestEmail } from "@/server/domain/adminsys/email-test";
 
 import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";

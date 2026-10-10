@@ -11,7 +11,10 @@ OST_DIFF_TAG=actions MAILPIT_SMTP_PORT=1026 MAILPIT_HTTP_PORT=8026 \
 ## File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio, referral, rimozione referral, scelte dei form |
+| Dominio | `src/server/domain/ticket/assign.ts` | assegnazione, presa in carico, rilascio |
+| Dominio | `src/server/domain/ticket/assignees.ts` | agenti e team assegnabili, `Dept::canAssign`, reparti selezionabili (scelte dei form) |
+| Dominio | `src/server/domain/ticket/referral.ts` | referral, scelte del form di referral, elenco e rimozione dei referral |
+| Dominio | `src/server/domain/ticket/action-load.ts` | caricamento del ticket con controllo di sessione e permessi |
 | Dominio | `src/server/domain/ticket/transfer.ts` | trasferimento di reparto |
 | Dominio | `src/server/domain/ticket/ticket-state.ts` | cambio stato da menu, riapertura, segna risposto, stati del menu, avviso `isCloseable`, aggancio "deleted" |
 | Dominio | `src/server/domain/ticket/alerts.ts` | destinatari e invio degli avvisi agli agenti |

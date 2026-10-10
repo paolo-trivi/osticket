@@ -7,7 +7,7 @@ import { Link } from "@/i18n/navigation";
 import { FormType } from "@/lib/osticket/object-types";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { loadClientTicketView } from "@/server/domain/client/tickets";
+import { loadClientTicketView } from "@/server/domain/client/ticket-view";
 import { threadUploadRules } from "@/server/domain/file/upload";
 import { loadFormDef } from "@/server/domain/forms/load";
 import { formatDbDate } from "@/server/format/datetime";

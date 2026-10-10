@@ -10,7 +10,7 @@ import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { ChevronLeftIcon } from "@/icons";
 import { agentFileUrl } from "@/server/domain/kb/html";
-import { getCanned } from "@/server/domain/kb/kb";
+import { getCanned } from "@/server/domain/kb/canned";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../guard";

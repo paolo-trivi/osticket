@@ -12,7 +12,8 @@ Diff test: `test/diff/ticket-create.diff.test.ts` (43 scenari) con le op di `tes
 // src/server/domain/ticket/create.ts — da eseguire dentro runWrite()
 createTicket(ctx: WriteContext, input: CreateTicketVars, origin: "staff" | "web",
              opts?: { autorespond?: boolean; alertstaff?: boolean }): Promise<CreateResult>
-openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>   // agente
+// src/server/domain/ticket/create-open.ts — Ticket::open (agente)
+openTicket(ctx: WriteContext, input: OpenTicketInput, opts?: CreateOptions): Promise<CreateResult>
 
 type CreateResult =
   | { ok: true; ticketId: number; number: string; messageId: number | null; threadId: number }
@@ -31,12 +32,18 @@ logica di `src/app/api/agent/upload/route.ts`) con `signUploadToken(id, nome, "U
 verificano con `verifyUploadTokens(tokens, owner)`. Il portale deve anche eliminare le bozze
 `ticket.client.<ultimi 12 caratteri della sessione>` (open.php).
 
+Moduli di supporto di `createTicket` (che resta intera in `create.ts`): argomento, form del topic e priorità
+(`ticket/create-topic.ts`); `filterTicketData` (`ticket/create-filter.ts`); auto-assegnazione e assegnazione dal
+form di apertura (`ticket/create-assign.ts`); collaboratori e destinatari (`ticket/create-collab.ts`); utente e
+ticket aperti dell'utente (`ticket/create-user.ts`). Filtri: selezione e regole in `filter/ticket-filter.ts`, azioni
+in `filter/ticket-filter-actions.ts`.
+
 Altre API: `uploadFile`, `createAttachmentFile`, `attachFilesToEntry`, `signUploadToken`, `verifyUploadTokens`,
 `threadUploadRules` (`file/upload.ts`); `postCannedReply` (`ticket/create-canned.ts`); `sendFilterEmail`,
 `onOpenLimit`, `onNewTicket`, `onAssignAlert`, `sendNewTicketNotice` (`ticket/create-alerts.ts`);
 `formView`, `baseForms`, `topicFormsView`, `openTicketOptions`, `searchUsers`, `usersByIds`, `formDataToVars`
 (`ticket/create-ui.ts`); `FormInstance`, `saveFormEntry`, `ensureListPropertiesForm` (`forms/entry.ts`);
-`phpParseDateTime`, `phpTzAbbr`, `phpFormatDate` (`forms/fields.ts`); `prepareSupportedMatches`
+`phpParseDateTime`, `phpTzAbbr` (`forms/field-dates.ts`), `phpFormatDate` (`format/datetime.ts`); `prepareSupportedMatches`
 (`filter/ticket-filter.ts`); `adminAlertMail`, `logWithAdminAlert` (`system/admin-alert.ts`).
 
 ## Ordine delle scritture (Ticket::create)
@@ -90,8 +97,10 @@ Upload (ajax `FileUploadField::ajaxUpload`): `file` (type minuscolo, nome sanifi
 - FA_SendEmail: il PHP passa `"Nome" <email>` come stringa e il nome arriva codificato con le virgolette; qui senza.
 - Canned response con immagini `cid:`: `Format::viewableImages` non replicato.
 - Estensione del telefono: il PHP la legge solo con il nome "hash" del campo; Next la legge da `<nome>-ext`.
-- Formato delle date nei template (`%{ticket.create_date}`): `mail/objects.ts` FormattedDate usa `datetime_format` anche
-  quando `date_formats` non è `custom` (il PHP usa il formato breve ICU, es. "10/9/26 2:36 PM"): da correggere nel core.
+- Formato delle date (`%{ticket.create_date}` di FormattedDate e testo dei campi data per filtri e indice): un'unica
+  implementazione di Format::date/datetime/time/daydatetime, `phpFormatDate` in `server/format/datetime.ts` (formati ICU
+  della lingua di sistema con U+202F prima di AM/PM come ICU >= 72, pattern della config con `date_formats = custom`); la
+  modalità `date_formats = 24` non è gestita.
 
 ## Stranezze PHP replicate
 - Scadenza e date dei campi interpretate in UTC (default di bootstrap.php) anche senza offset; la UI invia ISO con offset.

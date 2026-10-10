@@ -9,7 +9,7 @@ import { bodySearchable } from "../../format/text";
 import { replaceSearchRow } from "../search/index-writer";
 import { TicketPerm } from "../staff/staff";
 import { currentTicketThreadId, ticketThread } from "../thread/ids";
-import { threadRefer } from "./assign";
+import { threadRefer } from "./referral";
 import { addTicketCollaborator } from "./collaborators";
 import type { WriteContext } from "./context";
 import { deleteTicket } from "./delete";

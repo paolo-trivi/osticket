@@ -10,7 +10,8 @@ import { table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
 import { hasData, isPresentationOnly, plainLabel, type FieldDef } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
-import { exportQueueTicketIds, type TicketQueue } from "../queue/engine";
+import { exportQueueTicketIds } from "../queue/engine";
+import type { TicketQueue } from "../queue/queues";
 import type { Agent } from "../staff/staff";
 
 /**

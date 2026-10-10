@@ -3,14 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword } from "@/server/auth/passwd";
 import { closeDb, db } from "@/server/db";
 import { loadClientIdentity } from "@/server/domain/client/identity";
-import { registerClientAccount, requestClientPasswordReset, updateClientProfile } from "@/server/domain/client/account";
-import {
-  performAccessLink,
-  performClientLogin,
-  performConfirm,
-  performResetTokenLogin,
-  performTokenSignOn,
-} from "@/server/domain/client/auth";
+import { registerClientAccount, updateClientProfile } from "@/server/domain/client/account";
+import { performAccessLink, performTokenSignOn } from "@/server/domain/client/auth-access-link";
+import { performConfirm } from "@/server/domain/client/auth-confirm";
+import { performClientLogin } from "@/server/domain/client/auth-login";
+import { performResetTokenLogin } from "@/server/domain/client/auth-reset";
+import { requestClientPasswordReset } from "@/server/domain/client/password-reset";
 import { installConfig } from "@/server/env";
 import { ticketAuthToken } from "@/server/mail/message-id";
 

@@ -18,7 +18,8 @@ import {
   timezoneOptions,
   topicOptions,
 } from "@/server/domain/admin/lookups";
-import { installedLanguages, settingsValues, type SettingsPage } from "@/server/domain/admin/settings";
+import { installedLanguages } from "@/server/domain/admin/languages";
+import { settingsValues, type SettingsPage } from "@/server/domain/admin/settings";
 
 /** Valore "vero" di una impostazione salvata come 1/""/on. */
 const on = (v: string | undefined) => !!v && v !== "0";

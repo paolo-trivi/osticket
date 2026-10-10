@@ -1,3 +1,5 @@
+import type { MassActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/actions-mass";
+
 /** Dati per le azioni di massa e l'export della lista ticket (calcolati da TicketMassBar). */
 export interface MassData {
   can: { status: boolean; assign: boolean; merge: boolean; link: boolean; transfer: boolean; delete: boolean; export: boolean };
@@ -16,3 +18,10 @@ export interface MassData {
 }
 
 export type MassKind = "claim" | "assignAgents" | "assignTeams" | "transfer" | "delete" | "merge" | "link" | "export" | { status: number };
+
+/** Proprietà comuni dei dialoghi di un'azione di massa sui ticket selezionati. */
+export interface MassDialogProps {
+  ids: number[];
+  onClose: () => void;
+  onSuccess: (s: MassActionState) => void;
+}

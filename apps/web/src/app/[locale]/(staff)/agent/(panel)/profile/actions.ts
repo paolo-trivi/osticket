@@ -8,7 +8,8 @@ import { nonce } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { refreshSessionAfterPasswordChange, sessionResetToken } from "@/server/auth/staff-recovery";
-import { changeStaffPassword, setup2faEmail, updateStaffProfile, verify2faSetup } from "@/server/domain/staff/profile";
+import { changeStaffPassword, updateStaffProfile } from "@/server/domain/staff/profile";
+import { setup2faEmail, verify2faSetup } from "@/server/domain/staff/two-factor";
 import { runWrite } from "@/server/domain/write";
 
 /** Server action del profilo agente (scp/profile.php, ajax.staff.php changePassword / configure2FA). */

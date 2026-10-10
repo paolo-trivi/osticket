@@ -5,7 +5,8 @@ import { cache } from "react";
 import { coreConfig } from "../../config/config";
 import { agentTimeZone } from "../../format/datetime";
 import type { Agent } from "../staff/staff";
-import { loadQueues, navigableQueues, queueCounts } from "./engine";
+import { queueCounts } from "./engine";
+import { loadQueues, navigableQueues } from "./queues";
 
 /** Code navigabili dell'agente con i contatori (una query per richiesta). */
 export const agentQueueNav = cache(async (agent: Agent) => {

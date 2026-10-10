@@ -8,12 +8,36 @@ import RichTextEditor from "@/components/editor/RichTextEditor";
 import Button from "@/components/ui/button/Button";
 
 import DueDateInput from "../DueDateInput";
-import { SelectField, TextField } from "../FormControls";
+import { DynamicField, FieldError, SelectField, TextField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
-import type { Choice } from "../types";
+import type { Choice, DynField } from "../types";
 
-/** Nuovo task (ajax.tasks.php:add, da ticket ajax.tickets.php:addTask): titolo, descrizione, reparto, assegnatario, scadenza. */
-export default function NewTaskButton({ ticketId, ticketNumber, depts, agents, teams, defaultDept, canAssign }: { ticketId?: number; ticketNumber?: string; depts: Choice[]; agents: Choice[]; teams: Choice[]; defaultDept?: number; canAssign: boolean }) {
+/** Campi del form del task resi a parte (titolo e descrizione). */
+const CORE_FIELDS = ["title", "description"];
+
+/**
+ * Nuovo task (ajax.tasks.php:add, da ticket ajax.tickets.php:addTask): titolo, descrizione, altri campi
+ * del form del task (inviati con il prefisso `f:`), reparto, assegnatario, scadenza.
+ */
+export default function NewTaskButton({
+  ticketId,
+  ticketNumber,
+  depts,
+  agents,
+  teams,
+  fields,
+  defaultDept,
+  canAssign,
+}: {
+  ticketId?: number;
+  ticketNumber?: string;
+  depts: Choice[];
+  agents: Choice[];
+  teams: Choice[];
+  fields: DynField[];
+  defaultDept?: number;
+  canAssign: boolean;
+}) {
   const t = useTranslations("peopleTasks");
   const tc = useTranslations("composer");
   const [open, setOpen] = useState(false);
@@ -44,7 +68,14 @@ export default function NewTaskButton({ ticketId, ticketNumber, depts, agents, t
                     linkPrompt: tc("editor.linkPrompt"),
                   }}
                 />
+                <FieldError code={s.fields?.description} />
               </div>
+              {fields
+                .filter((f) => !CORE_FIELDS.includes(f.name))
+                .map((f) => {
+                  const key = f.name || String(f.id);
+                  return <DynamicField key={f.id} field={{ ...f, name: `f:${key}` }} error={s.fields?.[key]} />;
+                })}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <SelectField name="dept" label={t("department")} placeholder={t("selectDept")} options={depts} defaultValue={defaultDept ?? ""} required error={s.fields?.dept} />
                 {canAssign && (

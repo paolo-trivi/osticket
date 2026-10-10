@@ -21,8 +21,12 @@ import {
 import { clientIp } from "@/server/auth/session";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { registerClientAccount, requestClientPasswordReset, updateClientProfile, type AccountFieldError } from "@/server/domain/client/account";
-import { performAccessLink, performClientLogin, performResetTokenLogin, type ClientAuthError } from "@/server/domain/client/auth";
+import { registerClientAccount, updateClientProfile, type AccountFieldError } from "@/server/domain/client/account";
+import type { ClientAuthError } from "@/server/domain/client/auth";
+import { performAccessLink } from "@/server/domain/client/auth-access-link";
+import { performClientLogin } from "@/server/domain/client/auth-login";
+import { performResetTokenLogin } from "@/server/domain/client/auth-reset";
+import { requestClientPasswordReset } from "@/server/domain/client/password-reset";
 import { openPortalTicket } from "@/server/domain/client/open";
 import { editClientTicket, postClientMessage } from "@/server/domain/client/reply";
 import { thankYouHtml } from "@/server/domain/client/ui";

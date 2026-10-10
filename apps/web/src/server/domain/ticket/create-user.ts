@@ -1,9 +1,11 @@
 import "server-only";
 
+import { sql } from "kysely";
+
 import { FormType } from "@/lib/osticket/object-types";
 
 import type { ConfigNamespace } from "../../config/config";
-import { NOW, type DbOrTx } from "../../db";
+import { NOW, table, type DbOrTx } from "../../db";
 import { likeEscape } from "../../db/like";
 import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
@@ -13,11 +15,12 @@ import { FormInstance, saveFormEntry } from "../forms/entry";
 import type { DateFormatOptions } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { isEmail } from "../forms/validator";
+import type { WriteContext } from "./context";
 
 /**
  * Utenti finali per la creazione dei ticket (include/class.user.php): ricerca per email,
- * User::fromVars (utente + user_email + form "Contact Information" + user__cdata + indice) e
- * organizzazione per dominio (Organization::forDomain).
+ * User::fromVars (utente + user_email + form "Contact Information" + user__cdata + indice),
+ * organizzazione per dominio (Organization::forDomain) e ticket aperti dell'utente.
  */
 
 export interface UserRow {
@@ -49,6 +52,17 @@ export async function lookupUser(executor: DbOrTx, id: number): Promise<UserRow 
 export async function userEmail(executor: DbOrTx, user: UserRow): Promise<string> {
   const e = await executor.selectFrom("user_email").select("address").where("id", "=", user.default_email_id).executeTakeFirst();
   return e?.address ?? "";
+}
+
+/** Numero di ticket aperti dell'utente (TicketUser::getNumOpenTickets, inclusi quelli da collaboratore) */
+export async function numOpenTickets(ctx: WriteContext, userId: number): Promise<number> {
+  const collab = ctx.cfg.bool("collaborator_ticket_visibility");
+  const { rows } = await sql<{ n: number }>`SELECT COUNT(DISTINCT T.ticket_id) AS n FROM ${table("ticket")} T
+    JOIN ${table("ticket_status")} S ON (S.id = T.status_id)
+    LEFT JOIN ${table("thread")} TH ON (TH.object_type = 'T' AND TH.object_id = T.ticket_id)
+    LEFT JOIN ${table("thread_collaborator")} C ON (C.thread_id = TH.id)
+    WHERE S.state = 'open' AND (T.user_id = ${userId} ${collab ? sql`OR C.user_id = ${userId}` : sql``})`.execute(ctx.tx);
+  return Number(rows[0]?.n ?? 0);
 }
 
 interface OrgRow {

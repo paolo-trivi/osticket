@@ -16,6 +16,23 @@ afterAll(closeDb);
 
 const FUTURE = "2027-01-15 14:30";
 
+/** Agente 1 in un fuso diverso da quello di sistema (Europe/Rome). */
+const agentTimezoneSql = "UPDATE {p}staff SET timezone = 'America/New_York' WHERE staff_id = 1";
+
+/**
+ * Agente 1 in un altro fuso; campo data e campo testo obbligatorio per l'agente (già compilato) aggiunti
+ * al form del ticket 3. Senza orario lavorativo predefinito, per isolare i campi data (la scadenza
+ * stimata con un orario "floating" ha i suoi scenari).
+ */
+const extraFieldsSql = [
+  agentTimezoneSql,
+  "UPDATE {p}config SET value = '0' WHERE namespace = 'core' AND `key` = 'schedule_id'",
+  `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+    (74, 2, 13057, 'datetime', 'Intervento', 'intervento', '{"time":true}', 4, '', NOW(), NOW()),
+    (75, 2, 29441, 'text', 'Reparto', 'reparto', '{}', 5, '', NOW(), NOW())`,
+  "INSERT INTO {p}form_entry_values (entry_id, field_id, value) VALUES (23, 74, NULL), (23, 75, 'Cardiologia')",
+];
+
 describe("Ticket::update (form di modifica)", () => {
   it("modifica topic, SLA, origine, scadenza, proprietario, campi e nota (con avviso)", async () => {
     await execBoth("UPDATE {p}config SET value = '1' WHERE namespace = 'core' AND `key` = 'note_alert_active'");
@@ -70,6 +87,24 @@ describe("Ticket::update (form di modifica)", () => {
     expect(r.ts).toEqual({ ok: true });
   });
 
+  it("scadenza stimata ricalcolata con l'orario \"floating\" del reparto nel fuso dell'agente", async () => {
+    // schedule 3 (24/5, senza fuso) sul reparto del ticket: il fine settimana si conta a New York
+    await execBoth(agentTimezoneSql, "UPDATE {p}department SET schedule_id = 3 WHERE id = 1");
+    const post = { topicId: "11", slaId: "1", source: "Phone", duedate: "", user_id: "10", note: "", subject: "Richiesta nuovo account per specializzando", priority: "1" };
+    const r = await both("ticketedit.update", { agent: 1, ticket: 3, post }, (ctx) =>
+      updateTicket(ctx, {
+        ticketId: 3,
+        topicId: post.topicId,
+        slaId: post.slaId,
+        source: post.source,
+        duedate: post.duedate,
+        userId: post.user_id,
+        vars: { subject: post.subject, priority: post.priority },
+      }),
+    );
+    expect(r.ts).toEqual({ ok: true });
+  });
+
   it("nessuna modifica: niente evento, solo la scadenza stimata ricalcolata", async () => {
     const post = { topicId: "11", slaId: "1", source: "Phone", duedate: "", user_id: "10", note: "", subject: "Richiesta nuovo account per specializzando", priority: "1" };
     const r = await both("ticketedit.update", { agent: 1, ticket: 3, post }, (ctx) =>
@@ -102,6 +137,48 @@ describe("Ticket::update (form di modifica)", () => {
     );
     expect(r.php.ok).toBe(false);
     expect(r.ts).toMatchObject({ error: "invalid" });
+  });
+
+  it("campo data nel fuso dell'agente; campo obbligatorio assente dal POST mantiene la risposta", async () => {
+    await execBoth(...extraFieldsSql);
+    const post = { topicId: "11", slaId: "1", source: "Phone", duedate: "", user_id: "10", note: "", subject: "Richiesta nuovo account per specializzando", priority: "1", intervento: "2026-11-03 14:30" };
+    const r = await both("ticketedit.update", { agent: 1, ticket: 3, post }, (ctx) =>
+      updateTicket(ctx, {
+        ticketId: 3,
+        topicId: post.topicId,
+        slaId: post.slaId,
+        source: post.source,
+        duedate: post.duedate,
+        userId: post.user_id,
+        vars: { subject: post.subject, priority: post.priority, intervento: post.intervento },
+      }),
+    );
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("evento edited con i campi non visibili o non modificabili dall'agente (getChanges), risposte invariate", async () => {
+    // 76: visibile e modificabile solo dal cliente; 77: visibile all'agente ma non modificabile
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (76, 2, 769, 'text', 'Nota cliente', 'nota_cliente', '{}', 6, '', NOW(), NOW()),
+        (77, 2, 4865, 'text', 'Codice', 'codice', '{}', 7, '', NOW(), NOW())`,
+      "INSERT INTO {p}form_entry_values (entry_id, field_id, value) VALUES (23, 76, 'Riservata'), (23, 77, 'K-12')",
+    );
+    const post = { topicId: "11", slaId: "1", source: "Phone", duedate: "", user_id: "10", note: "", subject: "Oggetto cambiato", priority: "1" };
+    const r = await both("ticketedit.update", { agent: 1, ticket: 3, post }, (ctx) =>
+      updateTicket(ctx, {
+        ticketId: 3,
+        topicId: post.topicId,
+        slaId: post.slaId,
+        source: post.source,
+        duedate: post.duedate,
+        userId: post.user_id,
+        vars: { subject: post.subject, priority: post.priority },
+      }),
+    );
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
   });
 
   it("negato senza permesso ticket.edit (Limited Access)", async () => {
@@ -145,6 +222,15 @@ describe("Ticket::updateField (modifica di un campo)", () => {
     expect(r.ts).toEqual({ ok: true });
   });
 
+  it("scadenza stimata con l'orario lavorativo predefinito \"floating\" letto nel fuso dell'agente", async () => {
+    // schedule 1 (lun-ven 8-17, senza fuso) come core.schedule_id: l'orario vale a New York, non a Roma
+    await execBoth(agentTimezoneSql, "INSERT INTO {p}sla (id, schedule_id, flags, grace_period, name, notes, created, updated) VALUES (2, 0, 1, 4, 'Fast', '', NOW(), NOW())");
+    const r = await both("ticketedit.field", { agent: 1, ticket: 3, field: "sla", post: { sla_id: "2" } }, (ctx) =>
+      updateTicketField(ctx, { ticketId: 3, field: "sla", vars: { sla_id: "2" } }),
+    );
+    expect(r.ts).toEqual({ ok: true });
+  });
+
   it("scadenza", async () => {
     const r = await both("ticketedit.field", { agent: 1, ticket: 3, field: "duedate", post: { duedate: FUTURE } }, (ctx) =>
       updateTicketField(ctx, { ticketId: 3, field: "duedate", vars: { duedate: FUTURE } }),
@@ -156,6 +242,24 @@ describe("Ticket::updateField (modifica di un campo)", () => {
     const r = await both("ticketedit.field", { agent: 1, ticket: 3, field: "source", post: { source: "Other" } }, (ctx) =>
       updateTicketField(ctx, { ticketId: 3, field: "source", vars: { source: "Other" } }),
     );
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("campo data (per id) nel fuso dell'agente", async () => {
+    await execBoth(...extraFieldsSql);
+    const r = await both("ticketedit.field", { agent: 1, ticket: 3, field: "74", post: { intervento: "2026-11-03 14:30", comments: "" } }, (ctx) =>
+      updateTicketField(ctx, { ticketId: 3, field: "74", vars: { intervento: "2026-11-03 14:30" } }),
+    );
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("campo obbligatorio assente dal POST: valido (risposta attuale), salvato il valore nullo del widget", async () => {
+    await execBoth(...extraFieldsSql);
+    const r = await both("ticketedit.field", { agent: 1, ticket: 3, field: "75", post: { comments: "" } }, (ctx) =>
+      updateTicketField(ctx, { ticketId: 3, field: "75", vars: {} }),
+    );
+    expect(r.php.ok).toBe(true);
     expect(r.ts).toEqual({ ok: true });
   });
 
@@ -171,6 +275,17 @@ describe("Ticket::updateField (modifica di un campo)", () => {
 describe("Ticket::changeOwner", () => {
   it("cambia proprietario e rimuove il nuovo proprietario dai collaboratori", async () => {
     await execBoth("INSERT INTO {p}thread_collaborator (flags, thread_id, user_id, role, created, updated) VALUES (3, 3, 5, 'M', NOW(), NOW())");
+    const r = await both("ticketedit.changeuser", { agent: 1, ticket: 3, user_id: 5 }, (ctx) => changeTicketOwner(ctx, { ticketId: 3, userId: 5 }));
+    expect(r.php.ok).toBe(true);
+    expect(r.ts).toEqual({ ok: true });
+  });
+
+  it("indice _search riscritto al salvataggio con le date nel fuso dell'agente", async () => {
+    await execBoth(...extraFieldsSql);
+    // campo data compilato, poi un salvataggio senza reindicizzazione esplicita (Ticket::save → model.updated)
+    await both("ticketedit.field", { agent: 1, ticket: 3, field: "74", post: { intervento: "2026-11-03 14:30", comments: "" } }, (ctx) =>
+      updateTicketField(ctx, { ticketId: 3, field: "74", vars: { intervento: "2026-11-03 14:30" } }),
+    );
     const r = await both("ticketedit.changeuser", { agent: 1, ticket: 3, user_id: 5 }, (ctx) => changeTicketOwner(ctx, { ticketId: 3, userId: 5 }));
     expect(r.php.ok).toBe(true);
     expect(r.ts).toEqual({ ok: true });

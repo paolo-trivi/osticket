@@ -4,7 +4,7 @@ import { ResetForms } from "@/components/people/auth/RecoveryForms";
 import AuthLayout from "@/components/shell/AuthLayout";
 import { redirect } from "@/i18n/navigation";
 import { coreConfig } from "@/server/config/config";
-import { staffIdForResetToken } from "@/server/domain/staff/profile";
+import { staffIdForResetToken } from "@/server/domain/staff/password-reset";
 import { db } from "@/server/db";
 import { loadTheme } from "@/server/theme/theme";
 

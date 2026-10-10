@@ -85,6 +85,37 @@ describe("task: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("campo aggiuntivo non valido: nessuna riga scritta, stesso errore", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
+    );
+    const fields = { stanza: "dodici" };
+    const args = { agent: 2, title: "Titolo valido", description: "<p>desc</p>", deptId: 1, duedate: "", fields };
+    const php = await runPhp<{ ok: boolean; errors: [unknown, Record<string, string[]>] }>({ op: "task.create", args });
+    const ts = await asAgent(2, (ctx) => createTask(ctx, { title: args.title, description: args.description, deptId: 1, fields }));
+    expect(php.ok).toBe(false);
+    expect(Object.keys(php.errors[1])).toEqual(["71"]);
+    expect(ts).toEqual({ ok: false, error: "invalid", fields: { stanza: "number" } });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("campi aggiuntivi riletti dal getClean() del form: scelta multipla e lista", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (72, 5, 13057, 'choices', 'Reparti', 'reparti', '{"choices":"a:Alfa\\nb:Beta\\nc:Gamma","multiselect":true}', 5, '', NOW(), NOW()),
+        (73, 5, 13057, 'choices', 'Turno', 'turno', '{"choices":"m:Mattina\\np:Pomeriggio"}', 6, '', NOW(), NOW())`,
+      "ALTER TABLE {p}task__cdata ADD COLUMN reparti mediumtext, ADD COLUMN turno mediumtext",
+    );
+    const fields = { reparti: ["a", "c"], turno: "p" };
+    const args = { agent: 2, title: "Scelte", description: "<p>desc</p>", deptId: 1, duedate: "", fields };
+    const php = await runPhp<{ ok: boolean; id: number; number: string }>({ op: "task.create", args });
+    const ts = await asAgent(2, (ctx) => createTask(ctx, { title: args.title, description: args.description, deptId: 1, fields }));
+    expect(php.ok).toBe(true);
+    expect(ts).toEqual({ ok: true, id: php.id, number: php.number });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("creazione autonoma con team e scadenza", async () => {
     const args = { agent: 2, title: "Standalone", description: "<p>desc</p>", deptId: 3, assignee: "t1", duedate: "2027-02-01T08:15:00Z" };
     await runPhp({ op: "task.create", args });
@@ -174,6 +205,21 @@ describe("task: PHP vs TypeScript", () => {
     await withTask(2, 1, (ctx, t) => updateTaskFields(ctx, t, { title: "Nuovo titolo" }, "<p>cambiato</p>"));
     await withTask(2, 2, (ctx, t) => updateTaskDueDate(ctx, t, "2027-01-15T10:30:00Z", "<p>scadenza</p>"));
     await withTask(1, 5, (ctx, t) => deleteTask(ctx, t, "motivo"));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("modifica con un campo aggiuntivo non valido: nessuna scrittura, errori per campo", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
+    );
+    const fields = { title: "Nuovo titolo", stanza: "dodici" };
+    const php = await runPhp<{ ok: boolean; errors: Record<string, unknown> }>({ op: "task.edit", args: { agent: 2, task: 1, fields, note: "<p>x</p>" } });
+    const ts = await withTask(2, 1, (ctx, t) => updateTaskFields(ctx, t, fields, "<p>x</p>"));
+    expect(php.ok).toBe(false);
+    // un solo errore (array_merge rinumera la chiave 71 del campo)
+    expect(Object.keys(php.errors)).toHaveLength(1);
+    expect(ts).toEqual({ ok: false, error: "invalid", fields: { stanza: "number" } });
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

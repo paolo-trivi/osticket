@@ -31,7 +31,7 @@ import {
 } from "@/server/domain/task/write";
 import { deleteDraftsFor } from "@/server/domain/ticket/collab";
 import type { WriteContext } from "@/server/domain/ticket/context";
-import { selectableDepts } from "@/server/domain/ticket/assign";
+import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
 
@@ -41,7 +41,14 @@ import { runWrite } from "@/server/domain/write";
  */
 
 function fromResult(r: TaskResult): PeopleActionState {
-  return r.ok ? { ok: true, nonce: nonce() } : { error: r.error, nonce: nonce() };
+  return r.ok ? { ok: true, nonce: nonce() } : { error: r.error, fields: r.fields, nonce: nonce() };
+}
+
+/** Campi del form del task inviati dalla UI con il prefisso `f:` (nome o id del campo). */
+function taskFormFields(form: FormData): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of form.entries()) if (k.startsWith("f:")) fields[k.slice(2)] = String(v);
+  return fields;
 }
 
 /** Task accessibile all'agente con il permesso richiesto (null = sola visibilità). */
@@ -139,11 +146,7 @@ export async function taskTransferAction(_prev: PeopleActionState, form: FormDat
 
 /** ajax.tasks.php:edit (Task::update): titolo e altri campi del form, nota facoltativa */
 export async function taskEditAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  return withTask(form, TaskPerm.EDIT, async (ctx, task) => {
-    const fields: Record<string, unknown> = {};
-    for (const [k, v] of form.entries()) if (k.startsWith("f:")) fields[k.slice(2)] = String(v);
-    return fromResult(await updateTaskFields(ctx, task, fields, formHtml(form, "note")));
-  });
+  return withTask(form, TaskPerm.EDIT, async (ctx, task) => fromResult(await updateTaskFields(ctx, task, taskFormFields(form), formHtml(form, "note"))));
 }
 
 /** ajax.tasks.php:editField duedate: `due` è un istante ISO (vuoto = rimozione) */
@@ -185,11 +188,12 @@ export async function taskCreateAction(_prev: PeopleActionState, form: FormData)
       deptId,
       assignee: m ? { type: m[1] === "s" ? "staff" : "team", id: Number(m[2]) } : null,
       duedate: formStr(form, "due") || null,
+      fields: taskFormFields(form),
     });
     if (res.ok) await deleteDraftsFor(ctx.tx, "task.add", agent.id);
     return res;
   });
-  if (!r.ok) return { error: r.error, fields: r.error === "title_required" ? { title: "required" } : undefined, nonce: nonce() };
+  if (!r.ok) return fromResult(r);
   revalidatePath("/agent/tasks");
   return { ok: true, redirect: `/agent/tasks/${r.id}`, nonce: nonce() };
 }

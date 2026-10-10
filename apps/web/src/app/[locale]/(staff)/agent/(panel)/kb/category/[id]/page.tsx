@@ -7,7 +7,7 @@ import HtmlContent from "@/components/kb/HtmlContent";
 import KbBreadcrumb from "@/components/kb/KbBreadcrumb";
 import SubcategoryList from "@/components/kb/SubcategoryList";
 import VisibilityBadge from "@/components/kb/VisibilityBadge";
-import { getCategory } from "@/server/domain/kb/kb";
+import { getCategory } from "@/server/domain/kb/categories";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../../guard";

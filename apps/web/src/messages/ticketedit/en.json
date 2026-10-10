@@ -73,6 +73,7 @@
       "email": "invalid email",
       "phone": "invalid phone number",
       "number": "invalid number",
+      "ip": "invalid IP address",
       "regex": "invalid format",
       "formula": "cannot start with =, +, - or @",
       "phone_ext": "invalid extension",

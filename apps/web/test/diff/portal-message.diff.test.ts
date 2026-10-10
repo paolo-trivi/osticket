@@ -143,6 +143,24 @@ describe("modifica dei campi dal portale (tickets.php a=edit)", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("campo data nel fuso del cliente; campo obbligatorio assente dal POST mantiene la risposta", async () => {
+    await execBoth(
+      "INSERT INTO {p}user_account (user_id, status, timezone, registered) VALUES (3, 1, 'America/New_York', NOW())",
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (74, 2, 13057, 'datetime', 'Intervento', 'intervento', '{"time":true}', 4, '', NOW(), NOW()),
+        (75, 2, 14081, 'text', 'Reparto', 'reparto', '{}', 5, '', NOW(), NOW())`,
+      "INSERT INTO {p}form_entry_values (entry_id, field_id, value) VALUES (32, 74, NULL), (32, 75, 'Cardiologia')",
+    );
+    const vars = { subject: "Casella email piena", intervento: "2026-11-03 14:30" };
+    const php = await runPhp<{ ok: boolean; changes: number }>({ op: "portal.edit", args: { client: 3, ticket: 12, vars }, ip: IP });
+    const cfg = await loadConfigNamespace("core");
+    const ts = await editClientTicket(cfg, (await loadClientIdentity(3))!, 12, vars, IP);
+    // modifiche: data, priorità e reparto (assenti dal POST → null nell'evento, risposte invariate)
+    expect(php).toMatchObject({ ok: true, changes: 3 });
+    expect(ts).toEqual({ ok: true, changes: 3 });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("oggetto vuoto (obbligatorio) e utente non proprietario", async () => {
     const php = await runPhp<{ ok: boolean }>({ op: "portal.edit", args: { client: 3, ticket: 12, vars: { subject: "" } }, ip: IP });
     const cfg = await loadConfigNamespace("core");

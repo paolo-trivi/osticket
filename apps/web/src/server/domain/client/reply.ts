@@ -7,7 +7,8 @@ import { runWrite } from "../write";
 import { clientDisplayName, type ClientIdentity } from "./identity";
 import { deleteDraftsForNamespace } from "../drafts";
 import { clientActor } from "./open";
-import { clientCanAccess, editTicketAsClient, type ClientEditResult } from "./tickets";
+import { editTicketAsClient, type ClientEditResult } from "./ticket-edit";
+import { clientCanAccess } from "./tickets";
 
 /**
  * tickets.php POST a=reply: controllo di accesso, Ticket::postMessage($vars, 'Web') con l'utente
@@ -37,5 +38,5 @@ export async function postClientMessage(
 /** tickets.php POST a=edit (solo proprietario): campi del ticket modificabili dai clienti */
 export async function editClientTicket(cfg: ConfigNamespace, client: ClientIdentity, ticketId: number, vars: Record<string, unknown>, ip: string): Promise<ClientEditResult> {
   const actor = clientActor(cfg, client, ip);
-  return runWrite({ actor }, (ctx) => editTicketAsClient(ctx.tx, ctx.cfg, actor, client, ticketId, vars));
+  return runWrite({ actor }, (ctx) => editTicketAsClient(ctx, client, ticketId, vars));
 }

@@ -13,7 +13,8 @@ import { db } from "@/server/db";
 import { verifyUploadTokens } from "@/server/domain/file/upload";
 import { loadFormDef, loadTopicForms } from "@/server/domain/forms/load";
 import { TicketPerm } from "@/server/domain/staff/staff";
-import { openTicket, type CreateErrors } from "@/server/domain/ticket/create";
+import type { CreateErrors } from "@/server/domain/ticket/create";
+import { openTicket } from "@/server/domain/ticket/create-open";
 import { formDataToVars, searchUsers, topicFormsView, usersByIds, type UserHit } from "@/server/domain/ticket/create-ui";
 import { runWrite } from "@/server/domain/write";
 

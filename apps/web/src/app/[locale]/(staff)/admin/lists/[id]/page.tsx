@@ -17,7 +17,7 @@ import { listDetail } from "@/server/domain/adminsys/list";
 import { requireAdmin } from "../../guard";
 import { massListItemAction, saveListAction, saveListItemAction } from "../actions";
 import { ListFields } from "../form";
-import { ItemFields } from "../items";
+import { ItemFields, propertyLabels } from "../items";
 
 /** Lista: proprietà ed elementi (include/staff/dynamic-list.inc.php). */
 export default async function ListPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -43,7 +43,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
             <ListFields detail={detail} />
           </SysForm>
           {unsupported && <Callout tone="warning">{t("unsupportedProps")}</Callout>}
-          <SysForm action={saveListItemAction.bind(null, listId, null)} submitLabel={t("addItem")} savedMessage={t("itemAdded")} labels={{ value: t("value"), extra: t("abbrev") }} resetOnSave>
+          <SysForm action={saveListItemAction.bind(null, listId, null)} submitLabel={t("addItem")} savedMessage={t("itemAdded")} labels={{ value: t("value"), extra: t("abbrev"), ...propertyLabels(detail.properties) }} resetOnSave>
             <ItemFields item={null} properties={detail.properties} />
           </SysForm>
           <form action={massListItemAction.bind(null, listId)} className="space-y-4">

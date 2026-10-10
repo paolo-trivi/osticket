@@ -4,7 +4,7 @@ import { coreConfig } from "../config/config";
 import { NOW, db } from "../db";
 import { detectDbTimezone } from "../db/time";
 import { loadAgent } from "../domain/staff/staff";
-import { sendStaffResetEmail, verifyStaffResetToken } from "../domain/staff/profile";
+import { sendStaffResetEmail, verifyStaffResetToken } from "../domain/staff/password-reset";
 import { phpJsonDecode, phpJsonEncode } from "../format/php-json";
 import { logSystem } from "../system/syslog";
 import { EMAIL_2FA, newMfaKey, prepare2faEmail, validateOtp, type OtpCheck } from "./mfa";
