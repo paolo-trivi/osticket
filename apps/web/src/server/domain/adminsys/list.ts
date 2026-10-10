@@ -2,15 +2,14 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { loadConfigNamespace, type ConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
-import { stripTags } from "../../format/html";
 import { phpJsonEncode, phpJsonDecode } from "../../format/php-json";
-import { stripEmoticons } from "../../format/text";
-import { htmlchars, htmlcharsVars, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { htmlcharsVars, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../forms/validator";
+import { fieldConfig, isRequiredFor, parseFieldValue, validateField, type CleanValue, type FieldDef } from "../forms/fields";
 import { sanitizeHtml } from "./sanitize";
 
 /**
@@ -234,38 +233,46 @@ async function propertyFields(executor: DbOrTx, listId: number): Promise<PropFie
     .execute()) as PropField[];
 }
 
-/** Validatore dei TextboxField (formula se non configurato). */
-function textboxErrors(value: string, required: boolean, validator: string): string[] {
-  const out: string[] = [];
-  const v = value === "0" ? "&#48" : str(htmlchars(value));
-  if (required && !truthy(v)) out.push("required");
-  if (!truthy(v)) return out;
-  const valid = validator || "formula";
-  if (valid === "formula" && !/(^[^=+@-].*$)|(^\+\d+$)/s.test(v)) out.push("formula");
-  if (valid === "email" && !isEmail(v)) out.push("email");
-  if (valid === "number" && !isNumeric(v === "&#48" ? 0 : v)) out.push("number");
-  return out;
+/** Campo da un modello form_field (configurazione con i default del tipo, come FormField::getConfiguration). */
+function fieldDefOf(f: PropField, cfg: ConfigNamespace): FieldDef {
+  return { id: f.id, formId: 0, type: f.type, label: "", name: f.name, hint: "", flags: f.flags, sort: 0, config: fieldConfig(f.type, f.configuration, cfg) };
+}
+
+/**
+ * Valore ed errori di un campo del form degli elementi o delle proprietà con il motore dei form
+ * (FormField::parse + validateEntry): un valore assente è letto come testo vuoto.
+ */
+async function cleanAndValidate(f: FieldDef, raw: PhpVal, required: boolean, cfg: ConfigNamespace): Promise<{ clean: CleanValue; errors: string[] }> {
+  const clean = parseFieldValue(f, raw ?? "");
+  return { clean, errors: await validateField(f, clean, required, cfg) };
+}
+
+/** Campi "value" ed "extra" del form degli elementi (TextboxField senza validatore → formula). */
+async function itemTextFields(executor: DbOrTx, vars: PhpVars): Promise<{ value: string; extra: string; errors: [string, string][] }> {
+  const cfg = await loadConfigNamespace("core", executor);
+  const field = (name: string) => fieldDefOf({ id: 0, type: "text", name, flags: 0, configuration: null }, cfg);
+  const value = await cleanAndValidate(field("value"), vars.value, true, cfg);
+  const extra = await cleanAndValidate(field("extra"), vars.extra, false, cfg);
+  return {
+    value: str(value.clean as PhpVal),
+    extra: str(extra.clean as PhpVal),
+    errors: [...value.errors.map((e): [string, string] => ["value", e]), ...extra.errors.map((e): [string, string] => ["extra", e])],
+  };
 }
 
 /** DynamicListItem::setConfiguration($_POST): proprietà come {id campo: valore}. */
 async function itemProperties(executor: DbOrTx, listId: number, vars: PhpVars): Promise<{ json: string; errors: string[] } | "unsupported"> {
   const config: Record<string, PhpVal> = {};
   const errors: string[] = [];
+  const cfg = await loadConfigNamespace("core", executor);
   for (const f of await propertyFields(executor, listId)) {
     if (f.type === "break" || f.type === "info") continue;
-    const cfg = phpJsonDecode<Record<string, unknown>>(f.configuration, {});
+    if (f.type !== "text" && f.type !== "memo") return "unsupported";
+    const def = fieldDefOf(f, cfg);
     const raw = vars[f.name] !== undefined && f.name ? vars[f.name] : vars[String(f.id)];
-    const required = !!(f.flags & 0x04000);
-    if (f.type === "text") {
-      const clean = stripEmoticons(stripTags(str(raw)));
-      errors.push(...textboxErrors(clean, required, str(cfg.validator as PhpVal)));
-      config[String(f.id)] = clean;
-    } else if (f.type === "memo") {
-      const html = cfg.html === undefined ? true : !!cfg.html;
-      const clean = html ? sanitizeHtml(str(raw)) : str(raw);
-      if (required && !truthy(clean)) errors.push("required");
-      config[String(f.id)] = clean;
-    } else return "unsupported";
+    const r = await cleanAndValidate(def, raw, isRequiredFor(def, "staff"), cfg);
+    errors.push(...r.errors);
+    config[String(f.id)] = r.clean as PhpVal;
   }
   return { json: Object.keys(config).length ? phpJsonEncode(config) : "[]", errors };
 }
@@ -275,9 +282,7 @@ export async function addListItem(executor: DbOrTx, listId: number, vars: PhpVar
   const list = await loadList(executor, listId);
   if (!list) return { ok: false, errors: { err: "unknown" } };
   if (hasHandler(list)) return { ok: false, errors: { err: "system_list" } };
-  const value = stripEmoticons(stripTags(str(vars.value)));
-  const extra = stripEmoticons(stripTags(str(vars.extra)));
-  const formErrors = [...textboxErrors(value, true, "").map((e) => ["value", e]), ...textboxErrors(extra, false, "").map((e) => ["extra", e])];
+  const { value, extra, errors: formErrors } = await itemTextFields(executor, vars);
   if (formErrors.length) return { ok: false, errors: Object.fromEntries(formErrors) };
   const dup = await executor.selectFrom("list_items").select("id").where("list_id", "=", listId).where("value", "=", value).where(sql<number>`status & ${ItemStatus.ENABLED}`, "<>", 0).executeTakeFirst();
   if (dup) return { ok: false, errors: { value: "value_in_use" } };
@@ -307,9 +312,7 @@ export async function updateListItem(executor: DbOrTx, listId: number, itemId: n
   if (hasHandler(list)) return { ok: false, errors: { err: "system_list" } };
   const row = await executor.selectFrom("list_items").selectAll().where("list_id", "=", listId).where("id", "=", itemId).executeTakeFirst();
   if (!row) return { ok: false, errors: { err: "unknown_item" } };
-  const value = stripEmoticons(stripTags(str(vars.value)));
-  const extra = stripEmoticons(stripTags(str(vars.extra)));
-  const formErrors = [...textboxErrors(value, true, "").map((e) => ["value", e]), ...textboxErrors(extra, false, "").map((e) => ["extra", e])];
+  const { value, extra, errors: formErrors } = await itemTextFields(executor, vars);
   if (formErrors.length) return { ok: false, errors: Object.fromEntries(formErrors) };
   // Bug PHP replicato: il controllo di unicità (sul valore attuale, non su quello nuovo) aggiunge
   // l'errore al campo dopo che Form::isValid() ha già memorizzato l'esito: non blocca mai.

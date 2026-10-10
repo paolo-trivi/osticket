@@ -11,6 +11,7 @@ import type { TemplateVariable } from "../../mail/variables";
 import { logSystem } from "../../system/syslog";
 import { alertOrDefaultEmail } from "../directory/content-mail";
 import { defaultFormOf, createEntry, deleteEntries, entriesFor, saveEntryAnswers, validateInput } from "../forms/answers";
+import { currentTimezone } from "../forms/entry";
 import { FieldFlag, hasAnswerRow, isEditableToStaff } from "../forms/fields";
 import { deleteDraftsForNamespace } from "../drafts";
 import { deleteSearchRow } from "../search/index-writer";
@@ -469,7 +470,8 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   const form = await defaultFormOf(tx, "A");
   if (!form) return { ok: false, error: "not_found" };
   const values: Record<string, unknown> = { ...(input.fields ?? {}), title: input.title, description: input.description };
-  const errors = validateInput(form.fields, values, () => true);
+  const timezone = await currentTimezone(ctx);
+  const errors = await validateInput(form.fields, values, () => true, cfg, { timezone });
   if (errors.title) return { ok: false, error: "title_required" };
   if (!input.deptId) return { ok: false, error: "dept_required" };
   const dept = await tx.selectFrom("department").select("id").where("id", "=", input.deptId).executeTakeFirst();
@@ -512,7 +514,7 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   const task = (await loadTaskRow(tx, id))!;
 
   // addDynamicData: entry del form "Task Details" con le risposte
-  await createEntry(tx, form, "A", "A", id, values);
+  await createEntry(tx, form, "A", "A", id, values, { timezone });
 
   // TaskThread::create + addDescription (MessageThreadEntry con flag ORIGINAL_MESSAGE)
   const th = await tx.insertInto("thread").values({ object_id: id, object_type: "A", created: NOW }).executeTakeFirstOrThrow();
@@ -545,13 +547,14 @@ export async function updateTaskFields(ctx: WriteContext, task: TaskDbRow, field
   const { tx } = ctx;
   const entries = await entriesFor(tx, "A", task.id);
   if (!entries.length) return { ok: false, error: "not_found" };
+  const timezone = await currentTimezone(ctx);
   for (const e of entries) {
-    const errors = validateInput(e.fields, fields, (f) => isEditableToStaff(f));
+    const errors = await validateInput(e.fields, fields, (f) => isEditableToStaff(f), ctx.cfg, { timezone });
     if (Object.keys(errors).length) return { ok: false, error: "title_required" };
   }
   const changes: Record<string, [string | null, string | null]> = {};
   for (const e of entries) {
-    const r = await saveEntryAnswers(tx, e, task.id, fields, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f) });
+    const r = await saveEntryAnswers(tx, e, task.id, fields, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f), timezone });
     for (const [k, v] of Object.entries(r.changes)) if (!(k in changes)) changes[k] = v;
   }
   if (note && note.trim()) await postTaskNote(ctx, task, { note, title: "Task Updated" });

@@ -184,6 +184,10 @@ Destinatari:
 
 Esclusi: agenti non disponibili, l'autore, i duplicati per email e, se il ticket è chiuso, gli agenti senza accesso.
 
+Doppia sostituzione come il PHP (`staff-alerts.ts`): prima `note`/`activity`/`comments` (+ ticket, url, company), poi
+`%{recipient}` sul messaggio risultante, per cui anche le variabili scritte nel testo della nota (es. `%{ticket.number}`)
+vengono risolte (scenario in `ticket-post.diff.test.ts`). Anche `message.alert` (portale) usa lo stesso ciclo condiviso.
+
 Invio dall'email di alert (`alert_email_id`) con header `Auto-Submitted: auto-generated`.
 
 #### Email (`src/server/mail/mailer.ts`)
@@ -860,7 +864,23 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   su `a@b`, `Nome <a@b.com>`, `a..b@c.com`, `a@LOCALHOST`); `isPhone` non toglie lo spazio non separabile e
   `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
   `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
-  `adminsys-banlist.diff.test.ts`.
+  `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  `ticket/create-alerts.ts`).
+- **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
+  = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
+  e proprietà delle liste (prima `forms/answers.ts parseInput` divergeva). Come il PHP: nessun trim di testo e telefono
+  (un telefono di soli spazi non è valido), interno "0" accodato senza `X`, casella = `(bool)` del valore inviato
+  (`"false"` è vero), scelta sconosciuta conservata come testo, chiave "0" ignorata, testo JSON/elenco con virgole delle
+  scelte, data convertita nel fuso dell'utente corrente (`$cfg->getTimezone()`) solo se "vera", liste per id o per
+  valore; `User::fromVars` (una sola versione, `ticket/create-user.ts`) e `Organization::fromVars` rileggono il
+  `getClean()` come sorgente (`FormInstance::cleanVars`: la selezione multipla di un campo scelte va persa come nel PHP).
+  Le risposte nuove uguali a NULL per il confronto debole (`""`) restano NULL (`saveFormEntry`); `addMissingFields` prima
+  della validazione in `User::updateInfo`/`Organization::update`; validazione lato agente con tutti i validatori
+  (`formula`, `number`, `regex`, `ip`…). Scenari: `people-directory` (data, lista, scelte, validatori), `ticket-create`
+  (risposte vuote, telefono di spazi, data "0"), `tasks` (campi aggiuntivi), `portal-auth` (campi aggiunti al form utente,
+  fuso del cliente); esiti PHP dei singoli tipi in `test/unit/forms-input.test.ts`. Non replicati: voci disattivate e
+  abbreviazioni delle liste (il PHP interroga il DB), decodifica MIME dei destinatari di Mail_Parse.
 - **Differenze**: stato 2FA e contatore dei tentativi in memoria del processo (non in `$_SESSION`); finestra del token di
   reset calcolata nel DB (il PHP interpreta l'ora del DB come UTC); traduzioni delle pagine di contenuto non gestite;
   eliminazione dei ticket di un utente (`deleteAllTickets`) non disponibile finché l'area ticketedit non espone

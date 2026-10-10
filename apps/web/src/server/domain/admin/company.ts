@@ -1,9 +1,10 @@
 import "server-only";
 
+import { loadConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
 import { phpLooseEquals, type PhpVars } from "../../php/values";
-import { inputFor, loadFormFields, parseInput, saveEntryAnswers, toDatabase, validateInput, type FormEntry } from "../forms/answers";
-import { hasAnswerRow, type FieldDef } from "../forms/fields";
+import { loadFormFields, saveEntryAnswers, toDatabase, validateInput, type FormEntry } from "../forms/answers";
+import { hasAnswerRow, parseField, type FieldDef } from "../forms/fields";
 
 /**
  * Informazioni dell'azienda (include/class.company.php): form dinamico di tipo "C" con una sola
@@ -43,7 +44,7 @@ async function loadCompanyForm(executor: DbOrTx): Promise<Omit<CompanyForm, "inp
 export async function validateCompanyForm(executor: DbOrTx, input: PhpVars): Promise<CompanyForm> {
   const form = await loadCompanyForm(executor);
   if (!form) return { formId: 0, fields: [], entry: null, input, errors: {} };
-  const errors = validateInput(form.fields, input as Record<string, unknown>, () => true);
+  const errors = await validateInput(form.fields, input as Record<string, unknown>, () => true, await loadConfigNamespace("core", executor));
   return { ...form, input, errors };
 }
 
@@ -62,7 +63,7 @@ export async function saveCompanyForm(executor: DbOrTx, form: CompanyForm): Prom
   const entryId = Number(res.insertId);
   for (const f of form.fields) {
     if (!hasAnswerRow(f)) continue;
-    const db = toDatabase(f, parseInput(f, inputFor(form.input as Record<string, unknown>, f)));
+    const db = toDatabase(f, parseField(f, form.input as Record<string, unknown>));
     await executor.insertInto("form_entry_values").values({ entry_id: entryId, field_id: f.id, value: phpLooseEquals(null, db) ? null : db }).execute();
   }
 }

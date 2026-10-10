@@ -12,7 +12,7 @@ import { OrmRow, SQL_NOW } from "../admin/orm";
 import { ov, pv } from "./orm-util";
 import { TopicFlag } from "../admin/topic";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../forms/validator";
+import { isEmail, isFormula, parseAddressList } from "../forms/validator";
 import { prepareSupportedMatches } from "../filter/ticket-filter";
 
 /**
@@ -85,41 +85,21 @@ export const ACTION_FIELDS: Record<string, ActionField[]> = {
   ],
 };
 
-/** Mail_Parse::parseAddressList + validatore di FA_SendEmail (approssimazione di Mail_RFC822). */
+/**
+ * Validatore dei destinatari di FA_SendEmail: Mail_Parse::parseAddressList (Mail_RFC822 senza
+ * validazione degli atomi, lista vuota per un valore "falso"), poi segnaposto `%{user}` o indirizzo con
+ * mailbox e host diverso da "localhost". Riceve il valore già passato da htmlchars, come il PHP.
+ */
 function recipientsError(value: PhpVal): string | null {
-  const s = str(value);
-  const parts: string[] = [];
-  let cur = "";
-  let quoted = false;
-  let angle = false;
-  for (const ch of s) {
-    if (ch === '"') quoted = !quoted;
-    else if (ch === "<" && !quoted) angle = true;
-    else if (ch === ">" && !quoted) angle = false;
-    if (ch === "," && !quoted && !angle) {
-      parts.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  parts.push(cur);
-  if (quoted || angle || parts.some((p) => !p.trim())) return "address_list";
-  for (const p of parts) {
-    const m = /<([^>]*)>/.exec(p);
-    const addr = (m ? m[1] : p).trim();
-    const at = addr.lastIndexOf("@");
-    const mailbox = at >= 0 ? addr.slice(0, at) : addr;
-    const host = at >= 0 ? addr.slice(at + 1) : "localhost";
-    const ph = /%\{([^}]+)\}/.exec(mailbox);
+  const mails = truthy(value) ? parseAddressList(str(value), { validate: false }) : [];
+  if (!mails?.length) return "address_list";
+  for (const M of mails) {
+    const ph = /%\{([^}]+)\}/.exec(M.mailbox);
     if (ph) {
       if (ph[1] !== "user") return "invalid_variable";
-    } else if (host === "localhost" || !mailbox) return "invalid_address";
+    } else if (M.host === "localhost" || !truthy(M.mailbox)) return "invalid_address";
   }
   return null;
-}
-
-/** Validator::is_formula (validatore forzato dei TextboxField). */
-function formulaError(value: string): string | null {
-  return /(^[^=+@-].*$)|(^\+\d+$)/s.test(value) ? null : "formula";
 }
 
 /** ChoiceField: widget → parse → to_php (i valori numerici diventano numeri, come JsonDataParser). */
@@ -159,7 +139,7 @@ async function parseConfiguration(executor: DbOrTx, type: string, vars: PhpVars)
     if (f.required && !truthy(value)) errors.push("required");
     const e = f.check?.(value);
     if (e) errors.push(e);
-    if (f.kind === "text" && truthy(value) && formulaError(str(value))) errors.push("formula");
+    if (f.kind === "text" && truthy(value) && !isFormula(str(value))) errors.push("formula");
     config[f.name] = clean;
   }
   return { config, errors };

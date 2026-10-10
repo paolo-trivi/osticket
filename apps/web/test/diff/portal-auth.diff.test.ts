@@ -309,6 +309,22 @@ describe("profilo (profile.php → ClientAccount::update + User::updateInfo)", (
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("campi aggiunti al form utente: risposte mancanti create, data nel fuso del cliente", async () => {
+    await execBoth(
+      accountSql(3),
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (60, 1, 13057, 'datetime', 'Data di nascita', 'nascita', '{"time":true}', 5, '', NOW(), NOW()),
+        (61, 1, 13057, 'text', 'Reparto', 'reparto', '{}', 6, '', NOW(), NOW())`,
+      "ALTER TABLE {p}user__cdata ADD COLUMN nascita mediumtext, ADD COLUMN reparto mediumtext",
+    );
+    const vars = { email: "l.ferrari@ospedale.example", name: "Luca Ferrari", phone: "3331234567", timezone: "Europe/London", nascita: "2026-09-30 08:00" };
+    const php = await runPhp<{ ok: boolean }>({ op: "portal.profile", args: { client: 3, vars } });
+    const ts = await updateClientProfile((await loadClientIdentity(3))!, vars);
+    expect(php.ok).toBe(true);
+    expect(ts).toMatchObject({ ok: true });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("cambio password con la password attuale; password attuale errata rifiutata", async () => {
     await execBoth(accountSql(3), tokenSql("resetabc0000000000000000000000000000000000000000", 3));
     const wrong = { email: "l.ferrari@ospedale.example", name: "Luca Ferrari", timezone: "Europe/Rome", cpasswd: "no", passwd1: "NuovaPass#9", passwd2: "NuovaPass#9" };

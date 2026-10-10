@@ -2,6 +2,7 @@ import "server-only";
 
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
+import { str, type PhpVal } from "../../php/values";
 
 /**
  * Filtri sui ticket in ingresso (include/class.filter.php, class.filter_action.php):
@@ -85,7 +86,6 @@ export async function loadActiveFilters(executor: DbOrTx, target: string, emailI
   return out;
 }
 
-const str = (v: unknown) => (v === null || v === undefined || v === false ? "" : String(v));
 
 /** preg_match con delimitatori PHP (best effort in JS) */
 function pregMatch(pattern: string, subject: string): number {
@@ -130,7 +130,7 @@ function filterMatches(filter: TicketFilterRow, what: TicketVars): boolean {
   if (filter.emailId && filter.target.toLowerCase() === "email" && filter.emailId !== Number(what.emailId ?? 0)) return false;
   let match = false;
   for (const rule of filter.rules) {
-    const r = ruleMatches(rule.how, str(what[rule.what]), rule.val);
+    const r = ruleMatches(rule.how, str(what[rule.what] as PhpVal), rule.val);
     if (r === null) continue;
     if (r) {
       match = true;
@@ -148,7 +148,7 @@ export function filterInput(vars: TicketVars): TicketVars {
   const out: TicketVars = { body: vars.message ?? null };
   for (const [k, v] of Object.entries(vars)) {
     if (["name", "email", "reply-to", "reply-to-name", "addressee", "topicId", "emailId"].includes(k) || k.startsWith("field.")) {
-      out[k] = str(v).trim();
+      out[k] = str(v as PhpVal).trim();
     }
   }
   const recipients = vars.recipients as { name: string; email: string }[] | undefined;
@@ -182,7 +182,7 @@ export async function applyFilterActions(
       const c = a.config;
       switch (a.type) {
         case "reject":
-          throw new TicketRejected(f.name, str(vars.email));
+          throw new TicketRejected(f.name, str(vars.email as PhpVal));
         case "noresp":
           vars.autorespond = false;
           break;

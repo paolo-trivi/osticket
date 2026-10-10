@@ -152,6 +152,47 @@ describe("utenti: PHP vs TypeScript", () => {
   });
 });
 
+/** Campi aggiuntivi nel form utente (data, lista, numero, scelta, casella) con colonne cdata */
+const USER_EXTRA_FIELDS = [
+  "INSERT INTO {p}list (id, name, name_plural, sort_mode, masks, type, configuration, notes, created, updated) VALUES (2, 'Reparti', 'Reparti', 'Alpha', 0, NULL, '', '', NOW(), NOW())",
+  "INSERT INTO {p}list_items (id, list_id, status, value, extra, sort, properties) VALUES (20, 2, 1, 'Radiologia', NULL, 1, '[]'), (21, 2, 1, 'Cardiologia', NULL, 2, '[]')",
+  `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+    (60, 1, 13057, 'datetime', 'Data di nascita', 'nascita', '{"time":false}', 5, '', NOW(), NOW()),
+    (61, 1, 13057, 'list-2', 'Reparto', 'reparto', '{"multiselect":false}', 6, '', NOW(), NOW()),
+    (62, 1, 13057, 'text', 'Codice', 'codice', '{"validator":"number"}', 7, '', NOW(), NOW()),
+    (63, 1, 13057, 'choices', 'Turno', 'turno', '{"choices":"m:Mattina\\nn:Notte","multiselect":false}', 8, '', NOW(), NOW()),
+    (64, 1, 13057, 'bool', 'Consenso', 'consenso', '{}', 9, '', NOW(), NOW())`,
+  "ALTER TABLE {p}user__cdata ADD COLUMN nascita mediumtext, ADD COLUMN reparto mediumtext, ADD COLUMN turno mediumtext",
+];
+
+describe("form utente: stesso motore dei ticket (lettura dell'input e validazione)", () => {
+  it("creazione e modifica con data (fuso dell'agente), lista, scelta e casella", async () => {
+    await execBoth(...USER_EXTRA_FIELDS);
+    const created = { ...NEW_USER, nascita: "2026-09-30", reparto: "21", codice: "12", turno: "m", consenso: "1" };
+    const php = await runPhp<{ ok: boolean; id: number }>({ op: "user.create", args: { agent: 1, fields: created } });
+    expect(php.ok).toBe(true);
+    expect(await asAgent(1, (ctx) => createUser(ctx, created))).toEqual({ ok: true, id: php.id });
+    const edited = { ...NEW_USER, nascita: "2026-10-01 10:30", reparto: "Radiologia", codice: "", turno: "n", consenso: "" };
+    await runPhp({ op: "user.update", args: { agent: 1, user: php.id, fields: edited } });
+    expect(await asAgent(1, (ctx) => updateUser(ctx, php.id, edited))).toEqual({ ok: true });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("validatori dei campi come nel PHP: formula nel nome, numero non valido", async () => {
+    await execBoth(...USER_EXTRA_FIELDS);
+    for (const [fields, error] of [
+      [{ ...NEW_USER, name: "=Rossi" }, { name: "formula" }],
+      [{ ...NEW_USER, codice: "abc" }, { codice: "number" }],
+    ] as const) {
+      expect((await runPhp<{ ok: boolean }>({ op: "user.create", args: { agent: 1, fields } })).ok).toBe(false);
+      expect(await asAgent(1, (ctx) => createUser(ctx, fields))).toMatchObject({ ok: false, error: "invalid", fields: error });
+    }
+    expect((await runPhp<{ ok: boolean }>({ op: "user.update", args: { agent: 1, user: 2, fields: { name: "-Romano", email: "f.romano@ospedale.example" } } })).ok).toBe(false);
+    expect(await asAgent(1, (ctx) => updateUser(ctx, 2, { name: "-Romano", email: "f.romano@ospedale.example" }))).toMatchObject({ ok: false, fields: { name: "formula" } });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+});
+
 describe("organizzazioni: PHP vs TypeScript", () => {
   const ORG = { name: "Nuova Org <b>x</b>", address: "Via Roma 1", phone: "0874 111222", website: "http://x.it", notes: "<p>n</p>" };
 

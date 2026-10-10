@@ -8,20 +8,21 @@ import { searchable } from "../../format/text";
 import { deleteSearchRow, replaceSearchRow } from "../search/index-writer";
 import { GlobalPerm } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
-import { phpLooseEquals } from "../ticket/record";
+import { phpLooseEquals } from "../../php/values";
 import {
+  addMissingAnswers,
   createEntry,
+  defaultDates,
   defaultFormOf,
   deleteEntries,
   entriesFor,
-  inputFor,
-  parseInput,
+  entriesSearchable,
   saveEntryAnswers,
   validateInput,
-  answerSearchable,
   type FormEntry,
 } from "../forms/answers";
-import { hasAnswerRow } from "../forms/fields";
+import { currentTimezone, FormInstance } from "../forms/entry";
+import { hasAnswerRow, parseField, type FieldDef } from "../forms/fields";
 import { isEmail } from "../forms/validator";
 import { createUser, loadUserCore, reindexUser, removeUserFromOrg, setUserOrganization, UserStatus, type DirResult } from "./users";
 
@@ -57,22 +58,14 @@ async function reindexOrg(executor: DbOrTx, orgId: number, entries?: FormEntry[]
   const o = await executor.selectFrom("organization").select("name").where("id", "=", orgId).executeTakeFirst();
   if (!o) return;
   const list = entries ?? (await entriesFor(executor, "O", orgId));
-  const content: string[] = [];
-  for (const e of list) {
-    for (const f of e.fields) {
-      const a = e.answers.get(f.id);
-      if (!a?.exists) continue;
-      const s = answerSearchable(f, a.value);
-      if (s) content.push(s);
-    }
-  }
+  const content = entriesSearchable(list, await defaultDates(executor));
   await replaceSearchRow(executor, "O", orgId, content.join("\n").trim(), searchable(o.name));
 }
 
-function nameOf(fields: { name: string }[], input: Record<string, unknown>): string {
-  const f = (fields as Parameters<typeof inputFor>[1][]).find((x) => x.name === "name");
+function nameOf(fields: FieldDef[], input: Record<string, unknown>, timezone: string): string {
+  const f = fields.find((x) => x.name === "name");
   if (!f) return "";
-  const v = parseInput(f, inputFor(input, f));
+  const v = parseField(f, input, timezone);
   return typeof v === "string" ? v : "";
 }
 
@@ -82,8 +75,9 @@ export async function createOrg(ctx: WriteContext, input: Record<string, unknown
   if (!agent || !agent.hasGlobalPerm(GlobalPerm.ORG_CREATE)) return { ok: false, error: "forbidden" };
   const form = await defaultFormOf(tx, "O");
   if (!form) return { ok: false, error: "not_found" };
-  const fields = validateInput(form.fields, input, () => true);
-  const clean = nameOf(form.fields, input);
+  const timezone = await currentTimezone(ctx);
+  const fields: Record<string, string> = await validateInput(form.fields, input, () => true, ctx.cfg, { timezone });
+  const clean = nameOf(form.fields, input, timezone);
   if (clean && (await tx.selectFrom("organization").select("id").where("name", "=", clean).executeTakeFirst())) fields.name = "in_use";
   if (Object.keys(fields).length) return { ok: false, error: "invalid", fields };
   // fromVars: Format::striptags del nome pulito
@@ -95,7 +89,9 @@ export async function createOrg(ctx: WriteContext, input: Record<string, unknown
       .values({ name, status: OrgFlag.SHARE_PRIMARY_CONTACT, created: NOW, updated: NOW })
       .executeTakeFirstOrThrow();
     org = { id: Number(r.insertId) };
-    await createEntry(tx, form, "O", "O", org.id, input);
+    // addDynamicData($vars): getClean() del form con il nome già ripulito, riletto come sorgente
+    const inst = new FormInstance({ id: form.id, type: "O", title: "", instructions: "", fields: form.fields }, input, 1, null, { timezone });
+    await createEntry(tx, form, "O", "O", org.id, { ...inst.cleanVars(), name }, { timezone });
   }
   // organization.created
   await reindexOrg(tx, org.id);
@@ -147,11 +143,14 @@ async function orgUpdate(
       entries = await entriesFor(tx, "O", orgId);
     }
   }
+  const timezone = await currentTimezone(ctx);
+  // Organization::getForms: addMissingFields prima della validazione
+  for (const e of entries) await addMissingAnswers(tx, e, orgId);
   const fields: Record<string, string> = {};
   for (const e of entries) {
-    Object.assign(fields, validateInput(e.fields, input, () => true));
+    Object.assign(fields, await validateInput(e.fields, input, () => true, ctx.cfg, { timezone }));
     if (e.form_type === "O") {
-      const clean = nameOf(e.fields, input);
+      const clean = nameOf(e.fields, input, timezone);
       if (clean) {
         const other = await tx.selectFrom("organization").select("id").where("name", "=", clean).executeTakeFirst();
         if (other && other.id !== orgId) fields.name = "in_use";
@@ -164,14 +163,14 @@ async function orgUpdate(
   let answersSaved = false;
   for (const e of entries) {
     if (e.form_type === "O" && e.fields.some((f) => f.name === "name")) {
-      const name = nameOf(e.fields, input);
+      const name = nameOf(e.fields, input, timezone);
       if (!phpLooseEquals(org.name, name)) {
         await tx.updateTable("organization").set({ name }).where("id", "=", orgId).execute();
         org.name = name;
         await reindexOrg(tx, orgId);
       }
     }
-    const r = await saveEntryAnswers(tx, e, orgId, input, { isEditable: hasAnswerRow, onlyProvided: true });
+    const r = await saveEntryAnswers(tx, e, orgId, input, { isEditable: hasAnswerRow, onlyProvided: true, timezone });
     if (r.dirty) answersSaved = true;
   }
 

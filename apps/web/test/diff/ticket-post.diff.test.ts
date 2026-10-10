@@ -110,6 +110,20 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
     expect(phpMails.length).toBeGreaterThan(0);
     expect(tsMails).toEqual(phpMails);
   });
+
+  it("note.alert con variabili nel testo della nota: risolte dalla seconda sostituzione come il PHP", async () => {
+    await execBoth(
+      "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key` IN ('note_alert_active','note_alert_assigned','note_alert_laststaff','note_alert_dept_manager')",
+      "UPDATE {p}department SET manager_id=3 WHERE id=3",
+    );
+    const args = { agent: 2, ticket: 4, note: "<p>Ticket %{ticket.number} per %{recipient.name.first}: serve la manutenzione.</p>", title: "Escalation %{ticket.number}" };
+    const phpMails = await mailsOf(() => runPhp({ op: "ticket.note", args }), 1);
+    const tsMails = await mailsOf(() => asAgent(2, (ctx) => postNote(ctx, { ticketId: 4, note: args.note, title: args.title })), 1);
+    expect(await compareWorkingDatabases()).toEqual([]);
+    expect(phpMails.length).toBeGreaterThan(0);
+    expect(phpMails.some((m) => m.html.includes("%{ticket.number}"))).toBe(false);
+    expect(tsMails).toEqual(phpMails);
+  });
 });
 
 /** status_id di un ticket in uno dei due DB di lavoro */

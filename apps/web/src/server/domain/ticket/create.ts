@@ -7,6 +7,7 @@ import { NOW, table, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { PersonsName } from "../../format/persons-name";
 import type { MailContact } from "../../mail/mailer";
+import { isNumeric, truthy as phpTruthy, type PhpVal } from "../../php/values";
 import { logSystem } from "../../system/syslog";
 import { attachFilesToEntry, type AttachInput } from "../file/upload";
 import {
@@ -20,7 +21,7 @@ import {
   type FilterAction,
   type TicketVars,
 } from "../filter/ticket-filter";
-import { FormInstance, saveFormEntry } from "../forms/entry";
+import { currentTimezone, FormInstance, saveFormEntry } from "../forms/entry";
 import {
   cleanFromDb,
   FieldFlag,
@@ -90,8 +91,9 @@ export const TICKET_SOURCES = ["Phone", "Email", "Web", "API", "Other"] as const
 const TopicFlagActive = 0x0002;
 const OrgFlag = { COLLAB_ALL_MEMBERS: 0x0001, COLLAB_PRIMARY_CONTACT: 0x0002, ASSIGN_AGENT_MANAGER: 0x0004 } as const;
 
-const isNum = (v: unknown) => v !== undefined && v !== null && v !== "" && v !== false && /^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(String(v));
-const truthy = (v: unknown) => !(v === undefined || v === null || v === false || v === "" || v === "0" || v === 0);
+/** is_numeric() e (bool) di PHP sui $vars (valori ignoti trattati come PhpVal) */
+const isNum = (v: unknown) => isNumeric(v as PhpVal);
+const truthy = (v: unknown) => phpTruthy(v as PhpVal);
 
 interface TopicRow {
   topic_id: number;
@@ -174,16 +176,6 @@ async function entryFilterData(
     for (const [k, v] of Object.entries(local)) if (!(k in out)) out[k] = v;
   }
   return out;
-}
-
-/** $cfg->getTimezone(): fuso dell'agente, altrimenti del cliente autenticato, altrimenti default_timezone */
-async function currentTimezone(ctx: WriteContext): Promise<string> {
-  if (ctx.agent?.row.timezone) return ctx.agent.row.timezone;
-  if (ctx.actor?.kind === "user") {
-    const a = await ctx.tx.selectFrom("user_account").select("timezone").where("user_id", "=", ctx.actor.id).executeTakeFirst();
-    if (a?.timezone) return a.timezone;
-  }
-  return ctx.cfg.str("default_timezone") || "UTC";
 }
 
 const addMissing = (vars: TicketVars, data: Record<string, unknown>) => {
@@ -550,14 +542,8 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
         const uform = new FormInstance(udef, vars, 1, null, { dates });
         const uerr = await uform.validate(include, requiredFor, cfg);
         if (!Object.keys(uerr).length) {
-          const clean: Record<string, unknown> = {};
-          for (const f of udef.fields) {
-            const v = uform.values.get(f.id) ?? null;
-            clean[String(f.id)] = v;
-            if (f.name) clean[f.name] = v;
-          }
           if (canCreate) {
-            user = await userFromVars(tx, cfg, clean, true, dates);
+            user = await userFromVars(tx, cfg, uform.cleanVars(), { dates });
             ok = !!user;
           }
         } else errors.fields = { ...errors.fields, ...uerr };

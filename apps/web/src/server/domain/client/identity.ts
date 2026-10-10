@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import type { ConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
+import { usernameError } from "../admin/validator";
 import { isEmail } from "../forms/validator";
 
 /**
@@ -77,14 +78,9 @@ export async function loadClientAccount(executor: DbOrTx, userId: number, forUpd
   return (await q.executeTakeFirst()) ?? null;
 }
 
-/** Validator::is_username */
-function isUsername(v: string): boolean {
-  return Buffer.byteLength(v) >= 2 && !/^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(v) && /^[\p{L}\d._-]+$/u.test(v);
-}
-
 /** Validator::is_userid: username valido o indirizzo email */
 export function isUserId(v: string): boolean {
-  return isUsername(v) || isEmail(v);
+  return usernameError(v) === "" || isEmail(v);
 }
 
 /**
@@ -104,7 +100,7 @@ export async function lookupAccountByUsername(executor: DbOrTx, username: string
         .executeTakeFirst()) ?? null
     );
   }
-  if (isUsername(username)) {
+  if (usernameError(username) === "") {
     return (await executor.selectFrom("user_account as a").select(cols).where("a.username", "=", username).executeTakeFirst()) ?? null;
   }
   return null;

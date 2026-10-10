@@ -7,6 +7,7 @@ import { fieldKey, type DynamicFieldKind, type DynamicFieldView, type DynamicFor
 import type { ConfigNamespace } from "../../config/config";
 import { table, type DbOrTx } from "../../db";
 import { safeHtml } from "../../format/sanitize";
+import { str, type PhpVal } from "../../php/values";
 import { isEditableTo, isRequiredFor, isVisibleTo, plainLabel, type FieldDef, type FormAudience } from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
 import type { Agent } from "../staff/staff";
@@ -40,8 +41,6 @@ function kindOf(type: string): DynamicFieldKind {
   }
 }
 
-const str = (v: unknown) => (v === undefined || v === null || v === false ? "" : String(v));
-
 /** Campo → descrizione per il client (solo i campi visibili e modificabili da chi compila) */
 export function fieldView(f: FieldDef, audience: FormAudience): DynamicFieldView | null {
   if (f.disabled) return null;
@@ -63,16 +62,16 @@ export function fieldView(f: FieldDef, audience: FormAudience): DynamicFieldView
     choices,
     multiple: !!c.multiselect,
     config: {
-      placeholder: str(c.placeholder) || undefined,
+      placeholder: str(c.placeholder as PhpVal) || undefined,
       maxLength: Number(c.length) > 0 ? Number(c.length) : undefined,
       rows: Number(c.rows) > 0 ? Number(c.rows) : undefined,
       html: kind === "thread" || kind === "memo" ? !!c.html : undefined,
       time: kind === "datetime" ? !!c.time : undefined,
       ext: kind === "phone" ? c.ext !== false : undefined,
-      desc: kind === "bool" ? plainLabel(str(c.desc)) || undefined : undefined,
-      content: kind === "info" ? safeHtml(str(c.content)) : undefined,
-      prompt: str(c.prompt) || undefined,
-      defaultValue: str(c.default) || undefined,
+      desc: kind === "bool" ? plainLabel(str(c.desc as PhpVal)) || undefined : undefined,
+      content: kind === "info" ? safeHtml(str(c.content as PhpVal)) : undefined,
+      prompt: str(c.prompt as PhpVal) || undefined,
+      defaultValue: str(c.default as PhpVal) || undefined,
       attachments: kind === "thread" ? !!c.attachments : undefined,
     },
   };

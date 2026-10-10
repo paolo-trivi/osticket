@@ -4,11 +4,13 @@ import { sql, type SqlBool } from "kysely";
 
 import type { ConfigNamespace } from "../../config/config";
 import { db, table, type DbOrTx } from "../../db";
+import { phpLooseEquals } from "../../php/values";
 import { buildMatch } from "../queue/search";
+import { upsertCdata } from "../forms/cdata";
 import { cleanFromDb, fieldSearchKeys, fieldToDatabase, fieldToString, hasData, isEditableTo, isPresentationOnly, isRequiredFor, isStorable, isVisibleTo, parseField, validateField, type CleanValue, type FieldDef, type FieldErrorCode } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { logTicketEvent, type Actor } from "../ticket/events";
-import { phpLooseEquals, TicketRecord } from "../ticket/record";
+import { TicketRecord } from "../ticket/record";
 import { ticketIsReopenable, loadStatus } from "../ticket/status";
 import { loadThreadEntries, loadThreadEvents, type ThreadEntryView, type ThreadEventView } from "../ticket/ticket";
 import { mergeTypeOf, TicketFlag } from "../ticket/merge-flags";
@@ -361,13 +363,7 @@ export async function editTicketAsClient(tx: DbOrTx, cfg: ConfigNamespace, actor
       const set: Record<string, unknown> = { value: n.value };
       if (idType) set.value_id = n.valueId;
       await tx.updateTable("form_entry_values").set(set as never).where("entry_id", "=", form.entryId).where("field_id", "=", f.id).execute();
-      const col = f.name || `field_${f.id}`;
-      const cols = await sql<{ Field: string }>`SHOW COLUMNS FROM ${table("ticket__cdata")}`.execute(tx).catch(() => null);
-      if (cols?.rows.some((r) => r.Field === col)) {
-        const keys = fieldSearchKeys(f, parsed.get(f.id) ?? null);
-        await sql`INSERT INTO ${table("ticket__cdata")} SET ${sql.ref(col)} = ${keys}, ticket_id = ${ticketId}
-          ON DUPLICATE KEY UPDATE ${sql.ref(col)} = ${keys}`.execute(tx);
-      }
+      await upsertCdata(tx, "T", ticketId, f, fieldSearchKeys(f, parsed.get(f.id) ?? null));
     }
   }
   const n = Object.keys(changes).length;

@@ -6,6 +6,7 @@ import { buildTicketVars, companyVar, entryVar, loadStaffInfo, staffVar } from "
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { adminAlertMail, logWithAdminAlert } from "../../system/admin-alert";
 import { entryAttachmentsForMail } from "../file/upload";
+import { parseAddressList } from "../forms/validator";
 import { deptAlertEmail, deptAlertMembers, DeptAlerts, deptMsgTemplate, replaceAlertVars, sendAdminAlert, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
 import type { WriteContext } from "./context";
 
@@ -271,30 +272,6 @@ export async function onOpenLimit(
   ctx.after.push(async () => void (await sendMail(mail)));
 }
 
-/** Mail_Parse::parseAddressList semplificato: indirizzi separati da virgole, "Nome" <box@host> o box@host */
-function parseAddressList(list: string): { personal: string; mailbox: string; host: string }[] | null {
-  const out: { personal: string; mailbox: string; host: string }[] = [];
-  const parts: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (const ch of list) {
-    if (ch === '"') quoted = !quoted;
-    if (ch === "," && !quoted) {
-      parts.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  parts.push(cur);
-  for (const raw of parts) {
-    const p = raw.trim();
-    if (!p) continue;
-    const m = /^(.*?)\s*<([^<>@\s]+)@([^<>\s]+)>$/.exec(p) ?? /^()([^<>@\s]+)@([^<>\s]+)$/.exec(p);
-    if (!m) return null;
-    out.push({ personal: m[1].trim(), mailbox: m[2], host: m[3] });
-  }
-  return out;
-}
-
 /**
  * FA_SendEmail::apply (azione di filtro "Send an Email", eseguita dopo la creazione): oggetto e
  * messaggio con le variabili del ticket, destinatari con `%{user}` = "nome" <email> del richiedente,
@@ -321,10 +298,13 @@ export async function sendFilterEmail(
   const from = await loadSystemEmail(Number(config.from) || 0, tx);
   const replacer = new VariableReplacer().assign({ user: `"${submitter.name}" <${submitter.email}>` });
   const to = replacer.replaceVars(String(config.recipients ?? ""));
-  const mails = parseAddressList(to);
-  if (!mails) return;
+  // Mail_Parse::parseAddressList: Mail_RFC822 senza validazione degli atomi; lista vuota → nessun invio
+  const mails = to ? parseAddressList(to, { validate: false }) : [];
+  if (!mails?.length) return;
   const { VarBag } = await import("../../mail/variables");
   for (const R of mails) {
+    // un gruppo ("Nome: a@b;") non ha mailbox: il PHP tenterebbe un invio non valido
+    if (R.group) continue;
     const personal = R.personal.replace(/^"|"$/g, "");
     const address = `${R.mailbox}@${R.host}`;
     // Differenza: il PHP passa "personal <box@host>" come stringa a Message::addTo e il nome tra

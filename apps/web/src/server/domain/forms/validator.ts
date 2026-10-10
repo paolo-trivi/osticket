@@ -33,10 +33,10 @@ export function isIp(ip: string): boolean {
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Mail_RFC822::parseAddressList (include/pear/Mail/RFC822.php) con i parametri di
- * Validator::is_email: dominio predefinito "localhost", gruppi annidati, validazione attiva.
- * Ogni condizione che nel PHP imposta $this->error rende la lista non valida: qui diventa
- * un'eccezione che interrompe l'analisi.
+ * Mail_RFC822::parseAddressList (include/pear/Mail/RFC822.php): dominio predefinito "localhost",
+ * gruppi annidati; validazione degli atomi attiva per Validator::is_email, disattivata da
+ * Mail_Parse::parseAddressList. Ogni condizione che nel PHP imposta $this->error rende la lista
+ * non valida: qui diventa un'eccezione che interrompe l'analisi.
  * ------------------------------------------------------------------------------------------- */
 
 class Rfc822Error extends Error {}
@@ -80,6 +80,7 @@ function hasUnclosedBrackets(value: string, chars: string): boolean {
   return start > end;
 }
 
+/** _validateAtom con la validazione attiva */
 function validateAtom(atom: string): boolean {
   if (!/^[\x00-\x7E]+$/.test(atom)) return false;
   if (/[\][()<>@,;:". ]/.test(atom)) return false;
@@ -94,14 +95,29 @@ function validateDliteral(dliteral: string): boolean {
   return !/(.)[\][\r\\]/.test(dliteral);
 }
 
-function validateSubdomain(subdomain: string): boolean {
-  const m = /^\[(.*)\]$/.exec(subdomain);
-  return m ? validateDliteral(m[1]) : validateAtom(subdomain);
+/** Indirizzo analizzato (stdClass di Mail_RFC822): frase, mailbox e host; `group` per un gruppo "Nome: …;". */
+interface ParsedAddress {
+  personal: string;
+  mailbox: string;
+  host: string;
+  group?: boolean;
 }
 
 class Rfc822Parser {
   /** $this->index: ultima parte consumata da _splitCheck */
   private index = 0;
+
+  /** $this->validate: senza validazione _validateAtom accetta qualunque atomo */
+  constructor(private readonly validate = true) {}
+
+  private validateAtom(atom: string): boolean {
+    return !this.validate || validateAtom(atom);
+  }
+
+  private validateSubdomain(subdomain: string): boolean {
+    const m = /^\[(.*)\]$/.exec(subdomain);
+    return m ? validateDliteral(m[1]) : this.validateAtom(subdomain);
+  }
 
   /** _splitCheck: riunisce le parti finché virgolette e parentesi non sono chiuse. */
   private splitCheck(parts: string[], char: string): string {
@@ -161,13 +177,13 @@ class Rfc822Parser {
     for (const part of this.splitAll(parts, " ")) {
       if (part.startsWith('"')) {
         if (!validateQuotedString(part)) return false;
-      } else if (!validateAtom(part)) return false;
+      } else if (!this.validateAtom(part)) return false;
     }
     return true;
   }
 
   private validateDomain(domain: string): boolean {
-    for (const sub of this.splitAll(domain.split("."), ".")) if (!validateSubdomain(phpTrim(sub))) return false;
+    for (const sub of this.splitAll(domain.split("."), ".")) if (!this.validateSubdomain(phpTrim(sub))) return false;
     return true;
   }
 
@@ -204,7 +220,7 @@ class Rfc822Parser {
   }
 
   /** validateMailbox: commenti tolti, poi "frase <route-addr>" oppure addr-spec. */
-  validateMailbox(input: string): { mailbox: string; host: string } | null {
+  validateMailbox(input: string): ParsedAddress | null {
     let mailbox = input;
     const comments: string[] = [];
     let rest = mailbox;
@@ -222,11 +238,51 @@ class Rfc822Parser {
     if (mailbox.endsWith(">") && !mailbox.startsWith("<")) {
       const name = this.splitCheck(mailbox.split("<"), "<");
       const routeAddr = phpTrim(mailbox.slice(name.length + 1, -1));
-      if (!this.validatePhrase(phpTrim(name))) return null;
-      return this.validateRouteAddr(routeAddr);
+      const personal = phpTrim(name);
+      if (!this.validatePhrase(personal)) return null;
+      const r = this.validateRouteAddr(routeAddr);
+      return r && { personal, ...r };
     }
     const addrSpec = mailbox.startsWith("<") && mailbox.endsWith(">") ? mailbox.slice(1, -1) : mailbox;
-    return this.validateAddrSpec(addrSpec);
+    const r = this.validateAddrSpec(addrSpec);
+    return r && { personal: "", ...r };
+  }
+
+  /** _validateAddress: un indirizzo o un gruppo (nome valido, indirizzi separati da virgole). */
+  validateAddress(item: { address: string; group: boolean }): ParsedAddress {
+    let address = item.address;
+    const addresses: string[] = [];
+    if (item.group) {
+      const groupname = this.splitCheck(address.split(":"), ":");
+      if (!this.validatePhrase(groupname)) throw new Rfc822Error();
+      address = address.slice(groupname.length + 1).replace(/^[ \t\n\r\0\x0B]+/, "");
+      while (address.length > 0) {
+        addresses.push(this.splitCheck(address.split(","), ","));
+        address = phpTrim(address.slice(addresses[addresses.length - 1].length + 1));
+      }
+    } else addresses.push(address);
+    const parsed = addresses.map((a) => this.validateMailbox(a));
+    if (parsed.some((m) => !m)) throw new Rfc822Error();
+    return item.group ? { personal: "", mailbox: "", host: "", group: true } : parsed[0]!;
+  }
+}
+
+/**
+ * Mail_RFC822::parseAddressList($address, 'localhost', true, $validate): elenco degli indirizzi o null
+ * se la lista non è valida. Con `validate: false` (Mail_Parse::parseAddressList, azione di filtro
+ * "Send an Email") gli atomi non sono controllati. Mail_Parse decodifica inoltre frase e mailbox
+ * MIME (=?…?=): non replicato.
+ */
+export function parseAddressList(list: string, opts: { validate?: boolean } = {}): ParsedAddress[] | null {
+  const unfolded = String(list ?? "")
+    .replace(/\r?\n/g, "\r\n")
+    .replace(/\r\n(\t| )+/g, " ");
+  try {
+    const parser = new Rfc822Parser(opts.validate ?? true);
+    return parser.splitAddresses(unfolded).map((a) => parser.validateAddress(a));
+  } catch (e) {
+    if (e instanceof Rfc822Error) return null;
+    throw e;
   }
 }
 

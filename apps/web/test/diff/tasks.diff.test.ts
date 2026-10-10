@@ -69,6 +69,22 @@ describe("task: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("campi aggiuntivi del form del task: data nel fuso dell'agente, testo numerico", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (70, 5, 13057, 'datetime', 'Intervento', 'intervento', '{"time":true}', 3, '', NOW(), NOW()),
+        (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
+      "ALTER TABLE {p}task__cdata ADD COLUMN intervento mediumtext",
+    );
+    const fields = { intervento: "2026-11-03 14:30", stanza: "12" };
+    const args = { agent: 2, title: "Con campi", description: "<p>desc</p>", deptId: 1, duedate: "", fields };
+    const php = await runPhp<{ ok: boolean; id: number; number: string }>({ op: "task.create", args });
+    const ts = await asAgent(2, (ctx) => createTask(ctx, { title: args.title, description: args.description, deptId: 1, fields }));
+    expect(php.ok).toBe(true);
+    expect(ts).toEqual({ ok: true, id: php.id, number: php.number });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("creazione autonoma con team e scadenza", async () => {
     const args = { agent: 2, title: "Standalone", description: "<p>desc</p>", deptId: 3, assignee: "t1", duedate: "2027-02-01T08:15:00Z" };
     await runPhp({ op: "task.create", args });

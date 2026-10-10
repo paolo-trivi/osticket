@@ -6,7 +6,7 @@ import { randCode } from "../../mail/message-id";
 import { sanitizeText } from "../../format/text";
 import { GlobalPerm } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
-import { phpLooseEquals } from "../ticket/record";
+import { phpLooseEquals } from "../../php/values";
 import { baseUrl, defaultEmail, loadContentPage, sendContentMail, userTemplateVar } from "./content-mail";
 import { isEmail } from "../forms/validator";
 import { deleteUser, loadUserCore, setUserOrganization, type DirError, type DirResult } from "./users";

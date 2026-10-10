@@ -7,7 +7,7 @@ import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { alertOrDefaultEmail } from "../directory/content-mail";
 import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
-import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, replaceAlertVars, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { TicketRecord } from "./record";
@@ -120,22 +120,15 @@ export async function onActivity(
   if (!tv) return;
   const poster = await loadStaffInfo(tx, entryRow.staff_id);
   const entry = entryVar(entryRow, cfg, ctx.dbZone, poster ? staffVar(poster, cfg) : null);
-  const company = await companyVar(tx);
-  const base: Record<string, unknown> = {
-    ticket: tv.ticket,
-    note: entry,
-    activity: vars.activity,
-    comments: entry,
-    url: cfg.str("helpdesk_url").replace(/\/+$/, ""),
-    company,
-  };
-
-  // Sostituzione unica (variabili + recipient) sul modello: il PHP sostituisce prima le variabili
-  // dell'attività e poi il destinatario (differenza solo se il testo della nota contiene variabili)
+  // Ticket::replaceVars aggiunge sempre ticket, url e company (osTicket::replaceTemplateVariables)
+  const common: Record<string, unknown> = { ticket: tv.ticket, url: cfg.str("helpdesk_url").replace(/\/+$/, ""), company: await companyVar(tx) };
+  // Doppia sostituzione come il PHP: prima le variabili dell'attività, poi il destinatario sul
+  // messaggio risultante (anche le variabili scritte nel testo della nota vengono risolte)
+  const msg = replaceAlertVars(tpl, { ...common, note: entry, activity: vars.activity, comments: entry });
   await sendStaffAlerts(ctx, {
     email,
-    msg: tpl,
-    vars: base,
+    msg,
+    vars: common,
     recipients,
     skip: async (staff) => {
       if (staff.id === posterStaff) return true;

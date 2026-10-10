@@ -56,7 +56,14 @@
       "no_signature": "You don't have a signature",
       "already_member": "The user already belongs to the organization",
       "due_past": "The due date must be in the future",
-      "invalid_date": "Invalid date"
+      "invalid_date": "Invalid date",
+      "ip": "Invalid IP address",
+      "number": "Enter a number",
+      "regex": "Invalid value",
+      "formula": "Content cannot start with = - + @",
+      "phone_ext": "Invalid extension",
+      "phone_ext_missing": "Extension without a phone number",
+      "files_max": "Too many files"
     }
   },
   "peopleTasks": {
