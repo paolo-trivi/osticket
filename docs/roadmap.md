@@ -16,9 +16,6 @@ Lo stato dettagliato per milestone è in [apps/web/RESTART.md](../apps/web/RESTA
 - [x] **Board Kanban, statistiche, knowledge base** e profili con permessi effettivi.
 - [x] **Qualità del codice**: refactoring YAGNI/SSOT/SRP, knip in CI, audit di sicurezza e collaudo E2E prima della release.
 - [x] **Fork strutturato**: `legacy/` e `apps/web/`, brand TailTicket, documentazione, deploy Docker in un comando.
-
-## Fatto dopo la v1.0 (non ancora rilasciato)
-
 - [x] **Collegamento a un osTicket in produzione** (modalità attach): sola lettura all'avvio, gate unico delle scritture, doctor, tre modalità di scrittura, prova generale, backup, registro delle scritture, interruttore d'emergenza.
 - [x] **Annulla modifica** per ogni salvataggio dell'area admin (interfaccia, pagina *Modifiche recenti*, `./tailticket undo`).
 - [x] **osTicket 1.17** supportato in lettura e scrittura (harness differenziale completo su 1.17.8); versioni precedenti riconosciute dal doctor, in sola lettura.
