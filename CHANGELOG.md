@@ -45,6 +45,12 @@ Prima release stabile di TailTicket: nuova interfaccia per osTicket 1.18.4 sullo
 - Logout con revoca della sessione e durata massima di 12 ore; cambio password obbligatorio imposto su ogni pagina; redirect dopo il login solo verso percorsi interni; `APP_SESSION_SECRET` di esempio o debole rifiutato all'avvio.
 - Filtro CSS delle voci del thread a prova di maiuscole, spazi, commenti ed escape (overlay); permessi più stretti del PHP su trasferimento di massa dei task, riapertura di massa, help topic privati e scadenza dei token di reset (annotati nel doc 17 §3).
 - Limiti al corpo delle richieste di upload, stato in memoria con scadenza e tetto, deploy con immagini a versione fissa.
+- Stato di sicurezza in memoria condiviso tra i bundle del server (revoca della sessione valida anche sulle route `/api`); titoli delle pagine senza dati per chi non ha accesso; id non validi → 404.
+
+### Accessibilità e interfaccia
+- Pagine di errore localizzate; errori delle server action gestiti con messaggio e "Riprova" senza perdere i moduli.
+- Menu a tendina dentro lo schermo su mobile e navigabili da tastiera (Esc, frecce, ruoli ARIA); modali con focus trap.
+- Selettore di lingua anche nel portale; il cambio lingua conserva l'URL; schede della lista ticket più leggibili su mobile.
 
 ## [0.1.0] — 2026-10-09
 

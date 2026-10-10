@@ -50,7 +50,7 @@ Come facciamo a fidarci? Ogni operazione di scrittura (risposta, assegnazione, c
 1. la stessa operazione viene eseguita dal codice PHP originale e da TailTicket, su due copie del DB;
 2. si confrontano **tutte le tabelle e le email** generate.
 
-Oggi i test sono **308 scenari**, tutti identici. Dettagli in [docs/compatibility.md](docs/compatibility.md).
+Oggi i test sono **351 scenari**, tutti identici. Dettagli in [docs/compatibility.md](docs/compatibility.md).
 
 ## Cosa c'è dentro
 

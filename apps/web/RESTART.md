@@ -63,7 +63,7 @@ Avvertenze pratiche:
 
 ```bash
 npm run lint && npm run typecheck && npm test        # lint, tipi, unit
-npm run test:diff                                    # 33 file, 308 scenari differenziali PHP vs TypeScript
+npm run test:diff                                    # 33 file, 351 scenari differenziali PHP vs TypeScript
 npx next build
 ```
 

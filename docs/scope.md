@@ -13,7 +13,7 @@ TailTicket è **una nuova interfaccia completa per osTicket 1.18** (pannello age
 | Pannello agenti | code, ricerca, vista ticket, risposta/nota con allegati, assegna/claim/rilascio/trasferimento/referral, stati, modifica, collaboratori, merge/link, eliminazione, azioni di massa, export CSV, nuovo ticket, task, utenti e organizzazioni, KB e risposte predefinite, profilo, 2FA email | ✅ |
 | Area amministrazione | impostazioni (azienda, sistema, ticket, task, agenti, utenti, KB, email), reparti, help topic, SLA, orari, agenti, team, ruoli; account email, template, ban list, diagnostica, filtri, form, liste, pagine, code (attivazione), chiavi API, log, plugin (attivazione), tema e brand | ✅ |
 | Portale clienti | home e pagine di contenuto, KB pubblica, login/registrazione/reset, accesso ospite e link con token, i miei ticket, risposta, modifica dei campi, apertura ticket con allegati, profilo | ✅ |
-| Compatibilità DB | stesse righe ed email del PHP, verificate da 308 scenari differenziali; sola lettura su schemi non verificati | ✅ |
+| Compatibilità DB | stesse righe ed email del PHP, verificate da 351 scenari differenziali; sola lettura su schemi non verificati | ✅ |
 | Deploy | Docker Compose con TailTicket, osTicket classico, cron, MariaDB, reverse proxy HTTPS; modalità "collega un osTicket esistente"; backup e aggiornamenti | ✅ |
 | Brand e UX | tema configurabile, chiaro/scuro, responsive, italiano e inglese | ✅ |
 

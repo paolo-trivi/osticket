@@ -24,7 +24,7 @@ L'harness differenziale (`apps/web/test/diff/`) funziona così:
 3. confronta **tutte le tabelle**, con i datetime recenti normalizzati;
 4. confronta **le email** ricevute da un Mailpit.
 
-Lo scenario passa solo se il DB e le email sono identici. Oggi sono **308 scenari** su 33 file, e girano in CI a ogni push:
+Lo scenario passa solo se il DB e le email sono identici. Oggi sono **351 scenari** su 33 file, e girano in CI a ogni push:
 - azioni sul ticket, modifica, creazione;
 - task, utenti, organizzazioni, profilo;
 - portale clienti;
