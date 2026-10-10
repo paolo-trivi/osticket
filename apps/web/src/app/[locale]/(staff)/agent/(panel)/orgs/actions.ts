@@ -5,25 +5,20 @@ import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
 import type { PeopleActionState } from "@/components/people/types";
+import { formFlag, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
+import { nonce, peopleState } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { db } from "@/server/db";
-import { defaultFormOf } from "@/server/domain/directory/forms";
+import { defaultFormOf } from "@/server/domain/forms/answers";
 import { addOrgUser, createOrg, deleteOrg, massDeleteOrgs, removeOrgUsers, updateOrg, updateOrgProfile } from "@/server/domain/directory/orgs";
 import { formSource } from "@/server/domain/directory/ui";
-import { importUsers, type DirResult } from "@/server/domain/directory/users";
+import { importUsers } from "@/server/domain/directory/users";
 import { GlobalPerm, type Agent } from "@/server/domain/staff/staff";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { runWrite } from "@/server/domain/write";
 
 /** Server action delle organizzazioni (scp/orgs.php, include/ajax.orgs.php). */
-
-const nonce = () => Date.now();
-
-function state(r: DirResult, redirect?: string): PeopleActionState {
-  if (r.ok) return { ok: true, redirect, nonce: nonce() };
-  return { error: r.error, fields: r.fields, nonce: nonce() };
-}
 
 async function run(fn: (ctx: WriteContext, agent: Agent) => Promise<PeopleActionState>, paths: string[] = []): Promise<PeopleActionState> {
   const agent = await currentAgent();
@@ -38,14 +33,14 @@ async function fieldsOf(form: FormData, type: "U" | "O") {
   return formSource(form, f?.fields ?? []);
 }
 
-const orgId = (form: FormData) => Number(form.get("orgId") ?? 0);
+const orgId = (form: FormData) => formNum(form, "orgId");
 
 /** ajax.orgs.php:addOrg */
 export async function orgCreateAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const input = await fieldsOf(form, "O");
   return run(async (ctx) => {
     const r = await createOrg(ctx, input);
-    return r.ok ? { ok: true, redirect: `/agent/orgs/${r.id}`, nonce: nonce() } : state(r);
+    return r.ok ? { ok: true, redirect: `/agent/orgs/${r.id}`, nonce: nonce() } : peopleState(r);
   });
 }
 
@@ -53,25 +48,24 @@ export async function orgCreateAction(_prev: PeopleActionState, form: FormData):
 export async function orgUpdateAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
   const input = await fieldsOf(form, "O");
-  return run(async (ctx) => state(await updateOrg(ctx, id, input)), [`/agent/orgs/${id}`]);
+  return run(async (ctx) => peopleState(await updateOrg(ctx, id, input)), [`/agent/orgs/${id}`]);
 }
 
 /** ajax.orgs.php:updateOrg/profile: dominio, account manager, collaboratori automatici, condivisione, contatti */
 export async function orgProfileAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
-  const input = { name: String(form.get("name") ?? "") };
-  const flag = (k: string) => form.get(k) === "1";
+  const input = { name: formStr(form, "name") };
   return run(
     async (ctx) =>
-      state(
+      peopleState(
         await updateOrgProfile(ctx, id, input, {
-          domain: String(form.get("domain") ?? ""),
-          manager: String(form.get("manager") ?? ""),
-          "collab-all-flag": flag("collab-all-flag"),
-          "collab-pc-flag": flag("collab-pc-flag"),
-          "assign-am-flag": flag("assign-am-flag"),
-          sharing: String(form.get("sharing") ?? ""),
-          contacts: form.getAll("contacts").map((v) => String(v)),
+          domain: formStr(form, "domain"),
+          manager: formStr(form, "manager"),
+          "collab-all-flag": formFlag(form, "collab-all-flag"),
+          "collab-pc-flag": formFlag(form, "collab-pc-flag"),
+          "assign-am-flag": formFlag(form, "assign-am-flag"),
+          sharing: formStr(form, "sharing"),
+          contacts: formStrs(form, "contacts"),
         }),
       ),
     [`/agent/orgs/${id}`],
@@ -81,14 +75,14 @@ export async function orgProfileAction(_prev: PeopleActionState, form: FormData)
 /** ajax.orgs.php:delete */
 export async function orgDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
-  const r = await run(async (ctx) => state(await deleteOrg(ctx, id)));
+  const r = await run(async (ctx) => peopleState(await deleteOrg(ctx, id)));
   if (r.ok) redirect({ href: "/agent/orgs", locale: await getLocale() });
   return r;
 }
 
 /** scp/orgs.php a=mass_process do=delete */
 export async function orgMassDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const ids = form.getAll("ids").map((v) => Number(v)).filter((n) => n > 0);
+  const ids = formIds(form, "ids");
   if (!ids.length) return { error: "none_selected", nonce: nonce() };
   return run(async (ctx, agent) => {
     if (!agent.hasGlobalPerm(GlobalPerm.ORG_DELETE)) return { error: "forbidden", nonce: nonce() };
@@ -100,15 +94,15 @@ export async function orgMassDeleteAction(_prev: PeopleActionState, form: FormDa
 /** ajax.orgs.php:addUser: utente esistente (id) o nuovo utente dal form */
 export async function orgAddUserAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
-  const userId = Number(form.get("userId") ?? 0);
+  const userId = formNum(form, "userId");
   const fields = userId ? undefined : await fieldsOf(form, "U");
-  return run(async (ctx) => state(await addOrgUser(ctx, id, { userId: userId || undefined, fields })), [`/agent/orgs/${id}`]);
+  return run(async (ctx) => peopleState(await addOrgUser(ctx, id, { userId: userId || undefined, fields })), [`/agent/orgs/${id}`]);
 }
 
 /** scp/orgs.php a=remove-users */
 export async function orgRemoveUsersAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
-  const ids = form.getAll("ids").map((v) => Number(v)).filter((n) => n > 0);
+  const ids = formIds(form, "ids");
   if (!ids.length) return { error: "none_selected", nonce: nonce() };
   return run(async (ctx) => {
     const r = await removeOrgUsers(ctx, id, ids);
@@ -122,7 +116,7 @@ export async function orgRemoveUsersAction(_prev: PeopleActionState, form: FormD
  */
 export async function orgImportAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
-  let pasted = String(form.get("pasted") ?? "");
+  let pasted = formStr(form, "pasted");
   const file = form.get("import");
   const isFile = !!file && typeof file === "object" && (file as File).size > 0;
   if (isFile) pasted = (await (file as File).text()).replace(/^﻿/, "");

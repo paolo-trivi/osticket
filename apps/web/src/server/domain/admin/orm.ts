@@ -2,7 +2,7 @@ import "server-only";
 
 import type { DB } from "../../db/schema.gen";
 import { NOW, type DbOrTx } from "../../db";
-import { phpLooseEquals } from "../ticket/record";
+import { phpLooseEquals } from "../../php/values";
 
 /**
  * Riga di un modello VerySimpleModel (include/class.orm.php) con la stessa semantica di scrittura:

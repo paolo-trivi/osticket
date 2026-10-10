@@ -2,15 +2,17 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { DynamicForm, DynamicFormField, DynamicList, DynamicListItem } from "@/lib/osticket/flags";
+import { AttachmentType } from "@/lib/osticket/object-types";
+
+import { loadConfigNamespace, type ConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
-import { stripTags } from "../../format/html";
 import { phpJsonEncode, phpJsonDecode } from "../../format/php-json";
-import { stripEmoticons } from "../../format/text";
+import { htmlcharsVars, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
-import { formatHtmlchars, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { fieldConfig, isRequiredFor, parseFieldValue, validateField, type CleanValue, type FieldDef } from "../forms/fields";
 import { sanitizeHtml } from "./sanitize";
 
 /**
@@ -29,24 +31,10 @@ import { sanitizeHtml } from "./sanitize";
  * valore in modifica è verificata sul valore attuale (non su quello nuovo); "eliminare" un elemento
  * azzera solo list_id; addItem con un valore già presente (anche disattivato) riusa quell'elemento.
  */
-export const ListMask = { EDIT: 0x0001, ADD: 0x0002, DELETE: 0x0004, ABBREV: 0x0008 } as const;
-export const ItemStatus = { ENABLED: 0x0001, INTERNAL: 0x0002 } as const;
+
 export const SORT_MODES = ["Alpha", "-Alpha", "SortCol"] as const;
 const LIST_FIELDS = ["name", "name_plural", "sort_mode", "notes"] as const;
-const PROPERTY_FLAGS = 0x00001 | 0x01000 | 0x02000;
-
-/** Format::htmlchars($vars, $sanitize) ricorsivo. */
-export function htmlcharsVars(vars: PhpVars, sanitize: boolean): PhpVars {
-  const conv = (v: PhpVal): PhpVal => {
-    if (v === undefined || v === null) return v;
-    if (Array.isArray(v)) return v.map(conv);
-    if (typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, conv(x)]));
-    return formatHtmlchars(sanitize ? sanitizeHtml(str(v)) : str(v));
-  };
-  const out: PhpVars = {};
-  for (const [k, v] of Object.entries(vars)) out[k] = conv(v);
-  return out;
-}
+const PROPERTY_FLAGS = DynamicFormField.ENABLED | DynamicFormField.AGENT_VIEW | DynamicFormField.AGENT_EDIT;
 
 async function loadList(executor: DbOrTx, id: number) {
   return (await executor.selectFrom("list").selectAll().where("id", "=", id).executeTakeFirst()) ?? null;
@@ -95,7 +83,7 @@ export function fieldTemplateErrors(field: OrmRow, extra: string[] = []): string
   if (!truthy(field.get("label") as PhpVal)) errors.push("label_required");
   const flags = field.num("flags");
   const name = str(field.get("name") as PhpVal);
-  if (flags & (0x04000 | 0x00400) && !name) errors.push("name_required");
+  if (flags & (DynamicFormField.AGENT_REQUIRED | DynamicFormField.CLIENT_REQUIRED) && !name) errors.push("name_required");
   // [[:alnum:]] con /u ma senza UCP: solo ASCII
   if (name && !/^(?!\d)[A-Za-z0-9_]+$/.test(name)) errors.push("name_invalid");
   return errors;
@@ -132,7 +120,7 @@ export async function updateList(executor: DbOrTx, listId: number, post: PhpVars
   const vars = htmlcharsVars(info, false);
   const errors: Errors = {};
   const list = OrmRow.from("list", "id", row as unknown as Record<string, unknown>, { touchUpdated: true });
-  const editable = !(row.masks & ListMask.EDIT);
+  const editable = !(row.masks & DynamicList.MASK_EDIT);
   for (const f of LIST_FIELDS) {
     if (f === "name" && editable && !truthy(vars[f])) errors[f] = "required";
     else if (isset(vars, f) && !phpLooseEquals(vars[f], list.get(f) as PhpVal)) list.set(f, str(vars[f]));
@@ -163,12 +151,12 @@ export async function updateList(executor: DbOrTx, listId: number, post: PhpVars
       const id = fr.id;
       const field = OrmRow.from("form_field", "id", fr as unknown as Record<string, unknown>, { touchUpdated: true });
       const flags = fr.flags ?? 0;
-      if (info[`delete-prop-${id}`] === "on" && !(flags & 0x00020)) {
+      if (info[`delete-prop-${id}`] === "on" && !(flags & DynamicFormField.MASK_DELETE)) {
         await deleteField(executor, fr);
         continue;
       }
-      if (isset(info, `type-${id}`) && !(flags & 0x00010)) field.set("type", str(info[`type-${id}`]));
-      if (isset(info, `name-${id}`) && !(flags & 0x40000)) field.set("name", str(info[`name-${id}`]));
+      if (isset(info, `type-${id}`) && !(flags & DynamicFormField.MASK_CHANGE)) field.set("type", str(info[`type-${id}`]));
+      if (isset(info, `name-${id}`) && !(flags & DynamicFormField.MASK_NAME)) field.set("name", str(info[`name-${id}`]));
       for (const f of ["sort", "label"]) if (isset(info, `prop-${f}-${id}`)) field.set(f, str(info[`prop-${f}-${id}`]));
       const extra: string[] = [];
       const name = str(field.get("name") as PhpVal);
@@ -190,8 +178,8 @@ export async function deleteField(executor: DbOrTx, fr: { id: number; type: stri
   const answers = await executor.selectFrom("form_entry_values").select("entry_id").where("field_id", "=", fr.id).executeTakeFirst();
   // db_cleanup: il campo "info" elimina i propri allegati inline (tipo I)
   if (fr.type === "info") {
-    const files = await executor.selectFrom("attachment").select("id").where("object_id", "=", fr.id).where("type", "=", "I").execute();
-    if (files.length) await executor.deleteFrom("attachment").where("object_id", "=", fr.id).where("type", "=", "I").execute();
+    const files = await executor.selectFrom("attachment").select("id").where("object_id", "=", fr.id).where("type", "=", AttachmentType.FORM_INFO).execute();
+    if (files.length) await executor.deleteFrom("attachment").where("object_id", "=", fr.id).where("type", "=", AttachmentType.FORM_INFO).execute();
   }
   const hasData = !["break", "info"].includes(fr.type);
   if (hasData && answers) {
@@ -201,22 +189,21 @@ export async function deleteField(executor: DbOrTx, fr: { id: number; type: stri
   await executor.deleteFrom("form_field").where("id", "=", fr.id).execute();
 }
 
-
 /** scp/lists.php do=mass_process a=delete */
 export async function deleteLists(executor: DbOrTx, ids: number[]): Promise<MassResult> {
   if (!ids.length) return { ok: false, num: 0, error: "select_one" };
   let i = 0;
   for (const id of ids) {
     const list = await loadList(executor, id);
-    if (!list || list.masks & ListMask.DELETE) continue;
+    if (!list || list.masks & DynamicList.MASK_DELETE) continue;
     const used = await executor.selectFrom("form_field").select("id").where("type", "=", `list-${id}`).executeTakeFirst();
     if (used) continue;
     await executor.deleteFrom("list").where("id", "=", id).execute();
     const form = await executor.selectFrom("form").selectAll().where("type", "=", `L${id}`).executeTakeFirst();
     if (form) {
-      if (form.flags & 0x0001) {
+      if (form.flags & DynamicForm.DELETABLE) {
         const f = OrmRow.from("form", "id", form as unknown as Record<string, unknown>, { touchUpdated: true });
-        f.set("flags", form.flags | 0x0002);
+        f.set("flags", form.flags | DynamicForm.DELETED);
         await f.save(executor);
       }
       await executor.deleteFrom("form_field").where("form_id", "=", form.id).execute();
@@ -247,38 +234,46 @@ async function propertyFields(executor: DbOrTx, listId: number): Promise<PropFie
     .execute()) as PropField[];
 }
 
-/** Validatore dei TextboxField (formula se non configurato). */
-function textboxErrors(value: string, required: boolean, validator: string): string[] {
-  const out: string[] = [];
-  const v = value === "0" ? "&#48" : str(formatHtmlchars(value));
-  if (required && !truthy(v)) out.push("required");
-  if (!truthy(v)) return out;
-  const valid = validator || "formula";
-  if (valid === "formula" && !/(^[^=+@-].*$)|(^\+\d+$)/s.test(v)) out.push("formula");
-  if (valid === "email" && !isEmail(v)) out.push("email");
-  if (valid === "number" && !isNumeric(v === "&#48" ? 0 : v)) out.push("number");
-  return out;
+/** Campo da un modello form_field (configurazione con i default del tipo, come FormField::getConfiguration). */
+function fieldDefOf(f: PropField, cfg: ConfigNamespace): FieldDef {
+  return { id: f.id, formId: 0, type: f.type, label: "", name: f.name, hint: "", flags: f.flags, sort: 0, config: fieldConfig(f.type, f.configuration, cfg) };
+}
+
+/**
+ * Valore ed errori di un campo del form degli elementi o delle proprietà con il motore dei form
+ * (FormField::parse + validateEntry): un valore assente è letto come testo vuoto.
+ */
+async function cleanAndValidate(f: FieldDef, raw: PhpVal, required: boolean, cfg: ConfigNamespace): Promise<{ clean: CleanValue; errors: string[] }> {
+  const clean = parseFieldValue(f, raw ?? "");
+  return { clean, errors: await validateField(f, clean, required, cfg) };
+}
+
+/** Campi "value" ed "extra" del form degli elementi (TextboxField senza validatore → formula). */
+async function itemTextFields(executor: DbOrTx, vars: PhpVars): Promise<{ value: string; extra: string; errors: [string, string][] }> {
+  const cfg = await loadConfigNamespace("core", executor);
+  const field = (name: string) => fieldDefOf({ id: 0, type: "text", name, flags: 0, configuration: null }, cfg);
+  const value = await cleanAndValidate(field("value"), vars.value, true, cfg);
+  const extra = await cleanAndValidate(field("extra"), vars.extra, false, cfg);
+  return {
+    value: str(value.clean as PhpVal),
+    extra: str(extra.clean as PhpVal),
+    errors: [...value.errors.map((e): [string, string] => ["value", e]), ...extra.errors.map((e): [string, string] => ["extra", e])],
+  };
 }
 
 /** DynamicListItem::setConfiguration($_POST): proprietà come {id campo: valore}. */
 async function itemProperties(executor: DbOrTx, listId: number, vars: PhpVars): Promise<{ json: string; errors: string[] } | "unsupported"> {
   const config: Record<string, PhpVal> = {};
   const errors: string[] = [];
+  const cfg = await loadConfigNamespace("core", executor);
   for (const f of await propertyFields(executor, listId)) {
     if (f.type === "break" || f.type === "info") continue;
-    const cfg = phpJsonDecode<Record<string, unknown>>(f.configuration, {});
+    if (f.type !== "text" && f.type !== "memo") return "unsupported";
+    const def = fieldDefOf(f, cfg);
     const raw = vars[f.name] !== undefined && f.name ? vars[f.name] : vars[String(f.id)];
-    const required = !!(f.flags & 0x04000);
-    if (f.type === "text") {
-      const clean = stripEmoticons(stripTags(str(raw)));
-      errors.push(...textboxErrors(clean, required, str(cfg.validator as PhpVal)));
-      config[String(f.id)] = clean;
-    } else if (f.type === "memo") {
-      const html = cfg.html === undefined ? true : !!cfg.html;
-      const clean = html ? sanitizeHtml(str(raw)) : str(raw);
-      if (required && !truthy(clean)) errors.push("required");
-      config[String(f.id)] = clean;
-    } else return "unsupported";
+    const r = await cleanAndValidate(def, raw, isRequiredFor(def, "staff"), cfg);
+    errors.push(...r.errors);
+    config[String(f.id)] = r.clean as PhpVal;
   }
   return { json: Object.keys(config).length ? phpJsonEncode(config) : "[]", errors };
 }
@@ -288,11 +283,9 @@ export async function addListItem(executor: DbOrTx, listId: number, vars: PhpVar
   const list = await loadList(executor, listId);
   if (!list) return { ok: false, errors: { err: "unknown" } };
   if (hasHandler(list)) return { ok: false, errors: { err: "system_list" } };
-  const value = stripEmoticons(stripTags(str(vars.value)));
-  const extra = stripEmoticons(stripTags(str(vars.extra)));
-  const formErrors = [...textboxErrors(value, true, "").map((e) => ["value", e]), ...textboxErrors(extra, false, "").map((e) => ["extra", e])];
+  const { value, extra, errors: formErrors } = await itemTextFields(executor, vars);
   if (formErrors.length) return { ok: false, errors: Object.fromEntries(formErrors) };
-  const dup = await executor.selectFrom("list_items").select("id").where("list_id", "=", listId).where("value", "=", value).where(sql<number>`status & ${ItemStatus.ENABLED}`, "<>", 0).executeTakeFirst();
+  const dup = await executor.selectFrom("list_items").select("id").where("list_id", "=", listId).where("value", "=", value).where(sql<number>`status & ${DynamicListItem.ENABLED}`, "<>", 0).executeTakeFirst();
   if (dup) return { ok: false, errors: { value: "value_in_use" } };
   const props = await itemProperties(executor, listId, vars);
   if (props === "unsupported") return { ok: false, errors: { err: "unsupported_property" } };
@@ -320,9 +313,7 @@ export async function updateListItem(executor: DbOrTx, listId: number, itemId: n
   if (hasHandler(list)) return { ok: false, errors: { err: "system_list" } };
   const row = await executor.selectFrom("list_items").selectAll().where("list_id", "=", listId).where("id", "=", itemId).executeTakeFirst();
   if (!row) return { ok: false, errors: { err: "unknown_item" } };
-  const value = stripEmoticons(stripTags(str(vars.value)));
-  const extra = stripEmoticons(stripTags(str(vars.extra)));
-  const formErrors = [...textboxErrors(value, true, "").map((e) => ["value", e]), ...textboxErrors(extra, false, "").map((e) => ["extra", e])];
+  const { value, extra, errors: formErrors } = await itemTextFields(executor, vars);
   if (formErrors.length) return { ok: false, errors: Object.fromEntries(formErrors) };
   // Bug PHP replicato: il controllo di unicità (sul valore attuale, non su quello nuovo) aggiunge
   // l'errore al campo dopo che Form::isValid() ha già memorizzato l'esito: non blocca mai.
@@ -354,8 +345,8 @@ export async function massListItems(executor: DbOrTx, listId: number, action: It
     const row = await executor.selectFrom("list_items").selectAll().where("list_id", "=", listId).where("id", "=", id).executeTakeFirst();
     if (!row) return { ok: num > 0, num, error: "unknown_item" };
     const item = OrmRow.from("list_items", "id", row as unknown as Record<string, unknown>);
-    if (action === "enable") item.set("status", row.status | ItemStatus.ENABLED);
-    else if (action === "disable") item.set("status", row.status & ~ItemStatus.ENABLED);
+    if (action === "enable") item.set("status", row.status | DynamicListItem.ENABLED);
+    else if (action === "disable") item.set("status", row.status & ~DynamicListItem.ENABLED);
     else item.set("list_id", null);
     item.set("value", str(item.get("value") as PhpVal).trim());
     await item.save(executor);

@@ -184,6 +184,10 @@ Destinatari:
 
 Esclusi: agenti non disponibili, l'autore, i duplicati per email e, se il ticket è chiuso, gli agenti senza accesso.
 
+Doppia sostituzione come il PHP (`staff-alerts.ts`): prima `note`/`activity`/`comments` (+ ticket, url, company), poi
+`%{recipient}` sul messaggio risultante, per cui anche le variabili scritte nel testo della nota (es. `%{ticket.number}`)
+vengono risolte (scenario in `ticket-post.diff.test.ts`). Anche `message.alert` (portale) usa lo stesso ciclo condiviso.
+
 Invio dall'email di alert (`alert_email_id`) con header `Auto-Submitted: auto-generated`.
 
 #### Email (`src/server/mail/mailer.ts`)
@@ -497,7 +501,8 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 |---|---|---|
 | Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
 | Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
-| Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `ticketThread` (thread T o C), `childTickets` |
+| Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `childTickets` |
+| Dominio | `src/server/domain/thread/ids.ts` | thread di ticket e task: `ticketThread` (thread T o C), `currentTicketThreadId`, `ticketThreadId`, `taskThreadId` |
 | Dominio | `src/server/domain/ticket/merge.ts` | `mergeTickets` (manageMerge + merge), `unlinkTicket(s)`, `relatedTickets` |
 | Dominio | `src/server/domain/ticket/collaborators.ts` | `addTicketCollaborator`, `addCollaborator`, `updateCollaborators` |
 | Dominio | `src/server/domain/ticket/overdue.ts` | `markTicketOverdue` (+ avvisi `ticket.overdue`), `setTicketEmailBan`, `emailInBanList` |
@@ -746,7 +751,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 10 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 12 (creazione, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -763,7 +768,8 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 | Livello | File | Contenuto |
 |---|---|---|
 | Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
-| Dominio | `src/server/domain/directory/forms.ts` | form dinamici U/O/A: entry, risposte, `*__cdata`, validazione, verifica DNS email |
+| Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
+| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
 | Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `importUsers`, `reindexUser` |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
 | Dominio | `src/server/domain/directory/orgs.ts` | `createOrg`, `updateOrg`, `updateOrgProfile`, `deleteOrg`, `massDeleteOrgs`, `removeOrgUsers`, `addOrgUser` |
@@ -795,7 +801,8 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` da `sequence` o casuale),
 `task__cdata`, `form_entry(_values)`, `thread` (A), `thread_entry` (M con flag ORIGINAL, N, R), `thread_event`
 (`created`, `assigned` con `claim`/`staff`(AgentsName)/`team`, `transferred`, `closed`, `reopened` con annullamento,
-`edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso), `_search`,
+`edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso tramite `Ticket::reopen` di
+`ticket/ticket-state.ts`: stato di riapertura solo se `allowreopen` e di tipo *open*, altrimenti stato predefinito), `_search`,
 `draft` (`task.%.<id>` all'eliminazione; `task.note|response.<id>` e `task.add` dell'agente dopo la pubblicazione),
 `syslog` Debug all'eliminazione. Email: `task.alert`, `task.activity.alert`, `task.assignment.alert`, `task.transfer.alert`.
 
@@ -853,6 +860,28 @@ Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` 
   azzera i contatti principali e reindicizza prima di salvare le risposte; `removeUser` non verifica l'appartenenza;
   `changePassword` con token non verifica davvero la finestra di validità (`&&` al posto di `||`); il 2FA invia il codice
   all'email principale e non a quella configurata; `default_2fa` impostato ma non configurato → login senza 2FA.
+- **Validatori comuni** (`forms/validator.ts`, un'unica implementazione per tutte le aree): `isEmail` è il port di
+  `Mail_RFC822::parseAddressList` usato da `Validator::is_email` (prima due regex diverse fra loro e dal PHP, ad es.
+  su `a@b`, `Nome <a@b.com>`, `a..b@c.com`, `a@LOCALHOST`); `isPhone` non toglie lo spazio non separabile e
+  `is_numeric` ammette solo gli spazi ASCII, come il PHP; `isIp` = `FILTER_VALIDATE_IP`. Coperti da
+  `test/unit/forms-validator.test.ts` (esiti calcolati con PHP) e dallo scenario RFC 822 di
+  `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
+  (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter.ts`, invio in
+  `ticket/create-alerts.ts`).
+- **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
+  = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
+  e proprietà delle liste (prima `forms/answers.ts parseInput` divergeva). Come il PHP: nessun trim di testo e telefono
+  (un telefono di soli spazi non è valido), interno "0" accodato senza `X`, casella = `(bool)` del valore inviato
+  (`"false"` è vero), scelta sconosciuta conservata come testo, chiave "0" ignorata, testo JSON/elenco con virgole delle
+  scelte, data convertita nel fuso dell'utente corrente (`$cfg->getTimezone()`) solo se "vera", liste per id o per
+  valore; `User::fromVars` (una sola versione, `ticket/create-user.ts`) e `Organization::fromVars` rileggono il
+  `getClean()` come sorgente (`FormInstance::cleanVars`: la selezione multipla di un campo scelte va persa come nel PHP).
+  Le risposte nuove uguali a NULL per il confronto debole (`""`) restano NULL (`saveFormEntry`); `addMissingFields` prima
+  della validazione in `User::updateInfo`/`Organization::update`; validazione lato agente con tutti i validatori
+  (`formula`, `number`, `regex`, `ip`…). Scenari: `people-directory` (data, lista, scelte, validatori), `ticket-create`
+  (risposte vuote, telefono di spazi, data "0"), `tasks` (campi aggiuntivi), `portal-auth` (campi aggiunti al form utente,
+  fuso del cliente); esiti PHP dei singoli tipi in `test/unit/forms-input.test.ts`. Non replicati: voci disattivate e
+  abbreviazioni delle liste (il PHP interroga il DB), decodifica MIME dei destinatari di Mail_Parse.
 - **Differenze**: stato 2FA e contatore dei tentativi in memoria del processo (non in `$_SESSION`); finestra del token di
   reset calcolata nel DB (il PHP interpreta l'ora del DB come UTC); traduzioni delle pagine di contenuto non gestite;
   eliminazione dei ticket di un utente (`deleteAllTickets`) non disponibile finché l'area ticketedit non espone
@@ -974,10 +1003,10 @@ I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di rese
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/admin/php.ts` | semantica PHP sui `$vars` del POST: `isset`, `truthy`, `intval`, `isNumeric`, `formatHtmlchars` (Format::htmlchars), `usernameError` |
+| Server | `src/server/php/values.ts` | fonte unica della semantica PHP 8 sui `$vars` del POST (da usare in tutto `src/server`, niente copie locali): `isset`, `isArray`, `truthy`, `str`, `isNumeric`, `intval`, `list`, `at`, `inArray`, `phpLooseEquals` (`==`), `htmlchars`/`htmlcharsVars` (Format::htmlchars con sanitize opzionale); test `test/unit/php-values.test.ts` (casi verificati con PHP 8.3) |
 | Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
 | Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
-| Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr) |
+| Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr), Validator::is_username (`usernameError`) |
 | Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
 | Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
 | Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |
@@ -1157,7 +1186,8 @@ Convenzioni comuni:
 #### Ban list — `/admin/banlist` (scp/banlist.php)
 Filtro `SYSTEM BAN LIST` (se manca: errore `no_banlist`, la creazione resta al PHP).
 - Aggiunta: `filter_rule` (filter_id, what=email, how=equal, val trim, isactive, notes sanitize,
-  created=NOW(), updated=NOW()); duplicati rifiutati.
+  created=NOW(), updated=NOW()); duplicati rifiutati. Indirizzo validato con `Validator::is_email`
+  (`forms/validator.ts`, port di `Mail_RFC822`: accetta ad es. `user@intranet` e `Nome <a@b.com>`).
 - Modifica: `FilterRule::update` (val, isactive int (default 1), notes) con `updated=NOW()` se cambia.
 - Massa: enable/disable con `UPDATE … SET isactive` (senza `updated`); delete per id del filtro.
 

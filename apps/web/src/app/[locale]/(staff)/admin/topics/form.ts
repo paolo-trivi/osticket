@@ -3,10 +3,11 @@ import "server-only";
 import { getTranslations } from "next-intl/server";
 
 import type { FormSection } from "@/lib/admin/form-schema";
+import { Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
 import { db } from "@/server/db";
 import { deptOptions, formsWithFields, pageOptions, priorityOptions, sequenceOptions, slaOptions, staffOptions, statusOptions, teamOptions, topicOptions } from "@/server/domain/admin/lookups";
 import { phpJsonDecode } from "@/server/format/php-json";
-import { TopicFlag } from "@/server/domain/admin/topic";
 
 /** Sezioni del form help topic (include/staff/helptopic.inc.php). */
 export async function topicSections(topicId: number | null): Promise<FormSection[] | null> {
@@ -15,8 +16,8 @@ export async function topicSections(topicId: number | null): Promise<FormSection
   const executor = db();
   const topic = topicId ? await executor.selectFrom("help_topic").selectAll().where("topic_id", "=", topicId).executeTakeFirst() : null;
   if (topicId && !topic) return null;
-  const flags = topic?.flags ?? TopicFlag.ACTIVE;
-  const status = flags & TopicFlag.ACTIVE ? "active" : flags & TopicFlag.ARCHIVED ? "archived" : "disabled";
+  const flags = topic?.flags ?? Topic.ACTIVE;
+  const status = flags & Topic.ACTIVE ? "active" : flags & Topic.ARCHIVED ? "archived" : "disabled";
   const [topics, depts, statuses, priorities, slas, pages, staff, teams, sequences, forms] = await Promise.all([
     topicOptions(executor),
     deptOptions(executor),
@@ -34,7 +35,7 @@ export async function topicSections(topicId: number | null): Promise<FormSection
   for (const a of attached) for (const id of phpJsonDecode<{ disable?: number[] }>(a.extra, {}).disable ?? []) disabled.add(Number(id));
   const attachedIds = attached.map((a) => String(a.form_id));
   // form della pagina nuovo topic: "Ticket Details" (tipo T) predefinito
-  const selectedForms = topicId ? attachedIds : forms.filter((f) => f.type === "T").map((f) => String(f.id));
+  const selectedForms = topicId ? attachedIds : forms.filter((f) => f.type === FormType.TICKET).map((f) => String(f.id));
   const orderedForms = [...forms].sort((a, b) => {
     const ia = selectedForms.indexOf(String(a.id));
     const ib = selectedForms.indexOf(String(b.id));
@@ -90,7 +91,7 @@ export async function topicSections(topicId: number | null): Promise<FormSection
           kind: "radio",
           name: "custom-numbers",
           label: t("numbering"),
-          value: flags & TopicFlag.CUSTOM_NUMBERS ? "1" : "0",
+          value: flags & Topic.CUSTOM_NUMBERS ? "1" : "0",
           options: [
             { value: "0", label: t("systemNumbering") },
             { value: "1", label: t("customNumbering") },

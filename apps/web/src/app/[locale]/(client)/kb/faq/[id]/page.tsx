@@ -4,6 +4,7 @@ import KbSidebar from "@/components/portal/KbSidebar";
 import { RICH_CLASS } from "@/components/portal/rich";
 import { Link, redirect } from "@/i18n/navigation";
 import { withBase } from "@/lib/base-path";
+import { inlineCidImages } from "@/lib/format/inline-images";
 import { currentClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
@@ -31,7 +32,7 @@ export default async function KbFaqPage({ params }: { params: Promise<{ locale: 
   const t = await getTranslations("portal.kb");
   const [cfg, client] = await Promise.all([coreConfig(), currentClient(), detectDbTimezone(db())]);
   const tz = client?.account?.timezone || cfg.str("default_timezone") || "UTC";
-  const answer = safeHtml(f.answer).replace(/src="cid:([A-Za-z0-9_-]+)"/g, (_, key: string) => `src="${withBase(`/api/portal/file/${key}`)}?disposition=inline"`);
+  const answer = inlineCidImages(safeHtml(f.answer), "portal");
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <article className="space-y-4 lg:col-span-2">

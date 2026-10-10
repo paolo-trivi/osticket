@@ -5,8 +5,10 @@ import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import { Link } from "@/i18n/navigation";
+import { DynamicForm } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
 import { db } from "@/server/db";
-import { FormFlag, listForms } from "@/server/domain/adminsys/form";
+import { listForms } from "@/server/domain/adminsys/form";
 
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
@@ -35,7 +37,7 @@ export default async function FormsPage({ params, searchParams }: { params: Prom
       rows={rows.map((f) => ({
         key: f.id,
         cells: {
-          sel: <input type="checkbox" name="ids[]" value={f.id} disabled={!(f.flags & FormFlag.DELETABLE)} className="h-4 w-4 accent-brand-500" aria-label={f.title} />,
+          sel: <input type="checkbox" name="ids[]" value={f.id} disabled={!(f.flags & DynamicForm.DELETABLE)} className="h-4 w-4 accent-brand-500" aria-label={f.title} />,
           title: (
             <Link href={`/admin/forms/${f.id}`} className="font-medium text-brand-500 hover:text-brand-600">
               {f.title}
@@ -54,14 +56,14 @@ export default async function FormsPage({ params, searchParams }: { params: Prom
       <SysNotice sp={sp} />
       <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{t("builtIn")}</h3>
       {table(
-        forms.filter((f) => f.type !== "G"),
+        forms.filter((f) => f.type !== FormType.GENERIC),
         false,
       )}
       <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{t("custom")}</h3>
       <form action={massFormAction} className="space-y-4">
         <MassBar actions={[{ value: "delete", label: c("delete"), danger: true }]} />
         {table(
-          forms.filter((f) => f.type === "G"),
+          forms.filter((f) => f.type === FormType.GENERIC),
           true,
         )}
       </form>

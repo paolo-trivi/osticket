@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isNumeric, str, truthy, type PhpVars } from "./php";
+import { isNumeric, str, truthy, type PhpVars } from "../../php/values";
 
 /**
  * Validator::process($fields, $vars, $errors) (include/class.validator.php) per i tipi usati
@@ -57,4 +57,14 @@ export function validate(fields: Record<string, FieldRule>, vars: PhpVars, error
   // array_merge($errors, $val->errors())
   Object.assign(errors, out);
   return Object.keys(errors).length === 0;
+}
+
+/**
+ * Validator::is_username (class.validator.php): almeno 2 byte, solo lettere/cifre/._- e non
+ * numerico. Restituisce il codice dell'errore o "".
+ */
+export function usernameError(username: string): "" | "too_short" | "invalid_chars" {
+  if (Buffer.byteLength(username, "utf8") < 2) return "too_short";
+  if (isNumeric(username) || !/^[\p{L}\d._-]+$/u.test(username)) return "invalid_chars";
+  return "";
 }

@@ -1,16 +1,17 @@
 "use server";
 
 import type { SysFormState } from "@/components/adminsys/SysForm";
-import { str } from "@/server/domain/admin/php";
+import { massRedirect, sysFormResult } from "@/server/actions/result";
+import { str } from "@/server/php/values";
 import { massApiKeys, saveApiKey, type ApiKeyMassAction } from "@/server/domain/adminsys/apikey";
 
-import { adminWrite, formResult, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 /** scp/apikeys.php do=add / do=update */
 export async function saveApiKeyAction(keyId: number | null, _prev: SysFormState, form: FormData): Promise<SysFormState> {
   const { locale } = await requireAdminAction();
   const r = await adminWrite((tx) => saveApiKey(tx, keyId, parsePhpForm(form)));
-  return formResult(r, { locale, created: keyId ? undefined : (id) => `/admin/apikeys/${id}?ok=created` });
+  return sysFormResult(r, { locale, created: keyId ? undefined : (id) => `/admin/apikeys/${id}?ok=created` });
 }
 
 const ACTIONS: ApiKeyMassAction[] = ["enable", "disable", "delete"];

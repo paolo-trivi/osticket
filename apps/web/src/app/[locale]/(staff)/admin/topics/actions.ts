@@ -1,18 +1,19 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { str } from "@/server/domain/admin/php";
+import { str } from "@/server/php/values";
 import { massTopics, saveTopic, type TopicMassAction } from "@/server/domain/admin/topic";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /** scp/helptopics.php do=update / do=create */
 export async function saveTopicAction(topicId: number | null, _prev: AdminFormState, form: FormData): Promise<AdminFormState> {
   const { locale } = await requireAdminAction();
   const vars = parsePhpForm(form);
   const r = await adminWrite((tx) => saveTopic(tx, topicId, vars));
-  return formResult(r, { path: "/admin/topics", locale, created: topicId ? undefined : (id) => `/admin/topics/${id}?created=1` });
+  return adminFormResult(r, { locale, created: topicId ? undefined : (id) => `/admin/topics/${id}?created=1` });
 }
 
 const ACTIONS: TopicMassAction[] = ["enable", "disable", "archive", "delete", "sort"];

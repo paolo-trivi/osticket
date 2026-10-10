@@ -2,9 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
-import { NOW, table, type DbOrTx } from "../../db";
+import { Collaborator } from "@/lib/osticket/flags";
 
-export const CollabFlag = { ACTIVE: 0x0001, CC: 0x0002 } as const;
+import { NOW, table, type DbOrTx } from "../../db";
 
 /**
  * scp/tickets.php (reply): riattiva i collaboratori riselezionati, disattiva quelli deselezionati;
@@ -13,11 +13,11 @@ export const CollabFlag = { ACTIVE: 0x0001, CC: 0x0002 } as const;
 export async function syncActiveCollaborators(executor: DbOrTx, threadId: number, selectedUserIds: number[]): Promise<void> {
   const collabs = await executor.selectFrom("thread_collaborator").select(["id", "user_id", "flags"]).where("thread_id", "=", threadId).execute();
   for (const c of collabs) {
-    const active = !!(c.flags & CollabFlag.ACTIVE);
+    const active = !!(c.flags & Collaborator.ACTIVE);
     const selected = selectedUserIds.includes(c.user_id);
     let flags = c.flags;
-    if (!active && selected) flags |= CollabFlag.ACTIVE;
-    else if (active && !selected) flags &= ~CollabFlag.ACTIVE;
+    if (!active && selected) flags |= Collaborator.ACTIVE;
+    else if (active && !selected) flags &= ~Collaborator.ACTIVE;
     if (flags !== c.flags) {
       await executor.updateTable("thread_collaborator").set({ flags, updated: NOW }).where("id", "=", c.id).execute();
     }
@@ -34,10 +34,5 @@ export async function isEmailBanned(executor: DbOrTx, address: string): Promise<
   return rows.length > 0;
 }
 
-/** Draft::deleteForNamespace($ns, $staffId) con namespace esatto (es. ticket.response.<id>). */
-export async function deleteDraftsFor(executor: DbOrTx, namespace: string, staffId: number): Promise<void> {
-  const like = namespace.replace(/([%_\\])/g, "\\$1") + "%";
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${like} AND D.staff_id = ${staffId}`.execute(executor);
-  await executor.deleteFrom("draft").where("namespace", "like", namespace).where("staff_id", "=", staffId).execute();
-}
+/** Draft::deleteForNamespace($ns, $staffId) (es. ticket.response.<id>): vedi ../drafts.ts */
+export { deleteDraftsForNamespace as deleteDraftsFor } from "../drafts";

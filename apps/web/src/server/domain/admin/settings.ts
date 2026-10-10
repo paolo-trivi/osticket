@@ -5,12 +5,14 @@ import { dirname, join } from "node:path";
 
 import { sql } from "kysely";
 
+import { CustomQueue, Topic } from "@/lib/osticket/flags";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
-import { phpLooseEquals } from "../ticket/record";
+import { htmlcharsVars, inArray, intval, isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { hasHash } from "./common";
 import { ConfigWriter, type ConfigValue } from "./config-write";
 import { saveCompanyForm, validateCompanyForm } from "./company";
-import { formatHtmlchars, hasHash, inArray, intval, isNumeric, isset, list, str, truthy, type PhpVal, type PhpVars } from "./php";
 import { validate, type Errors, type FieldRule } from "./validator";
 
 /**
@@ -91,19 +93,6 @@ export async function updateSettings(executor: DbOrTx, input: PhpVars, opts: { i
   return { ok, errors };
 }
 
-/** Format::htmlchars($vars, true): sanitize + htmlspecialchars su ogni valore. */
-function htmlcharsSanitized(vars: PhpVars): PhpVars {
-  const conv = (v: PhpVal): PhpVal => {
-    if (v === undefined || v === null) return v;
-    if (Array.isArray(v)) return v.map(conv);
-    if (typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, conv(x)]));
-    return formatHtmlchars(sanitizeText(str(v)));
-  };
-  const out: PhpVars = {};
-  for (const [k, v] of Object.entries(vars)) out[k] = conv(v);
-  return out;
-}
-
 async function updateSystemSettings(executor: DbOrTx, cfg: ConfigWriter, input: PhpVars, errors: Errors, ip: string): Promise<boolean> {
   const f: Record<string, FieldRule> = {
     helpdesk_url: { type: "string", required: true, error: "required" },
@@ -120,7 +109,8 @@ async function updateSystemSettings(executor: DbOrTx, cfg: ConfigWriter, input: 
     default_timezone: { type: "string", required: true, error: "required" },
     system_language: { type: "string", required: true, error: "required" },
   };
-  const vars = htmlcharsSanitized(input);
+  // Format::htmlchars($vars, true)
+  const vars = htmlcharsVars(input, true);
 
   // ACL: l'amministratore non può chiudersi fuori
   if (truthy(vars.acl)) {
@@ -241,7 +231,7 @@ async function updateTicketsSettings(executor: DbOrTx, cfg: ConfigWriter, vars: 
 
   if (truthy(vars.default_help_topic)) {
     const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", intval(vars.default_help_topic)).executeTakeFirst();
-    if (t && !((t.flags ?? 0) & 0x0002)) errors.default_help_topic = "inactive";
+    if (t && !((t.flags ?? 0) & Topic.ACTIVE)) errors.default_help_topic = "inactive";
   }
   if (!hasHash(vars.ticket_number_format)) errors.ticket_number_format = "hash";
   if (!isset(vars, "default_ticket_queue")) errors.default_ticket_queue = "required";
@@ -258,7 +248,7 @@ async function updateTicketsSettings(executor: DbOrTx, cfg: ConfigWriter, vars: 
   const qsort = vars.qsort;
   if (qsort && typeof qsort === "object" && !Array.isArray(qsort)) {
     for (const [qid, sort] of Object.entries(qsort)) {
-      const q = await executor.selectFrom("queue").select(["id", "sort"]).where("id", "=", intval(qid)).where(sql<boolean>`(flags & 2) != 0`).executeTakeFirst();
+      const q = await executor.selectFrom("queue").select(["id", "sort"]).where("id", "=", intval(qid)).where(sql<boolean>`(flags & ${sql.lit(CustomQueue.QUEUE)}) != 0`).executeTakeFirst();
       if (!q) continue;
       if (phpLooseEquals(q.sort, sort as never)) continue;
       await executor.updateTable("queue").set({ sort: intval(sort), updated: NOW }).where("id", "=", q.id).execute();

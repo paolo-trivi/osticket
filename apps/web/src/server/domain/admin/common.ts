@@ -2,7 +2,7 @@ import "server-only";
 
 import type { DbOrTx } from "../../db";
 import { loadConfigNamespace } from "../../config/config";
-import { intval, isNumeric, str, type PhpVal } from "./php";
+import { intval, isNumeric, str, type PhpVal } from "../../php/values";
 
 /** Esito delle operazioni di salvataggio dell'area admin (errori come codici, chiave = campo). */
 export interface SaveResult {
@@ -25,6 +25,14 @@ export function idOf(v: PhpVal): number | null {
   if (!s || !isNumeric(s)) return null;
   const n = intval(s);
   return n > 0 ? n : null;
+}
+
+/**
+ * preg_match('`(?!<\\\)#`', $format): il PHP voleva un lookbehind ma ha scritto un lookahead
+ * negativo, quindi basta un "#" qualsiasi (bug innocuo replicato).
+ */
+export function hasHash(format: PhpVal): boolean {
+  return str(format).includes("#");
 }
 
 /** Esistenza di una riga per chiave primaria (Model::lookup($id) != null). */

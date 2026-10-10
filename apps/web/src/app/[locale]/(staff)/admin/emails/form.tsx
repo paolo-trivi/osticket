@@ -2,7 +2,8 @@ import "server-only";
 
 import { getTranslations } from "next-intl/server";
 
-import { Callout, CheckboxField, Hidden, RadioField, Section, SelectField, TextAreaField, TextField } from "@/components/adminsys/fields";
+import { CheckboxField, Hidden, RadioField, Section, SelectField, TextAreaField, TextField } from "@/components/adminsys/fields";
+import Callout from "@/components/common/Callout";
 import { db } from "@/server/db";
 import { deptOptions, priorityOptions, topicOptions } from "@/server/domain/admin/lookups";
 

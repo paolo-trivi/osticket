@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import AdminList from "@/components/admin/AdminList";
 import { Link } from "@/i18n/navigation";
+import { Schedule } from "@/lib/osticket/flags";
 import { db, table } from "@/server/db";
-import { ScheduleFlag } from "@/server/domain/admin/schedule";
 
 import { requireAdmin } from "../guard";
 import { massSchedulesAction } from "./actions";
@@ -46,7 +46,7 @@ export default async function SchedulesPage({ params, searchParams }: { params: 
               {r.name}
             </Link>
           ),
-          type: r.flags & ScheduleFlag.BIZHRS ? t("bizhrs") : t("hdays"),
+          type: r.flags & Schedule.BIZHRS ? t("bizhrs") : t("hdays"),
           tz: r.timezone || t("floating"),
           entries: Number(r.entries),
           updated: String(r.updated),

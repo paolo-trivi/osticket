@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { FormType } from "@/lib/osticket/object-types";
+import { formFlag, formHtml, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { coreConfig } from "@/server/config/config";
@@ -17,7 +19,6 @@ import { mergeTickets, unlinkTickets } from "@/server/domain/ticket/merge";
 import { markTicketOverdue, setTicketEmailBan } from "@/server/domain/ticket/overdue";
 import { changeTicketStatus } from "@/server/domain/ticket/ticket-state";
 import { runWrite } from "@/server/domain/write";
-import { sanitizeText } from "@/server/format/text";
 
 /**
  * Server action dell'area "ticketedit" nella vista ticket: modifica (form completo e singolo campo),
@@ -51,20 +52,12 @@ async function run(ticketId: number, fn: (ctx: WriteContext) => Promise<DomainRe
   return { ok: true, gone, email: r.email, nonce: Date.now() };
 }
 
-const ticketIdOf = (form: FormData) => Number(form.get("ticketId") ?? 0);
-const str = (form: FormData, k: string) => String(form.get(k) ?? "");
-
-/** Commento HTML dei form (TextareaField html → Format::sanitize); vuoto se contiene solo tag e spazi. */
-function comments(form: FormData, key = "comments"): string {
-  const raw = str(form, key);
-  if (!raw.replace(/<[^>]*>|&nbsp;|\s/g, "")) return "";
-  return sanitizeText(raw);
-}
+const ticketIdOf = (form: FormData) => formNum(form, "ticketId");
 
 /** Valori dei campi dei form del ticket (chiavi `f.<id>`) → $_POST per nome del campo. */
 async function ticketFormVars(ticketId: number, form: FormData): Promise<Record<string, unknown>> {
   const cfg = await coreConfig();
-  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", "T").where("object_id", "=", ticketId).execute();
+  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", FormType.TICKET).where("object_id", "=", ticketId).execute();
   const defs = [];
   for (const e of entries) defs.push(await loadFormDef(db(), cfg, { id: e.form_id }, "staff"));
   return formDataToVars(form, defs);
@@ -77,12 +70,12 @@ export async function updateTicketAction(_prev: EditActionState, form: FormData)
   return run(ticketId, (ctx) =>
     updateTicket(ctx, {
       ticketId,
-      topicId: str(form, "topicId"),
-      slaId: str(form, "slaId"),
-      source: str(form, "source"),
-      duedate: str(form, "duedate").replace("T", " "),
-      userId: str(form, "user_id") || undefined,
-      note: str(form, "note"),
+      topicId: formStr(form, "topicId"),
+      slaId: formStr(form, "slaId"),
+      source: formStr(form, "source"),
+      duedate: formStr(form, "duedate").replace("T", " "),
+      userId: formStr(form, "user_id") || undefined,
+      note: formStr(form, "note"),
       vars,
     }),
   );
@@ -91,63 +84,63 @@ export async function updateTicketAction(_prev: EditActionState, form: FormData)
 /** ajax editField: un solo campo (field = priority|topic|sla|source|duedate|<id>). */
 export async function updateFieldAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const field = str(form, "field");
+  const field = formStr(form, "field");
   let vars: Record<string, unknown>;
   switch (field) {
     case "topic":
-      vars = { topic_id: str(form, "value") };
+      vars = { topic_id: formStr(form, "value") };
       break;
     case "sla":
-      vars = { sla_id: str(form, "value") };
+      vars = { sla_id: formStr(form, "value") };
       break;
     case "source":
-      vars = { source: str(form, "value") };
+      vars = { source: formStr(form, "value") };
       break;
     case "duedate":
-      vars = { duedate: str(form, "value").replace("T", " ") };
+      vars = { duedate: formStr(form, "value").replace("T", " ") };
       break;
     default:
       vars = await ticketFormVars(ticketId, form);
   }
-  return run(ticketId, (ctx) => updateTicketField(ctx, { ticketId, field, vars, comments: comments(form) }));
+  return run(ticketId, (ctx) => updateTicketField(ctx, { ticketId, field, vars, comments: formHtml(form) }));
 }
 
 /** do=changeuser */
 export async function changeOwnerAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  return run(ticketId, (ctx) => changeTicketOwner(ctx, { ticketId, userId: Number(form.get("userId") ?? 0) }));
+  return run(ticketId, (ctx) => changeTicketOwner(ctx, { ticketId, userId: formNum(form, "userId") }));
 }
 
 /** ajax add-collaborator (utente esistente) */
 export async function addCollaboratorAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  return run(ticketId, (ctx) => addCollaborator(ctx, { ticketId, userId: Number(form.get("userId") ?? 0) }));
+  return run(ticketId, (ctx) => addCollaborator(ctx, { ticketId, userId: formNum(form, "userId") }));
 }
 
 /** ajax collaborators: rimozione (`del`) e collaboratori attivi (`cid`). */
 export async function updateCollaboratorsAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const del = form.getAll("del").map(Number).filter(Boolean);
-  const cid = form.getAll("cid").map(Number).filter((id) => id && !del.includes(id));
+  const del = formIds(form, "del");
+  const cid = formIds(form, "cid").filter((id) => !del.includes(id));
   return run(ticketId, (ctx) => updateCollaborators(ctx, { ticketId, del, cid }));
 }
 
 /** ajax updateMerge (tids) dal dialogo di merge/link. */
 export async function mergeAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const title = str(form, "title") === "link" ? "link" : "merge";
-  const numbers = form.getAll("tids").map(String).filter(Boolean);
+  const title = formStr(form, "title") === "link" ? "link" : "merge";
+  const numbers = formStrs(form, "tids").filter(Boolean);
   if (numbers.length < 2) return { error: "select_two", nonce: Date.now() };
   return run(ticketId, (ctx) =>
     mergeTickets(ctx, {
       title,
       numbers,
-      combine: title === "link" ? "2" : str(form, "combine") || "1",
-      participants: str(form, "participants") || "all",
-      childStatusId: Number(form.get("childStatusId") ?? 0) || undefined,
-      parentStatusId: Number(form.get("parentStatusId") ?? 0) || undefined,
-      deleteChild: form.get("deleteChild") === "1",
-      moveTasks: form.get("moveTasks") === "1",
+      combine: title === "link" ? "2" : formStr(form, "combine") || "1",
+      participants: formStr(form, "participants") || "all",
+      childStatusId: formNum(form, "childStatusId") || undefined,
+      parentStatusId: formNum(form, "parentStatusId") || undefined,
+      deleteChild: formFlag(form, "deleteChild"),
+      moveTasks: formFlag(form, "moveTasks"),
     }),
   );
 }
@@ -155,7 +148,7 @@ export async function mergeAction(_prev: EditActionState, form: FormData): Promi
 /** ajax updateMerge (dtids): scollegamento. */
 export async function unlinkAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const ids = form.getAll("dtids").map(Number).filter(Boolean);
+  const ids = formIds(form, "dtids");
   if (!ids.length) return { error: "select_tickets", nonce: Date.now() };
   return run(ticketId, (ctx) => unlinkTickets(ctx, { ticketIds: ids }));
 }
@@ -169,7 +162,7 @@ export async function overdueAction(_prev: EditActionState, form: FormData): Pro
 /** do=banemail / unbanemail */
 export async function banAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  return run(ticketId, (ctx) => setTicketEmailBan(ctx, { ticketId, ban: form.get("ban") === "1" }));
+  return run(ticketId, (ctx) => setTicketEmailBan(ctx, { ticketId, ban: formFlag(form, "ban") }));
 }
 
 /**
@@ -178,13 +171,13 @@ export async function banAction(_prev: EditActionState, form: FormData): Promise
  */
 export async function deleteTicketAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const statusId = Number(form.get("statusId") ?? 0);
-  const children = form.get("children") === "1";
-  const raw = str(form, "comments");
+  const statusId = formNum(form, "statusId");
+  const children = formFlag(form, "children");
+  const comments = formHtml(form, "comments", { sanitize: false });
   return run(
     ticketId,
     async (ctx) => {
-      const r = await changeTicketStatus(ctx, { ticketId, statusId, comments: raw.replace(/<[^>]*>|&nbsp;|\s/g, "") ? raw : "", children }, { hardDelete: ticketHardDelete({ children }) });
+      const r = await changeTicketStatus(ctx, { ticketId, statusId, comments, children }, { hardDelete: ticketHardDelete({ children }) });
       return "error" in r ? { error: r.error } : { ok: true };
     },
     true,
@@ -194,9 +187,9 @@ export async function deleteTicketAction(_prev: EditActionState, form: FormData)
 /** TEA_EditThreadEntry: nuova versione di una voce del thread. */
 export async function editEntryAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
-  const entryId = Number(form.get("entryId") ?? 0);
+  const entryId = formNum(form, "entryId");
   return run(ticketId, async (ctx) => {
-    const r = await editThreadEntry(ctx, { ticketId, entryId, body: str(form, "body"), title: str(form, "title") });
+    const r = await editThreadEntry(ctx, { ticketId, entryId, body: formStr(form, "body"), title: formStr(form, "title") });
     return "error" in r ? r : { ok: true };
   });
 }

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Ticket } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { TicketRecord } from "./record";
 
@@ -7,24 +9,18 @@ import { TicketRecord } from "./record";
  * Flag di merge/link del ticket (Ticket::FLAG_*) e helper comuni a merge, link ed eliminazione
  * (area "ticketedit").
  */
-export const TicketFlag = {
-  COMBINE_THREADS: 0x0001,
-  SEPARATE_THREADS: 0x0002,
-  LINKED: 0x0008,
-  PARENT: 0x0010,
-} as const;
 
 type MergeType = "combine" | "separate" | "visual";
 
 /** Ticket::getMergeTypeByFlag */
 export function mergeTypeOf(flags: number): MergeType {
-  if (flags & TicketFlag.COMBINE_THREADS) return "combine";
-  if (flags & TicketFlag.SEPARATE_THREADS) return "separate";
+  if (flags & Ticket.COMBINE_THREADS) return "combine";
+  if (flags & Ticket.SEPARATE_THREADS) return "separate";
   return "visual";
 }
 
 export function isParentFlags(flags: number): boolean {
-  return (flags & TicketFlag.PARENT) !== 0;
+  return (flags & Ticket.PARENT) !== 0;
 }
 
 /**
@@ -33,14 +29,14 @@ export function isParentFlags(flags: number): boolean {
  * vale 0 (separate), una stringa vuota non corrisponde a nessuna chiave.
  */
 function mergeFlags(flags: number, combine: number | string | null | undefined, parent: boolean): number {
-  const keys = [TicketFlag.SEPARATE_THREADS, TicketFlag.COMBINE_THREADS, TicketFlag.LINKED];
+  const keys = [Ticket.SEPARATE_THREADS, Ticket.COMBINE_THREADS, Ticket.LINKED];
   const c = combine === null || combine === undefined ? 0 : combine === "" ? NaN : Number(combine);
   keys.forEach((flag, key) => {
     if (c === key) flags |= flag;
     else flags &= ~flag;
   });
-  if (parent) flags |= TicketFlag.PARENT;
-  else flags &= ~TicketFlag.PARENT;
+  if (parent) flags |= Ticket.PARENT;
+  else flags &= ~Ticket.PARENT;
   return flags;
 }
 
@@ -53,20 +49,6 @@ export async function setMergeType(rec: TicketRecord, combine: number | string |
 /** Ticket::setPid: null se uguale all'id del ticket stesso. */
 export function setPid(rec: TicketRecord, pid: number | null): void {
   rec.set("ticket_pid", rec.id !== pid ? pid : null);
-}
-
-/**
- * Ticket::getThread(): thread di tipo 'T' del ticket, altrimenti il thread "child" di tipo 'C'
- * (ticket figlio di un merge con thread combinati).
- */
-export async function ticketThread(executor: DbOrTx, ticketId: number): Promise<{ id: number; object_type: string; extra: string | null } | null> {
-  const rows = await executor
-    .selectFrom("thread")
-    .select(["id", "object_type", "extra"])
-    .where("object_id", "=", ticketId)
-    .where("object_type", "in", ["T", "C"])
-    .execute();
-  return rows.find((r) => r.object_type === "T") ?? rows.find((r) => r.object_type === "C") ?? null;
 }
 
 /** Ticket::getChildTickets($pid): figli ordinati per `sort` (ticket_id, number). */

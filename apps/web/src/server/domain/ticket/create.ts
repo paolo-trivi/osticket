@@ -3,10 +3,14 @@ import "server-only";
 import { sql } from "kysely";
 import { DateTime } from "luxon";
 
+import { Collaborator, Dept, DynamicFormField, OrganizationModel, Team, ThreadEntry, Topic, UserModel } from "@/lib/osticket/flags";
+import { FormType, ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { PersonsName } from "../../format/persons-name";
 import type { MailContact } from "../../mail/mailer";
+import { isNumeric, truthy as phpTruthy, type PhpVal } from "../../php/values";
 import { logSystem } from "../../system/syslog";
 import { attachFilesToEntry, type AttachInput } from "../file/upload";
 import {
@@ -20,13 +24,11 @@ import {
   type FilterAction,
   type TicketVars,
 } from "../filter/ticket-filter";
-import { FormInstance, saveFormEntry } from "../forms/entry";
+import { currentTimezone, FormInstance, saveFormEntry } from "../forms/entry";
 import {
   cleanFromDb,
-  FieldFlag,
   fieldToString,
   hasFlag,
-  isEmail,
   isRequiredFor,
   isVisibleTo,
   type DateFormatOptions,
@@ -34,8 +36,9 @@ import {
   type FieldErrorCode,
 } from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
+import { isEmail } from "../forms/validator";
 import { loadAgent, TicketPerm } from "../staff/staff";
-import { createThreadEntry, EntryFlag, type EntryRecipients } from "../thread/write";
+import { createThreadEntry, type EntryRecipients } from "../thread/write";
 import { deleteDraftsFor, isEmailBanned } from "./collab";
 import { agentDisplayName, type WriteContext } from "./context";
 import { onAssignAlert, onNewTicket, onOpenLimit, sendFilterEmail, sendNewTicketNotice } from "./create-alerts";
@@ -45,7 +48,7 @@ import { loadOrganization, lookupUser, lookupUserByEmail, organizationForDomain,
 import { logTicketEvent, type Actor } from "./events";
 import { postNote, postReply } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
-import { DeptFlag, isSelectableStatus, loadStatus, setTicketStatus, stateOf, updateEstDueDate } from "./status";
+import { isSelectableStatus, loadStatus, setTicketStatus, stateOf, updateEstDueDate } from "./status";
 
 /**
  * Creazione dei ticket (Ticket::create / Ticket::open, include/class.ticket.php): validazione dei form
@@ -87,11 +90,9 @@ export type CreateResult =
 
 export const TICKET_SOURCES = ["Phone", "Email", "Web", "API", "Other"] as const;
 
-const TopicFlagActive = 0x0002;
-const OrgFlag = { COLLAB_ALL_MEMBERS: 0x0001, COLLAB_PRIMARY_CONTACT: 0x0002, ASSIGN_AGENT_MANAGER: 0x0004 } as const;
-
-const isNum = (v: unknown) => v !== undefined && v !== null && v !== "" && v !== false && /^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(String(v));
-const truthy = (v: unknown) => !(v === undefined || v === null || v === false || v === "" || v === "0" || v === 0);
+/** is_numeric() e (bool) di PHP sui $vars (valori ignoti trattati come PhpVal) */
+const isNum = (v: unknown) => isNumeric(v as PhpVal);
+const truthy = (v: unknown) => phpTruthy(v as PhpVal);
 
 interface TopicRow {
   topic_id: number;
@@ -136,12 +137,12 @@ async function topicFullName(executor: DbOrTx, t: TopicRow): Promise<string> {
 
 async function deptIsActive(executor: DbOrTx, id: number): Promise<boolean> {
   const d = await executor.selectFrom("department").select("flags").where("id", "=", id).executeTakeFirst();
-  return !!d && (d.flags & DeptFlag.ACTIVE) !== 0;
+  return !!d && (d.flags & Dept.ACTIVE) !== 0;
 }
 
 async function topicIsActive(executor: DbOrTx, id: number): Promise<boolean> {
   const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", id).executeTakeFirst();
-  return !!t && ((t.flags ?? 0) & TopicFlagActive) !== 0;
+  return !!t && ((t.flags ?? 0) & Topic.ACTIVE) !== 0;
 }
 
 /** Risposte salvate di un oggetto (utente/organizzazione) come dati per i filtri: field.<id> → testo */
@@ -176,16 +177,6 @@ async function entryFilterData(
   return out;
 }
 
-/** $cfg->getTimezone(): fuso dell'agente, altrimenti del cliente autenticato, altrimenti default_timezone */
-async function currentTimezone(ctx: WriteContext): Promise<string> {
-  if (ctx.agent?.row.timezone) return ctx.agent.row.timezone;
-  if (ctx.actor?.kind === "user") {
-    const a = await ctx.tx.selectFrom("user_account").select("timezone").where("user_id", "=", ctx.actor.id).executeTakeFirst();
-    if (a?.timezone) return a.timezone;
-  }
-  return ctx.cfg.str("default_timezone") || "UTC";
-}
-
 const addMissing = (vars: TicketVars, data: Record<string, unknown>) => {
   for (const [k, v] of Object.entries(data)) if (!(k in vars)) vars[k] = v;
 };
@@ -209,7 +200,7 @@ async function filterTicketData(
 
   let userForm: FormInstance | null = null;
   if (!user) {
-    const def = await loadFormDef(ctx.tx, ctx.cfg, { type: "U" });
+    const def = await loadFormDef(ctx.tx, ctx.cfg, { type: FormType.USER });
     if (def) {
       userForm = new FormInstance(def, vars, 1, null, { dates });
       for (const n of ["name", "email"]) {
@@ -292,7 +283,7 @@ async function ticketRecipients(ctx: WriteContext, ownerId: number, threadId: nu
       .orderBy("c.id")
       .execute();
     for (const c of collabs) {
-      if (!(c.flags & 1)) continue;
+      if (!(c.flags & Collaborator.ACTIVE)) continue;
       if (whitelist?.length && !whitelist.includes(c.user_id)) continue;
       const u = await contact(c.user_id);
       if (u) cc.push({ listId: c.id, userId: c.user_id, name: nameOf(u.name, u.address ?? ""), email: u.address ?? "" });
@@ -317,12 +308,12 @@ async function addCollaborator(ctx: WriteContext, rec: TicketRecord, threadId: n
   if (exists) return false;
   const user = await lookupUser(ctx.tx, userId);
   if (!user) return false;
-  let flags = 0x0001 | 0x0002;
+  let flags = Collaborator.ACTIVE | Collaborator.CC;
   // disable_agent_collabs per i ticket creati dai clienti: collaboratore inattivo se l'email è di un agente
   if (!ctx.agent && ctx.cfg.bool("disable_agent_collabs")) {
     const email = await userEmail(ctx.tx, user);
     const staff = email ? await ctx.tx.selectFrom("staff").select("staff_id").where("email", "=", email).executeTakeFirst() : undefined;
-    if (staff) flags = 0x0002;
+    if (staff) flags = Collaborator.CC;
   }
   await ctx.tx.insertInto("thread_collaborator").values({ flags, thread_id: threadId, user_id: userId, role: "M", created: NOW, updated: NOW }).execute();
   if (logEvent) await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "collab", { add: { [String(userId)]: { name: user.name } } });
@@ -338,14 +329,14 @@ async function assignToStaff(ctx: WriteContext, rec: TicketRecord, threadId: num
   if (alert) await onAssignAlert(ctx, { ticketId: rec.id, deptId: rec.get("dept_id") }, { kind: "staff", id: staff.id }, "", null);
   const data = ctx.agent && ctx.agent.id === staff.id ? { claim: true } : { staff: staff.id };
   await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", data, who);
-  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", "S").where("object_id", "=", staff.id).execute();
+  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.STAFF).where("object_id", "=", staff.id).execute();
   return true;
 }
 
 /** Ticket::assignToTeam */
 async function assignToTeam(ctx: WriteContext, rec: TicketRecord, threadId: number, teamId: number, alert: boolean, who: string): Promise<boolean> {
   const team = await ctx.tx.selectFrom("team").select(["team_id", "flags"]).where("team_id", "=", teamId).executeTakeFirst();
-  if (!team || !(team.flags & 0x0001)) return false;
+  if (!team || !(team.flags & Team.ENABLED)) return false;
   rec.set("team_id", team.team_id);
   await rec.save();
   if ((await stateOf(ctx.tx, rec.row)) === "closed") {
@@ -354,7 +345,7 @@ async function assignToTeam(ctx: WriteContext, rec: TicketRecord, threadId: numb
   }
   if (alert) await onAssignAlert(ctx, { ticketId: rec.id, deptId: rec.get("dept_id") }, { kind: "team", id: team.team_id }, "", null);
   await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", { team: team.team_id }, who);
-  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", "E").where("object_id", "=", team.team_id).execute();
+  await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.TEAM).where("object_id", "=", team.team_id).execute();
   return true;
 }
 
@@ -363,8 +354,8 @@ async function deptCanAssignStaff(ctx: WriteContext, deptId: number, staffId: nu
   const d = await ctx.tx.selectFrom("department").select(["id", "flags", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
   const staff = await loadAgent(staffId, ctx.tx);
   if (!d || !staff) return false;
-  if (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY && staff.deptId !== d.id) return false;
-  if (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) {
+  if (d.flags & Dept.ASSIGN_PRIMARY_ONLY && staff.deptId !== d.id) return false;
+  if (d.flags & Dept.ASSIGN_MEMBERS_ONLY) {
     const member = staff.deptId === d.id || d.manager_id === staff.id || staff.extendedAccess.some((a) => a.deptId === d.id);
     if (!member) return false;
   }
@@ -394,18 +385,18 @@ async function assignFromForm(ctx: WriteContext, rec: TicketRecord, threadId: nu
     } else evd = { staff: [staff.id, staff.name.full] };
     assignee = { kind: "staff", id: staff.id };
     assigneeName = agentDisplayName(staff, ctx.cfg);
-    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", "S").where("object_id", "=", staff.id).execute();
+    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.STAFF).where("object_id", "=", staff.id).execute();
   } else if (kind === "t") {
     const team = await ctx.tx.selectFrom("team").select(["team_id", "name", "flags"]).where("team_id", "=", id).executeTakeFirst();
     if (!team) return "Unknown assignee";
     if (rec.get("team_id") === team.team_id) return "Ticket already assigned to the team";
     const members = await ctx.tx.selectFrom("team_member").select("staff_id").where("team_id", "=", team.team_id).execute();
-    if (!(team.flags & 0x0001) || !members.length) return "Permission denied";
+    if (!(team.flags & Team.ENABLED) || !members.length) return "Permission denied";
     rec.set("team_id", team.team_id);
     evd = { team: team.team_id };
     assignee = { kind: "team", id: team.team_id };
     assigneeName = team.name;
-    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", "E").where("object_id", "=", team.team_id).execute();
+    await ctx.tx.deleteFrom("thread_referral").where("thread_id", "=", threadId).where("object_type", "=", ObjectType.TEAM).where("object_id", "=", team.team_id).execute();
   } else return "Unknown assignee";
   await rec.save(true);
   await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, "assigned", evd);
@@ -464,7 +455,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   const fail = (): CreateResult => ({ ok: false, errors });
   const requestIp = String(input.ip ?? "") || ctx.actor?.ip || "";
 
-  const ticketDef = await loadFormDef(tx, cfg, { type: "T" }, audience);
+  const ticketDef = await loadFormDef(tx, cfg, { type: FormType.TICKET }, audience);
   if (!ticketDef) throw new Error("Form dei ticket mancante");
   // Regola più stretta del PHP: dal portale si accettano solo i campi visibili ai clienti
   const sourceFor = (def: FormDef): TicketVars => {
@@ -512,9 +503,9 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
       if (t) {
         const tforms = await loadTopicForms(tx, cfg, t.topic_id, audience);
         tforms.forEach((F, idx) => {
-          const disabled = F.fields.filter((f) => f.disabled && hasFlag(f, FieldFlag.ENABLED)).map((f) => f.id);
+          const disabled = F.fields.filter((f) => f.disabled && hasFlag(f, DynamicFormField.ENABLED)).map((f) => f.id);
           const extra = phpJsonEncode({ disable: disabled });
-          if (F.type === "T") {
+          if (F.type === FormType.TICKET) {
             for (const f of form.fields) if (disabled.includes(f.id)) f.disabled = true;
             form.sort = idx;
             form.extra = extra;
@@ -543,21 +534,15 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
 
     if (!user && vars.email) user = await lookupUserByEmail(tx, String(vars.email));
     if (!user) {
-      const udef = await loadFormDef(tx, cfg, { type: "U" }, audience);
+      const udef = await loadFormDef(tx, cfg, { type: FormType.USER }, audience);
       const canCreate = !ctx.agent || ctx.agent.hasGlobalPerm("user.create");
       let ok = false;
       if (udef) {
         const uform = new FormInstance(udef, vars, 1, null, { dates });
         const uerr = await uform.validate(include, requiredFor, cfg);
         if (!Object.keys(uerr).length) {
-          const clean: Record<string, unknown> = {};
-          for (const f of udef.fields) {
-            const v = uform.values.get(f.id) ?? null;
-            clean[String(f.id)] = v;
-            if (f.name) clean[f.name] = v;
-          }
           if (canCreate) {
-            user = await userFromVars(tx, cfg, clean, true, dates);
+            user = await userFromVars(tx, cfg, uform.cleanVars(), { dates });
             ok = !!user;
           }
         } else errors.fields = { ...errors.fields, ...uerr };
@@ -574,7 +559,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     // Stranezza PHP replicata: `$topic = Topic::lookup()` è assegnato nella condizione, quindi un topic
     // esistente ma disattivato resta in uso (reparto, priorità, numerazione…) anche se topicId diventa 0.
     if (t) topic = t;
-    if (t && t.flags & TopicFlagActive) {
+    if (t && t.flags & Topic.ACTIVE) {
       for (const tf of topicForms) {
         const e = await tf.validate(include, requiredFor, cfg);
         if (Object.keys(e).length) errors.fields = { ...errors.fields, ...e };
@@ -617,7 +602,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   }
 
   const org = await loadOrganization(tx, user.org_id);
-  if (org && org.status & OrgFlag.ASSIGN_AGENT_MANAGER && org.manager) {
+  if (org && org.status & OrganizationModel.ASSIGN_AGENT_MANAGER && org.manager) {
     if (vars.staffId === undefined && org.manager[0] === "s") vars.staffId = Number(org.manager.slice(1));
     else if (vars.teamId === undefined && org.manager[0] === "t") vars.teamId = Number(org.manager.slice(1));
   }
@@ -652,7 +637,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
     })
     .executeTakeFirstOrThrow();
   const ticketId = Number(ins.insertId);
-  const th = await tx.insertInto("thread").values({ object_id: ticketId, object_type: "T", created: NOW }).executeTakeFirstOrThrow();
+  const th = await tx.insertInto("thread").values({ object_id: ticketId, object_type: ObjectType.TICKET, created: NOW }).executeTakeFirstOrThrow();
   const threadId = Number(th.insertId);
   const rec = (await TicketRecord.load(tx, ticketId, true))!;
 
@@ -677,11 +662,11 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   // Collaboratori
   const ccs = Array.isArray(vars.ccs) ? (vars.ccs as unknown[]).map(Number).filter((n) => n > 0) : [];
   for (const uid of ccs) await addCollaborator(ctx, rec, threadId, uid);
-  if (org && org.status & (OrgFlag.COLLAB_ALL_MEMBERS | OrgFlag.COLLAB_PRIMARY_CONTACT)) {
+  if (org && org.status & (OrganizationModel.COLLAB_ALL_MEMBERS | OrganizationModel.COLLAB_PRIMARY_CONTACT)) {
     const members = await tx.selectFrom("user").select(["id", "status"]).where("org_id", "=", org.id).orderBy("id").execute();
     let added = 0;
     for (const m of members) {
-      if (org.status & OrgFlag.COLLAB_ALL_MEMBERS || (org.status & OrgFlag.COLLAB_PRIMARY_CONTACT && m.status & 0x0001)) {
+      if (org.status & OrganizationModel.COLLAB_ALL_MEMBERS || (org.status & OrganizationModel.COLLAB_PRIMARY_CONTACT && m.status & UserModel.PRIMARY_ORG_CONTACT)) {
         if (await addCollaborator(ctx, rec, threadId, m.id)) added++;
       }
     }
@@ -704,7 +689,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   if (messageBody && (fmt === "text" ? messageBody.trim() : messageBody.replace(/^[\s<>br/]+|[\s<>br/]+$/g, ""))) {
     const entry = await createThreadEntry(tx, cfg, {
       threadId,
-      type: "M",
+      type: ThreadEntryType.MESSAGE,
       body: messageBody,
       format: fmt,
       title: typeof subject === "string" ? subject : "",
@@ -732,7 +717,7 @@ export async function createTicket(ctx: WriteContext, input: CreateTicketVars, o
   if (messageId) {
     await tx
       .updateTable("thread_entry")
-      .set({ flags: sql<number>`flags | ${EntryFlag.ORIGINAL_MESSAGE}` })
+      .set({ flags: sql<number>`flags | ${ThreadEntry.ORIGINAL_MESSAGE}` })
       .where("id", "=", messageId)
       .execute();
   }

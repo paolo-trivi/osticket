@@ -1,5 +1,7 @@
 import "server-only";
 
+import { AttachmentType, ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { htmlToPlain, sendMail } from "../../mail/mailer";
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, staffVar } from "../../mail/objects";
 import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
@@ -39,7 +41,7 @@ export async function postCannedReply(
     .innerJoin("file as f", "f.id", "a.file_id")
     .select(["a.file_id", "a.name", "f.name as fname"])
     .where("a.object_id", "=", canned.canned_id)
-    .where("a.type", "=", "C")
+    .where("a.type", "=", AttachmentType.CANNED)
     .orderBy("a.id")
     .execute();
   const files = atts.map((a) => ({ id: a.file_id, name: a.name || a.fname }));
@@ -57,7 +59,7 @@ export async function postCannedReply(
   const assigneeId = rec.get("staff_id");
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "R",
+    type: ThreadEntryType.RESPONSE,
     body,
     format: richtext ? "html" : "text",
     staffId: agent?.id ?? 0,

@@ -4,6 +4,7 @@ import PortalThread from "@/components/portal/PortalThread";
 import ReplyForm from "@/components/portal/ReplyForm";
 import Alert from "@/components/ui/alert/Alert";
 import { Link } from "@/i18n/navigation";
+import { FormType } from "@/lib/osticket/object-types";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { loadClientTicketView } from "@/server/domain/client/tickets";
@@ -44,7 +45,7 @@ export default async function ClientTicketPage({ params, searchParams }: { param
     );
   }
   const tz = client.account?.timezone || cfg.str("default_timezone") || "UTC";
-  const tform = await loadFormDef(db(), cfg, { type: "T" }, "client");
+  const tform = await loadFormDef(db(), cfg, { type: FormType.TICKET }, "client");
   const message = tform?.fields.find((f) => f.type === "thread");
   const rules = threadUploadRules(cfg);
   const eventLabels = Object.fromEntries(EVENTS.map((e) => [e, t(`events.${e}`)]));

@@ -6,6 +6,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { orgCreateAction, orgImportAction, orgMassDeleteAction } from "@/app/[locale]/(staff)/agent/(panel)/orgs/actions";
 import { userCreateAction, userImportAction, userMassAction } from "@/app/[locale]/(staff)/agent/(panel)/users/actions";
 import Button from "@/components/ui/button/Button";
+import { checkedIds } from "@/lib/checked-ids";
 
 import { CheckField, DynamicField, FormAlert, SelectField, TextAreaField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
@@ -69,9 +70,6 @@ export function RowSelect({ id, group }: { id: number; group: string }) {
   return <input type="checkbox" data-select={group} value={id} className="size-4 rounded border-gray-300 text-brand-500 dark:border-gray-700 dark:bg-gray-900" aria-label={`#${id}`} />;
 }
 
-const selectedIn = (group: string) =>
-  Array.from(document.querySelectorAll<HTMLInputElement>(`input[data-select="${group}"]:checked`)).map((i) => Number(i.value));
-
 interface MassOp {
   key: string;
   label: string;
@@ -98,7 +96,7 @@ export function MassBar({ group, ops, action, hidden }: { group: string; ops: Ma
             variant="outline"
             className={o.danger ? "text-error-600 dark:text-error-400" : ""}
             onClick={() => {
-              setIds(selectedIn(group));
+              setIds(checkedIds(`input[data-select="${group}"]`));
               setOp(o);
             }}
           >

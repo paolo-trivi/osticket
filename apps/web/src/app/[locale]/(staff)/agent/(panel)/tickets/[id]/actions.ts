@@ -2,15 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 
+import { formHtml, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { clientIp } from "@/server/auth/session";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { verifyUploadTokens } from "@/server/domain/file/upload";
 import { TicketPerm } from "@/server/domain/staff/staff";
+import { ticketThreadId } from "@/server/domain/thread/ids";
 import { deleteDraftsFor, isEmailBanned, syncActiveCollaborators } from "@/server/domain/ticket/collab";
 import { acquireTicketLock, checkLockForPost, releaseTicketLock, renewTicketLock } from "@/server/domain/ticket/lock";
-import { postNote, postReply, ticketThreadId } from "@/server/domain/ticket/post";
+import { postNote, postReply } from "@/server/domain/ticket/post";
 import { statusState } from "@/server/domain/ticket/record";
 import { checkStaffPerm, loadTicket, roleOn } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
@@ -32,29 +34,29 @@ async function loadForWrite(ticketId: number) {
 }
 
 export async function postReplyAction(_prev: PostState, form: FormData): Promise<PostState> {
-  const ticketId = Number(form.get("ticketId"));
+  const ticketId = formNum(form, "ticketId");
   const loaded = await loadForWrite(ticketId);
   if ("error" in loaded) return { error: loaded.error };
   const { agent, ticket } = loaded;
   if (!roleOn(ticket, agent).perms.has(TicketPerm.REPLY)) return { error: "denied" };
 
-  const response = String(form.get("response") ?? "");
-  if (!response.replace(/<[^>]*>|&nbsp;|\s/g, "")) return { error: "response_required" };
+  const response = formHtml(form, "response", { sanitize: false });
+  if (!response) return { error: "response_required" };
   const cfg = await coreConfig();
-  const lockError = await checkLockForPost(db(), cfg, ticketId, agent.id, String(form.get("lockCode") ?? ""));
+  const lockError = await checkLockForPost(db(), cfg, ticketId, agent.id, formStr(form, "lockCode"));
   if (lockError) return { error: lockError };
   if (await isEmailBanned(db(), ticket.user_email ?? "")) return { error: "banned" };
 
-  const replyTo = String(form.get("replyTo") ?? "all");
-  const ccs = form.getAll("ccs").map(Number).filter(Boolean);
-  const statusId = Number(form.get("statusId") ?? 0) || undefined;
-  const signature = (String(form.get("signature") ?? "none") as "none" | "mine" | "dept") || "none";
+  const replyTo = formStr(form, "replyTo", "all");
+  const ccs = formIds(form, "ccs");
+  const statusId = formNum(form, "statusId") || undefined;
+  const signature = (formStr(form, "signature", "none") as "none" | "mine" | "dept") || "none";
 
   const result = await runWrite({ agent, ip: await clientIp() }, async (ctx) => {
     const threadId = await ticketThreadId(ctx.tx, ticketId);
     await syncActiveCollaborators(ctx.tx, threadId, ccs);
     // allegati: solo i file caricati da questo agente (token firmati dall'endpoint di upload)
-    const files = verifyUploadTokens(form.getAll("files").map(String), `S${agent.id}`);
+    const files = verifyUploadTokens(formStrs(form, "files"), `S${agent.id}`);
     const r = await postReply(ctx, { ticketId, response, replyTo, ccs, statusId, signature, alert: replyTo !== "none", files });
     if ("error" in r) return r;
     await releaseTicketLock(ctx.tx, ticketId, agent.id);
@@ -68,22 +70,22 @@ export async function postReplyAction(_prev: PostState, form: FormData): Promise
 }
 
 export async function postNoteAction(_prev: PostState, form: FormData): Promise<PostState> {
-  const ticketId = Number(form.get("ticketId"));
+  const ticketId = formNum(form, "ticketId");
   const loaded = await loadForWrite(ticketId);
   if ("error" in loaded) return { error: loaded.error };
   const { agent } = loaded;
-  const note = String(form.get("note") ?? "");
-  if (!note.replace(/<[^>]*>|&nbsp;|\s/g, "")) return { error: "note_required" };
+  const note = formHtml(form, "note", { sanitize: false });
+  if (!note) return { error: "note_required" };
   const cfg = await coreConfig();
-  const lockError = await checkLockForPost(db(), cfg, ticketId, agent.id, String(form.get("lockCode") ?? ""));
+  const lockError = await checkLockForPost(db(), cfg, ticketId, agent.id, formStr(form, "lockCode"));
   if (lockError) return { error: lockError };
 
-  const title = String(form.get("title") ?? "");
-  const statusId = Number(form.get("statusId") ?? 0) || undefined;
+  const title = formStr(form, "title");
+  const statusId = formNum(form, "statusId") || undefined;
   const result = await runWrite({ agent, ip: await clientIp() }, async (ctx) => {
     const before = await ctx.tx.selectFrom("ticket").select("status_id").where("ticket_id", "=", ticketId).executeTakeFirstOrThrow();
     const wasOpen = (await statusState(ctx.tx, before.status_id)) === "open";
-    const files = verifyUploadTokens(form.getAll("files").map(String), `S${agent.id}`);
+    const files = verifyUploadTokens(formStrs(form, "files"), `S${agent.id}`);
     const r = await postNote(ctx, { ticketId, note, title, statusId, files });
     if ("error" in r) return r;
     await releaseTicketLock(ctx.tx, ticketId, agent.id);

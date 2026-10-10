@@ -22,10 +22,10 @@ I test degli agenti disattivano `verify_email_addrs` (nessun DNS). Token di rese
 ## File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/admin/php.ts` | semantica PHP sui `$vars` del POST: `isset`, `truthy`, `intval`, `isNumeric`, `formatHtmlchars` (Format::htmlchars), `usernameError` |
+| Server | `src/server/php/values.ts` | fonte unica della semantica PHP 8 sui `$vars` del POST (da usare in tutto `src/server`, niente copie locali): `isset`, `isArray`, `truthy`, `str`, `isNumeric`, `intval`, `list`, `at`, `inArray`, `phpLooseEquals` (`==`), `htmlchars`/`htmlcharsVars` (Format::htmlchars con sanitize opzionale); test `test/unit/php-values.test.ts` (casi verificati con PHP 8.3) |
 | Dominio | `src/server/domain/admin/orm.ts` | `OrmRow`: dirty tracking di VerySimpleModel (confronto debole, INSERT dei soli campi impostati, `updated = NOW()` se modificato) |
 | Dominio | `src/server/domain/admin/config-write.ts` | `ConfigWriter` = Config::update/updateAll |
-| Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr) |
+| Dominio | `src/server/domain/admin/validator.ts` | Validator::process (int, string, email, cs-url, cs-domain, ipaddr), Validator::is_username (`usernameError`) |
 | Dominio | `src/server/domain/admin/settings.ts` | `updateSettings` (OsticketConfig::updateSettings e update*Settings), `settingsValues`, `installedLanguages` |
 | Dominio | `src/server/domain/admin/company.ts` | form azienda (tipo C): `validateCompanyForm`, `saveCompanyForm`, `companyValues` |
 | Dominio | `src/server/domain/admin/dept.ts` | `saveDept`, `deleteDept`, `massDept`, `deptFullPath` |

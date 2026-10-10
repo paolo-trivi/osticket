@@ -1,13 +1,18 @@
 import "server-only";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
+import { intval, isArray, isset, list, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { replaceSearchRow } from "../search/index-writer";
 import { FormInstance, saveFormEntry } from "../forms/entry";
-import { isEmail, type DateFormatOptions } from "../forms/fields";
+import type { DateFormatOptions } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
+import { isEmail } from "../forms/validator";
 
 /**
  * Utenti finali per la creazione dei ticket (include/class.user.php): ricerca per email,
@@ -79,7 +84,7 @@ export async function organizationForDomain(executor: DbOrTx, domain: string): P
     .selectFrom("organization")
     .select(["id", "name", "manager", "status", "domain"])
     .where("domain", ">", "")
-    .where("domain", "like", `%${domain.replace(/([%_\\])/g, "\\$1")}%`)
+    .where("domain", "like", `%${likeEscape(domain)}%`)
     .orderBy("name")
     .execute();
   for (const r of rows) if (mappedToDomain(r.domain ?? "", domain)) return { ...r, manager: r.manager ?? "", domain: r.domain ?? "" };
@@ -100,23 +105,24 @@ export function normalizeUserName(name: string): string {
 }
 
 /**
- * User::fromVars($vars, $create=true): se l'email non esiste crea utente, email predefinita,
- * organizzazione (org_id o dominio), entry del form utente con i valori puliti ricevuti e indice.
+ * User::fromVars($vars, $create=true): se l'email non esiste crea utente, email predefinita (UserEmail::ensure),
+ * organizzazione (`org_id` se impostato, altrimenti per dominio), entry del form utente e indice.
+ * `vars` è il getClean() del form utente (per id e per nome, FormInstance::cleanVars) o i valori già
+ * convertiti dell'import CSV: addDynamicData li rilegge con i widget come sorgente della nuova entry.
+ * Unica implementazione per creazione dei ticket, portale, directory e import.
  */
 export async function userFromVars(
   executor: DbOrTx,
   cfg: ConfigNamespace,
   vars: Record<string, unknown>,
-  create = true,
-  dates?: DateFormatOptions,
+  opts: { create?: boolean; dates?: DateFormatOptions } = {},
 ): Promise<UserRow | null> {
-  const email = String(vars.email ?? "");
+  const email = str(vars.email as PhpVal);
   const existing = await lookupUserByEmail(executor, email);
-  if (existing || !create || !isEmail(email)) return existing;
+  if (existing || opts.create === false || !isEmail(email)) return existing;
 
-  let name: string;
-  if (Array.isArray(vars.name)) name = vars.name.join(", ");
-  else name = String(vars.name ?? "") || email.split("@")[0];
+  let name = isArray(vars.name as PhpVal) ? list(vars.name as PhpVal).map(str).join(", ") : str(vars.name as PhpVal);
+  if (!truthy(name)) name = email.split("@")[0];
   name = normalizeUserName(htmlDecode(sanitizeText(name)).trim());
 
   // UserEmail::ensure
@@ -127,7 +133,7 @@ export async function userFromVars(
   }
 
   let orgId = 0;
-  if (vars.org_id !== undefined) orgId = Number(vars.org_id) || 0;
+  if (isset(vars as PhpVars, "org_id")) orgId = intval(vars.org_id as PhpVal);
   else {
     const org = await organizationForDomain(executor, email.split("@")[1] ?? "");
     if (org) orgId = org.id;
@@ -141,10 +147,10 @@ export async function userFromVars(
   await executor.updateTable("user_email").set({ user_id: userId }).where("id", "=", emailRow.id).execute();
 
   // addDynamicData: form "Contact Information" con la sorgente ricevuta
-  const form = await loadFormDef(executor, cfg, { type: "U" });
+  const form = await loadFormDef(executor, cfg, { type: FormType.USER });
   let content = "";
   if (form) {
-    const inst = new FormInstance(form, vars, 1, null, { dates });
+    const inst = new FormInstance(form, vars, 1, null, { dates: opts.dates });
     await saveFormEntry(executor, inst, "U", userId);
     content = inst.searchables(["subject"]).join("\n").trim();
   }

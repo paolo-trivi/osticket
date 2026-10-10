@@ -1,5 +1,6 @@
 import { sql } from "kysely";
 
+import { TicketStatus } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import type { TicketQueue } from "@/server/domain/queue/engine";
@@ -31,9 +32,9 @@ export default async function TicketMassBar({ agent, queue, sort, dir }: { agent
   if (!Object.values(can).some(Boolean)) return null;
   const [choices, deleted, depts, internalClosed, exportFields] = await Promise.all([
     ticketStatusChoices(executor),
-    executor.selectFrom("ticket_status").select(["id", "name", "state"]).where("state", "=", "deleted").where(sql<boolean>`(mode & 1) != 0`).orderBy("sort").execute(),
+    executor.selectFrom("ticket_status").select(["id", "name", "state"]).where("state", "=", "deleted").where(sql<boolean>`(mode & ${sql.lit(TicketStatus.ENABLED)}) != 0`).orderBy("sort").execute(),
     can.transfer ? selectableDepts(executor, agent, null) : Promise.resolve([]),
-    executor.selectFrom("ticket_status").select("id").where("state", "=", "closed").where(sql<boolean>`(mode & 2) != 0`).orderBy("sort").execute(),
+    executor.selectFrom("ticket_status").select("id").where("state", "=", "closed").where(sql<boolean>`(mode & ${sql.lit(TicketStatus.INTERNAL)}) != 0`).orderBy("sort").execute(),
     queue?.id ? queueExportFields(executor, cfg, queue) : Promise.resolve([] as [string, string][]),
   ]);
   // TicketStatus::status_options(): stati aperti (con close o create), chiusi (close), eliminati (delete)

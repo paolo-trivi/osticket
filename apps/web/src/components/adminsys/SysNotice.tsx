@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { Callout } from "./fields";
+import Callout from "@/components/common/Callout";
 
 /** Esito di un'azione di massa passato in query string (?ok=<azione>&n=<num> oppure ?err=<codice>). */
 export default async function SysNotice({ sp }: { sp: Record<string, string | undefined> }) {

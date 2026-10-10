@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   massAssignAction,
@@ -15,44 +15,19 @@ import {
   type MassActionState,
 } from "@/app/[locale]/(staff)/agent/(panel)/tickets/actions-mass";
 import { Check, Editor, Field, Select } from "@/components/tickets/edit/inputs";
+import ActionNotice from "@/components/common/ActionNotice";
+import MenuButton from "@/components/common/MenuButton";
+import { menuButtonClass, menuItemClass } from "@/components/common/menu-classes";
 import Button from "@/components/ui/button/Button";
-import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { Modal } from "@/components/ui/modal";
 import { useRouter } from "@/i18n/navigation";
-import { ChevronDownIcon } from "@/icons";
 import { withBase } from "@/lib/base-path";
+import { checkedIds } from "@/lib/checked-ids";
 import { cn } from "@/utils";
 
 import MassDialog from "./MassDialog";
 import type { MassData, MassKind } from "./types";
-
-const itemClass =
-  "block w-full rounded-lg px-3 py-2 text-start text-theme-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300";
-const buttonClass =
-  "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-theme-sm text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5";
-
-function MenuButton({ label, children }: { label: string; children: (close: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  return (
-    <div className="relative">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={cn("dropdown-toggle", buttonClass)}>
-        {label}
-        <ChevronDownIcon className={cn("size-4 transition-transform", open && "rotate-180")} />
-      </button>
-      <Dropdown isOpen={open} onClose={close} className="w-56 p-2">
-        {children(close)}
-      </Dropdown>
-    </div>
-  );
-}
-
-/** Ticket selezionati nella lista (caselle `data-mass-tid`). */
-function selectedIds(): number[] {
-  // la lista ha due viste (schede su mobile, tabella da md in su): stessi id, senza duplicati
-  return [...new Set([...document.querySelectorAll<HTMLInputElement>("input[data-mass-tid]:checked")].map((i) => Number(i.value)))].filter(Boolean);
-}
 
 /**
  * Barra delle azioni di massa della lista (include/staff/templates/tickets-actions.tmpl.php): cambio
@@ -69,7 +44,8 @@ export default function TicketMassActions({ data }: { data: MassData }) {
   const { can } = data;
 
   const open = (k: MassKind) => {
-    const sel = selectedIds();
+    // la lista ha due viste (schede su mobile, tabella da md in su): stessi id, senza duplicati
+    const sel = checkedIds("input[data-mass-tid]");
     if (k !== "export" && !sel.length) {
       setNotice({ ok: false, text: t("selectFirst") });
       return;
@@ -86,7 +62,7 @@ export default function TicketMassActions({ data }: { data: MassData }) {
     [router, t],
   );
   const item = (label: string, k: MassKind, c: () => void) => (
-    <DropdownItem key={typeof k === "object" ? `s${k.status}` : k} baseClassName={itemClass} onClick={() => open(k)} onItemClick={c}>
+    <DropdownItem key={typeof k === "object" ? `s${k.status}` : k} baseClassName={menuItemClass} onClick={() => open(k)} onItemClick={c}>
       {label}
     </DropdownItem>
   );
@@ -106,43 +82,34 @@ export default function TicketMassActions({ data }: { data: MassData }) {
         </MenuButton>
       )}
       {can.merge && (
-        <button type="button" className={buttonClass} onClick={() => open("merge")}>
+        <button type="button" className={menuButtonClass} onClick={() => open("merge")}>
           {t("merge")}
         </button>
       )}
       {can.link && (
-        <button type="button" className={buttonClass} onClick={() => open("link")}>
+        <button type="button" className={menuButtonClass} onClick={() => open("link")}>
           {t("link")}
         </button>
       )}
       {can.transfer && (
-        <button type="button" className={buttonClass} onClick={() => open("transfer")}>
+        <button type="button" className={menuButtonClass} onClick={() => open("transfer")}>
           {t("transfer")}
         </button>
       )}
       {can.delete && (
-        <button type="button" className={cn(buttonClass, "text-error-600 dark:text-error-400")} onClick={() => open("delete")}>
+        <button type="button" className={cn(menuButtonClass, "text-error-600 dark:text-error-400")} onClick={() => open("delete")}>
           {t("delete")}
         </button>
       )}
       {can.export && (
-        <button type="button" className={buttonClass} onClick={() => open("export")}>
+        <button type="button" className={menuButtonClass} onClick={() => open("export")}>
           {t("export")}
         </button>
       )}
       {notice && (
-        <div
-          role="status"
-          className={cn(
-            "flex basis-full items-center justify-between gap-3 rounded-lg px-4 py-2 text-theme-sm",
-            notice.ok ? "bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400" : "bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-orange-400",
-          )}
-        >
-          <span>{notice.text}</span>
-          <button type="button" onClick={() => setNotice(null)} className="text-theme-xs underline">
-            {t("close")}
-          </button>
-        </div>
+        <ActionNotice tone={notice.ok ? "success" : "warning"} closeLabel={t("close")} onClose={() => setNotice(null)}>
+          {notice.text}
+        </ActionNotice>
       )}
       {kind !== null && <MassDialogs kind={kind} ids={ids} data={data} onClose={close} onSuccess={onSuccess} />}
     </div>

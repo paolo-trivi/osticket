@@ -1,14 +1,15 @@
 import "server-only";
 
-import { sql } from "kysely";
+import { AttachmentType } from "@/lib/osticket/object-types";
 
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { localizeInlineImages } from "../../format/text";
+import { inArray, phpLooseEquals, str, truthy, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
-import { inArray, phpLooseEquals, str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
+import { deleteDraftsForNamespace } from "../drafts";
 import { sanitizeHtml } from "./sanitize";
 
 /**
@@ -38,16 +39,6 @@ async function defaultPages(executor: DbOrTx): Promise<string[]> {
 async function isInUse(executor: DbOrTx, id: number): Promise<boolean> {
   const t = await executor.selectFrom("help_topic").select("topic_id").where("page_id", "=", id).executeTakeFirst();
   return !!t || inArray(id, await defaultPages(executor));
-}
-
-/** Draft::deleteForNamespace($namespace) */
-export async function deleteDraftsForNamespace(executor: DbOrTx, namespace: string, staffId?: number): Promise<void> {
-  const prefix = `${namespace.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  await sql`DELETE a.* FROM ${table("attachment")} a JOIN ${table("draft")} d ON (a.object_id=d.id AND a.type='D')
-    WHERE d.namespace LIKE ${prefix}${staffId ? sql` AND d.staff_id=${staffId}` : sql``}`.execute(executor);
-  let q = executor.deleteFrom("draft").where("namespace", "like", namespace);
-  if (staffId) q = q.where("staff_id", "=", staffId);
-  await q.execute();
 }
 
 /** Page::update($vars, $errors) per una pagina nuova (pageId null) o esistente. */
@@ -90,7 +81,7 @@ export async function savePage(executor: DbOrTx, pageId: number | null, vars: Ph
   const keys = [...localizeInlineImages(str(vars.body)).matchAll(/"cid:([\w.-]{32})"/g)].map((m) => m[1]);
   const files = keys.length ? await executor.selectFrom("file").select(["id", "name"]).where("key", "in", keys).orderBy("id").execute() : [];
   const keep = new Map<number, number>(files.map((f, i) => [f.id, i]));
-  const current = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", "P").orderBy("id").execute();
+  const current = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", AttachmentType.PAGE).orderBy("id").execute();
   for (const a of current) {
     if (!keep.has(a.file_id) && !a.lang && a.inline) await executor.deleteFrom("attachment").where("id", "=", a.id).execute();
     keep.delete(a.file_id);
@@ -100,7 +91,7 @@ export async function savePage(executor: DbOrTx, pageId: number | null, vars: Ph
     const name = index && file && file.name.toLowerCase() !== String(index) ? String(index) : null;
     await executor
       .insertInto("attachment")
-      .values({ object_id: id, type: "P", file_id: fileId, inline: 1, ...(name !== null ? { name } : {}) } as never)
+      .values({ object_id: id, type: AttachmentType.PAGE, file_id: fileId, inline: 1, ...(name !== null ? { name } : {}) } as never)
       .execute();
   }
 

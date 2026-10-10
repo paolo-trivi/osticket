@@ -2,10 +2,13 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { CustomQueue, DynamicFormField, ThreadEntry, Ticket } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
-import { hasData, isPresentationOnly, plainLabel, FieldFlag, type FieldDef } from "../forms/fields";
+import { hasData, isPresentationOnly, plainLabel, type FieldDef } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { exportQueueTicketIds, type TicketQueue } from "../queue/engine";
 import type { Agent } from "../staff/staff";
@@ -49,13 +52,13 @@ const STANDARD_EXPORT_FIELDS: [string, string][] = [
 ];
 
 async function ticketFormFields(executor: DbOrTx, cfg: ConfigNamespace): Promise<FieldDef[]> {
-  return (await loadFormDef(executor, cfg, { type: "T" }, "staff"))?.fields ?? [];
+  return (await loadFormDef(executor, cfg, { type: FormType.TICKET }, "staff"))?.fields ?? [];
 }
 
 async function exportableFields(executor: DbOrTx, cfg: ConfigNamespace): Promise<[string, string][]> {
   const cdata: [string, string][] = [];
   for (const f of await ticketFormFields(executor, cfg)) {
-    if (f.name === "priority" || !hasData(f) || isPresentationOnly(f) || !(f.flags & FieldFlag.ENABLED)) continue;
+    if (f.name === "priority" || !hasData(f) || isPresentationOnly(f) || !(f.flags & DynamicFormField.ENABLED)) continue;
     cdata.push([`cdata__${f.name || `field_${f.id}`}`, plainLabel(f.label)]);
   }
   // array + array del PHP: le chiavi già presenti non vengono sovrascritte
@@ -67,7 +70,7 @@ async function exportableFields(executor: DbOrTx, cfg: ConfigNamespace): Promise
 /** CustomQueue::getExportFields(): ereditati dal padre, configurati (queue_export) o standard. */
 export async function queueExportFields(executor: DbOrTx, cfg: ConfigNamespace, queue: TicketQueue): Promise<[string, string][]> {
   let fields: [string, string][] = [];
-  if (queue.row.parent_id && queue.has(0x0080) && queue.parent) {
+  if (queue.row.parent_id && queue.has(CustomQueue.INHERIT_EXPORT) && queue.parent) {
     fields = await queueExportFields(executor, cfg, queue.parent);
   } else {
     const rows = await executor.selectFrom("queue_export").select(["path", "heading"]).where("queue_id", "=", queue.id).orderBy("sort").orderBy("id").execute();
@@ -176,9 +179,9 @@ function render(path: string, row: Row, lk: Lookups, cdataFields: Map<string, Fi
     case "isanswered":
       return yesNo(!!num(path));
     case "merged":
-      return yesNo((num("flags") & 0x3) !== 0);
+      return yesNo((num("flags") & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) !== 0);
     case "linked":
-      return yesNo((num("flags") & 0x8) !== 0);
+      return yesNo((num("flags") & Ticket.LINKED) !== 0);
     case "thread_count":
     case "reopen_count":
     case "attachment_count":
@@ -234,7 +237,7 @@ export async function exportQueueCsv(executor: DbOrTx, cfg: ConfigNamespace, age
       SELECT T.*, U.name AS user__name, ORG.name AS user__org__name,
         (SELECT E.address FROM ${table("user_email")} E WHERE E.user_id = T.user_id ORDER BY E.id = U.default_email_id DESC, E.id LIMIT 1) AS user__emails__address,
         (SELECT COUNT(H.id) FROM ${table("thread")} TH JOIN ${table("thread_entry")} H ON (H.thread_id = TH.id)
-          WHERE TH.object_type = 'T' AND TH.object_id = T.ticket_id AND (H.flags & 4) = 0) AS thread_count,
+          WHERE TH.object_type = 'T' AND TH.object_id = T.ticket_id AND (H.flags & ${sql.lit(ThreadEntry.HIDDEN)}) = 0) AS thread_count,
         (SELECT COUNT(EV.id) FROM ${table("thread")} TH JOIN ${table("thread_event")} EV ON (EV.thread_id = TH.id)
           WHERE TH.object_type = 'T' AND TH.object_id = T.ticket_id AND EV.annulled = 0
             AND EV.event_id = (SELECT id FROM ${table("event")} WHERE name = 'reopened')) AS reopen_count,

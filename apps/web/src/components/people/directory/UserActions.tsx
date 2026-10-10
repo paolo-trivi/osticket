@@ -13,6 +13,7 @@ import {
   userUpdateAction,
 } from "@/app/[locale]/(staff)/agent/(panel)/users/actions";
 import Button from "@/components/ui/button/Button";
+import { UserAccountStatus } from "@/lib/osticket/flags";
 
 import { CheckField, DynamicField, SelectField, TextField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
@@ -33,9 +34,6 @@ interface UserActionsData {
 
 type Kind = "edit" | "org" | "register" | "account" | "confirm" | "reset" | "lock" | "unlock" | "delete";
 
-const LOCKED = 0x0002;
-const CONFIRMED = 0x0001;
-
 /** Azioni sulla scheda utente (user-view.inc.php / ajax.users.php). */
 export default function UserActions({ data }: { data: UserActionsData }) {
   const t = useTranslations("peopleDir");
@@ -48,10 +46,10 @@ export default function UserActions({ data }: { data: UserActionsData }) {
     { kind: "org", show: data.can.edit },
     { kind: "register", show: data.can.manage && !acct },
     { kind: "account", show: data.can.manage && !!acct },
-    { kind: "confirm", show: data.can.manage && !!acct && !(acct.status & CONFIRMED) },
+    { kind: "confirm", show: data.can.manage && !!acct && !(acct.status & UserAccountStatus.CONFIRMED) },
     { kind: "reset", show: data.can.manage && !!acct },
-    { kind: "lock", show: data.can.manage && !!acct && !(acct.status & LOCKED) },
-    { kind: "unlock", show: data.can.manage && !!acct && !!(acct.status & LOCKED) },
+    { kind: "lock", show: data.can.manage && !!acct && !(acct.status & UserAccountStatus.LOCKED) },
+    { kind: "unlock", show: data.can.manage && !!acct && !!(acct.status & UserAccountStatus.LOCKED) },
     { kind: "delete", show: data.can.delete },
   ];
   const tzOptions = data.timezones.map((z) => ({ id: z, name: z }));
@@ -113,9 +111,9 @@ export default function UserActions({ data }: { data: UserActionsData }) {
               <SelectField name="timezone" label={t("timezone")} placeholder={t("systemDefault")} defaultValue={acct.timezone} options={tzOptions} />
               <TextField name="passwd1" type="password" label={t("newPassword")} autoComplete="new-password" error={s.fields?.passwd1} />
               <TextField name="passwd2" type="password" label={t("confirmPassword")} autoComplete="new-password" error={s.fields?.passwd2} />
-              <CheckField name="locked-flag" label={t("lockedFlag")} defaultChecked={!!(acct.status & LOCKED)} />
-              <CheckField name="pwreset-flag" label={t("requirePwReset")} defaultChecked={!!(acct.status & 0x0004)} />
-              <CheckField name="forbid-pwchange-flag" label={t("forbidPwChange")} defaultChecked={!!(acct.status & 0x0008)} />
+              <CheckField name="locked-flag" label={t("lockedFlag")} defaultChecked={!!(acct.status & UserAccountStatus.LOCKED)} />
+              <CheckField name="pwreset-flag" label={t("requirePwReset")} defaultChecked={!!(acct.status & UserAccountStatus.REQUIRE_PASSWD_RESET)} />
+              <CheckField name="forbid-pwchange-flag" label={t("forbidPwChange")} defaultChecked={!!(acct.status & UserAccountStatus.FORBID_PASSWD_RESET)} />
             </div>
           )}
         </PeopleDialog>

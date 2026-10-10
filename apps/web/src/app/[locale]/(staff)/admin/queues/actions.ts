@@ -1,9 +1,10 @@
 "use server";
 
-import { str } from "@/server/domain/admin/php";
+import { massRedirect } from "@/server/actions/result";
+import { str } from "@/server/php/values";
 import { massQueues, type QueueMassAction } from "@/server/domain/adminsys/queue";
 
-import { adminWrite, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 const ACTIONS: QueueMassAction[] = ["enable", "disable", "delete"];
 

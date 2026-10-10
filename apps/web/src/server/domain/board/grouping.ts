@@ -170,9 +170,5 @@ export function criteriaStates(criteria: Criterion[]): Set<string> | null {
   return out;
 }
 
-/** Colore di priorità del DB utilizzabile in uno style inline (#rgb/#rrggbb). */
-export function safeColor(color: string | null | undefined): string | null {
-  return color && /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(color)
-    ? color
-    : null;
-}
+/** Colore di priorità del DB utilizzabile in uno style inline (#rgb/#rrggbb): fonte unica in lib/color. */
+export { safeColor } from "@/lib/color";

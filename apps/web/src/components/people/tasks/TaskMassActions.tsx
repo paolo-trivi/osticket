@@ -5,6 +5,7 @@ import { useCallback, useState, type ReactNode } from "react";
 
 import { taskMassAction } from "@/app/[locale]/(staff)/agent/(panel)/tasks/actions";
 import Button from "@/components/ui/button/Button";
+import { checkedIds } from "@/lib/checked-ids";
 
 import { SelectField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
@@ -24,10 +25,6 @@ export default function TaskMassActions({ can, agents, teams, depts }: { can: Re
   const ops = (Object.keys(can) as Op[]).filter((k) => can[k]);
   if (!ops.length) return null;
 
-  /** Copia nel dialogo gli id selezionati nella tabella. */
-  const selected = (): number[] =>
-    Array.from(document.querySelectorAll<HTMLInputElement>('input[data-task-select="1"]:checked')).map((i) => Number(i.value));
-
   let body: ReactNode = null;
   if (op === "assign")
     body = (
@@ -46,7 +43,7 @@ export default function TaskMassActions({ can, agents, teams, depts }: { can: Re
         <span className="text-theme-sm text-gray-500 dark:text-gray-400">{t("selected")}</span>
         {ops.map((k) => (
           <Button key={k} size="sm" variant="outline" onClick={() => {
-              setIds(selected());
+              setIds(checkedIds('input[data-task-select="1"]'));
               setOp(k);
             }}>
             {t(`actions.${k === "assign" ? "assign" : k}`)}

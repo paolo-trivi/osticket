@@ -543,6 +543,45 @@ describe("form dinamici del topic e campi cdata", () => {
     await compareAll();
   });
 
+  it("risposte vuote inviate dal form: NULL come il PHP (ticket, topic e nuovo utente)", async () => {
+    await execBoth(SEQUENTIAL, cfgSet("verify_email_addrs", "0"), ...CUSTOM_FORMS);
+    const vars = {
+      source: "Phone",
+      topicId: 2,
+      email: "campi.vuoti@paziente.example",
+      name: "Campi Vuoti",
+      phone: "",
+      notes: "",
+      subject: "Campi vuoti",
+      message: "<p>Testo</p>",
+      seriale: "",
+      descrizione: "",
+      urgenza: "a",
+      garanzia: "",
+      data_guasto: "",
+      tel: "",
+      reparto: "",
+      "107": "",
+      interno: "",
+      area: [],
+      "reply-to": "none",
+    };
+    expectSameResult(await phpOpen(2, vars), await tsOpen(2, vars));
+    await compareAll();
+  });
+
+  it("valori grezzi come il PHP: telefono di soli spazi non valido, data \"0\" non convertita", async () => {
+    await execBoth(SEQUENTIAL, cfgSet("verify_email_addrs", "0"), ...CUSTOM_FORMS);
+    const spaces = { email: "spazi@paziente.example", name: "Solo Spazi", phone: "   ", topicId: 1, subject: "Telefono", message: "<p>Testo</p>" };
+    const php = await phpWeb(null, spaces);
+    const ts = await tsWeb(null, spaces);
+    expect(php.ok).toBe(false);
+    expect(ts.ok).toBe(false);
+    const zero = { topicId: 2, subject: "Data zero", message: "<p>Testo</p>", urgenza: "b", data_guasto: "0" };
+    expectSameResult(await phpWeb(5, zero), await tsWeb(5, zero));
+    await compareAll();
+  });
+
   it("campo disattivato dal topic: non salvato e escluso dalla validazione", async () => {
     await execBoth(SEQUENTIAL, ...CUSTOM_FORMS, "UPDATE {p}help_topic_form SET extra='{\"disable\":[102,103]}' WHERE topic_id=2 AND form_id=10");
     const vars = { topicId: 2, subject: "Disattivati", message: "<p>Testo</p>", seriale: "X1" };

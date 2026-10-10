@@ -2,34 +2,32 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { UserModel } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
-import { htmlDecode } from "../../format/html";
-import { sanitizeText, searchable } from "../../format/text";
+import { searchable } from "../../format/text";
+import { phpLooseEquals, str, truthy } from "../../php/values";
 import { deleteSearchRow, replaceSearchRow } from "../search/index-writer";
 import { GlobalPerm } from "../staff/staff";
-import { lookupUserByEmail, normalizeUserName, organizationForDomain } from "../ticket/create-user";
+import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
 import type { WriteContext } from "../ticket/context";
-import { phpLooseEquals } from "../ticket/record";
 import {
+  addMissingAnswers,
   createEntry,
+  defaultDates,
   defaultFormOf,
   deleteEntries,
   entriesFor,
   entriesSearchable,
-  hasAnswerRow,
-  inputFor,
-  isEditableToStaff,
-  isEmail,
-  isRequiredForStaff,
-  isVisibleToStaff,
-  parseInput,
   saveEntryAnswers,
   toDatabase,
   validateInput,
-  verifyEmailFields,
-  type FieldDef,
   type FormEntry,
-} from "./forms";
+} from "../forms/answers";
+import { currentDates, FormInstance } from "../forms/entry";
+import { hasAnswerRow, isEditableToStaff, isRequiredForStaff, isVisibleToStaff, parseField, parseFieldValue, type DateFormatOptions, type FieldDef } from "../forms/fields";
+import { isEmail } from "../forms/validator";
 
 /**
  * Utenti finali (include/class.user.php, scp/users.php, include/ajax.users.php) con le stesse righe
@@ -44,8 +42,6 @@ export type DirError =
 export type DirResult<T = object> =
   | ({ ok: true } & T)
   | { ok: false; error: DirError; fields?: Record<string, string>; detail?: string };
-
-export const UserStatus = { PRIMARY_ORG_CONTACT: 0x0001 } as const;
 
 interface UserCore {
   id: number;
@@ -72,11 +68,11 @@ async function userEmails(executor: DbOrTx, userId: number): Promise<string[]> {
  * accodati da MysqlSearchBackend::update; titolo = nome. `emails` permette di replicare la relazione
  * in cache del PHP (alla creazione contiene due volte l'indirizzo appena aggiunto).
  */
-export async function reindexUser(executor: DbOrTx, userId: number, emails?: string[]): Promise<void> {
+export async function reindexUser(executor: DbOrTx, userId: number, emails?: string[], dates?: DateFormatOptions): Promise<void> {
   const u = await executor.selectFrom("user").select(["name"]).where("id", "=", userId).executeTakeFirst();
   if (!u) return;
   const entries = await entriesFor(executor, "U", userId);
-  const content = entriesSearchable(entries).join("\n").trim();
+  const content = entriesSearchable(entries, dates ?? (await defaultDates(executor)), ["subject"]).join("\n").trim();
   const list = emails ?? (await userEmails(executor, userId));
   await replaceSearchRow(executor, "U", userId, `${content} ${list.join("\n")}`, searchable(u.name));
 }
@@ -84,56 +80,14 @@ export async function reindexUser(executor: DbOrTx, userId: number, emails?: str
 /** Filtro di validazione di User::fromForm con un agente: obbligatorio o visibile all'agente. */
 const staffFilter = (f: FieldDef) => isRequiredForStaff(f) || isVisibleToStaff(f);
 
-/** Valore pulito (getClean) di un campo per nome. */
-function cleanOf(fields: FieldDef[], input: Record<string, unknown>, name: string): string {
+/** Valore pulito (getClean) di un campo per nome, come testo. */
+function cleanOf(fields: FieldDef[], input: Record<string, unknown>, name: string, timezone: string): string {
   const f = fields.find((x) => x.name === name);
   if (!f) return "";
-  const v = parseInput(f, inputFor(input, f));
+  const v = parseField(f, input, timezone);
   if (v === null || v === false) return "";
   if (typeof v === "object") return Object.values(v).join(", ");
   return String(v);
-}
-
-/** UserEmail::ensure */
-async function ensureUserEmail(executor: DbOrTx, address: string): Promise<number> {
-  const row = await executor.selectFrom("user_email").select("id").where("address", "=", address).executeTakeFirst();
-  if (row) return row.id;
-  const r = await executor.insertInto("user_email").values({ user_id: 0, flags: 0, address }).executeTakeFirstOrThrow();
-  return Number(r.insertId);
-}
-
-/**
- * User::fromVars($vars, $create=true): nuovo utente con email predefinita, organizzazione (org_id o
- * dominio), entry del form utente e indice. `input` è la sorgente del form (valori grezzi).
- */
-async function userFromVars(executor: DbOrTx, input: Record<string, unknown>, orgId?: number): Promise<UserCore | null> {
-  const form = await defaultFormOf(executor, "U");
-  if (!form) return null;
-  const email = cleanOf(form.fields, input, "email");
-  const existing = await lookupUserByEmail(executor, email);
-  if (existing) return existing;
-  if (!isEmail(email)) return null;
-  let name = cleanOf(form.fields, input, "name");
-  if (!name) name = email.split("@")[0];
-  name = normalizeUserName(htmlDecode(sanitizeText(name)).trim());
-
-  const emailId = await ensureUserEmail(executor, email);
-  let org = 0;
-  if (orgId !== undefined) org = orgId;
-  else {
-    const o = await organizationForDomain(executor, email.split("@")[1] ?? "");
-    if (o) org = o.id;
-  }
-  const res = await executor
-    .insertInto("user")
-    .values({ org_id: org, default_email_id: emailId, status: 0, name, created: NOW, updated: NOW })
-    .executeTakeFirstOrThrow();
-  const id = Number(res.insertId);
-  await executor.updateTable("user_email").set({ user_id: id }).where("id", "=", emailId).execute();
-  await createEntry(executor, form, "U", "U", id, input);
-  // user.created: la relazione emails in cache contiene l'indirizzo due volte (fetch + add)
-  await reindexUser(executor, id, [email, email]);
-  return { id, org_id: org, default_email_id: emailId, status: 0, name };
 }
 
 /**
@@ -141,17 +95,19 @@ async function userFromVars(executor: DbOrTx, input: Record<string, unknown>, or
  * visibili/obbligatori per l'agente ed email non già assegnata.
  * Permessi: scp/users.php non controlla user.create (bug di permessi del PHP, non replicato).
  */
-export async function createUser(ctx: WriteContext, input: Record<string, unknown>, opts: { orgId?: number; checkPerm?: boolean } = {}): Promise<DirResult<{ id: number }>> {
+export async function createUser(ctx: WriteContext, input: Record<string, unknown>, opts: { checkPerm?: boolean } = {}): Promise<DirResult<{ id: number }>> {
   const { tx, agent } = ctx;
   if (opts.checkPerm !== false && (!agent || !agent.hasGlobalPerm(GlobalPerm.USER_CREATE))) return { ok: false, error: "forbidden" };
   const form = await defaultFormOf(tx, "U");
   if (!form) return { ok: false, error: "not_found" };
-  const fields = validateInput(form.fields, input, staffFilter);
-  if (!Object.keys(fields).length) Object.assign(fields, await verifyEmailFields(form.fields, input, ctx.cfg.bool("verify_email_addrs"), staffFilter));
-  const email = cleanOf(form.fields, input, "email");
+  const dates = await currentDates(ctx);
+  const fields: Record<string, string> = await validateInput(form.fields, input, staffFilter, ctx.cfg, dates);
+  const email = cleanOf(form.fields, input, "email", dates.timezone);
   if (email && (await lookupUserByEmail(tx, email))) fields.email = "in_use";
   if (Object.keys(fields).length) return { ok: false, error: "invalid", fields };
-  const user = await userFromVars(tx, input, opts.orgId);
+  // User::fromVars($form->getClean())
+  const inst = new FormInstance({ id: form.id, type: FormType.USER, title: "", instructions: "", fields: form.fields }, input, 1, null, { dates });
+  const user = await userFromVars(tx, ctx.cfg, inst.cleanVars(), { dates });
   if (!user) return { ok: false, error: "invalid" };
   return { ok: true, id: user.id };
 }
@@ -167,6 +123,7 @@ async function saveUser(
   changes: Partial<Pick<UserCore, "name" | "org_id" | "status">>,
   touch = false,
   cachedEmails?: string[],
+  dates?: DateFormatOptions,
 ): Promise<void> {
   const set: Record<string, unknown> = {};
   if (changes.name !== undefined && !phpLooseEquals(user.name, changes.name)) set.name = normalizeUserName(changes.name);
@@ -176,7 +133,7 @@ async function saveUser(
   set.updated = NOW;
   await executor.updateTable("user").set(set as never).where("id", "=", user.id).execute();
   Object.assign(user, set);
-  await reindexUser(executor, user.id, cachedEmails);
+  await reindexUser(executor, user.id, cachedEmails, dates);
 }
 
 /** User::getForms($vars, $isEditable) + validazione isValidForStaff(true) */
@@ -204,14 +161,17 @@ async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<s
   const user = await loadUserCore(tx, userId, true);
   if (!user) return { ok: false, error: "not_found" };
   const entries = await userEntries(tx, userId);
+  const dates = await currentDates(ctx);
+  const { timezone } = dates;
+  // User::getForms: addMissingFields prima della validazione
+  for (const e of entries) await addMissingAnswers(tx, e, userId);
   const fields: Record<string, string> = {};
   for (const e of entries) {
-    const errs = validateInput(e.fields, input, isEditableToStaff);
-    Object.assign(fields, errs, Object.keys(errs).length ? {} : await verifyEmailFields(e.fields, input, ctx.cfg.bool("verify_email_addrs"), isEditableToStaff));
-    if (e.form_type === "U") {
+    Object.assign(fields, await validateInput(e.fields, input, isEditableToStaff, ctx.cfg, { timezone }));
+    if (e.form_type === FormType.USER) {
       const f = e.fields.find((x) => x.name === "email");
       if (f && isEditableToStaff(f)) {
-        const email = cleanOf(e.fields, input, "email");
+        const email = cleanOf(e.fields, input, "email", timezone);
         const other = email ? await lookupUserByEmail(tx, email) : null;
         if (other && other.id !== userId) fields.email = "in_use";
       }
@@ -222,12 +182,12 @@ async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<s
   let name: string | undefined;
   let touch = false;
   for (const e of entries) {
-    if (e.form_type === "U") {
+    if (e.form_type === FormType.USER) {
       const nf = e.fields.find((x) => x.name === "name");
-      if (nf && isEditableToStaff(nf)) name = cleanOf(e.fields, input, "name").trim();
+      if (nf && isEditableToStaff(nf)) name = cleanOf(e.fields, input, "name", timezone).trim();
       const ef = e.fields.find((x) => x.name === "email");
       if (ef && isEditableToStaff(ef)) {
-        const email = cleanOf(e.fields, input, "email");
+        const email = cleanOf(e.fields, input, "email", timezone);
         const cur = await tx.selectFrom("user_email").select(["id", "address"]).where("id", "=", user.default_email_id).executeTakeFirst();
         if (cur && !phpLooseEquals(cur.address, email)) {
           await tx.updateTable("user_email").set({ address: email }).where("id", "=", cur.id).execute();
@@ -235,10 +195,10 @@ async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<s
       }
     }
     // Widget::getValue: i campi assenti dalla sorgente mantengono il valore attuale
-    const r = await saveEntryAnswers(tx, e, userId, input, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f), onlyProvided: true });
+    const r = await saveEntryAnswers(tx, e, userId, input, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f), onlyProvided: true, timezone });
     if (r.dirty) touch = true;
   }
-  await saveUser(tx, user, name !== undefined ? { name } : {}, touch);
+  await saveUser(tx, user, name !== undefined ? { name } : {}, touch, undefined, dates);
   return { ok: true };
 }
 
@@ -267,7 +227,7 @@ export async function setUserOrganization(ctx: WriteContext, userId: number, org
 export async function removeUserFromOrg(ctx: WriteContext, userId: number): Promise<boolean> {
   const user = await loadUserCore(ctx.tx, userId, true);
   if (!user) return false;
-  await saveUser(ctx.tx, user, { org_id: 0, status: user.status & ~UserStatus.PRIMARY_ORG_CONTACT });
+  await saveUser(ctx.tx, user, { org_id: 0, status: user.status & ~UserModel.PRIMARY_ORG_CONTACT });
   return true;
 }
 
@@ -419,18 +379,18 @@ async function doImport(ctx: WriteContext, stream: string, extra: { orgId?: numb
     if (csv.length !== headers.length) throw new ImportFailure(`Bad data. Expected: ${headers.map((h) => h.label).join(", ")}`);
     const rec: Record<string, unknown> = {};
     if (extra.orgId !== undefined) rec.org_id = extra.orgId;
+    // CsvImportIterator: $f->parse(trim($csv[$i])) (senza widget), poi to_database
     headers.forEach((f, i) => {
-      const v = parseInput(f, csv[i].trim());
-      rec[f.name] = toDatabase(f, v);
+      rec[f.name] = toDatabase(f, parseFieldValue(f, csv[i].trim()));
     });
-    const email = String(rec.email ?? "");
-    if (!isEmail(email) || !rec.name) throw new ImportFailure("Both `name` and `email` fields are required");
+    const email = str(rec.email as string | null);
+    if (!isEmail(email) || !truthy(rec.name as string | null)) throw new ImportFailure("Both `name` and `email` fields are required");
     const existing = await lookupUserByEmail(tx, email);
     if (existing) {
       // fromVars($vars, true, $update=true) → updateInfo($vars, $errors, true): errori ignorati
       await updateUserInfo(ctx, existing.id, rec);
     } else {
-      const u = await userFromVars(tx, rec, extra.orgId);
+      const u = await userFromVars(tx, ctx.cfg, rec, { dates: await currentDates(ctx) });
       if (!u) throw new ImportFailure(`Unable to import user: ${JSON.stringify(rec)}`);
     }
     imported++;

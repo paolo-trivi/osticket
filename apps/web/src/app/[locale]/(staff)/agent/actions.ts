@@ -3,6 +3,7 @@
 import { getLocale } from "next-intl/server";
 
 import { redirect } from "@/i18n/navigation";
+import { formStr } from "@/server/actions/form-data";
 import { staffLogin, staffLogout, type StaffLoginResult } from "@/server/auth/staff-auth";
 
 export interface LoginState {
@@ -11,12 +12,12 @@ export interface LoginState {
 }
 
 export async function agentLoginAction(_prev: LoginState, form: FormData): Promise<LoginState> {
-  const username = String(form.get("username") ?? "");
-  const password = String(form.get("password") ?? "");
+  const username = formStr(form, "username");
+  const password = formStr(form, "password");
   const result = await staffLogin(username, password);
   if (!result.ok) return { error: result.error, username };
 
-  const next = String(form.get("next") ?? "");
+  const next = formStr(form, "next");
   const locale = await getLocale();
   // 2FA via email: secondo passo con il codice inviato (area people, login/verify)
   if (result.mfa) {

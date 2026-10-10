@@ -3,8 +3,8 @@ import "server-only";
 import { getTranslations } from "next-intl/server";
 
 import type { FormSection } from "@/lib/admin/form-schema";
+import { Dept, StaffDeptAccess } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
-import { DeptFlag } from "@/server/domain/admin/dept";
 import { deptOptions, emailOptions, roleOptions, scheduleOptions, slaOptions, staffOptions, templateOptions } from "@/server/domain/admin/lookups";
 
 /** Sezioni del form reparto (include/staff/department.inc.php) con i valori correnti. */
@@ -14,9 +14,9 @@ export async function deptSections(deptId: number | null): Promise<FormSection[]
   const executor = db();
   const dept = deptId ? await executor.selectFrom("department").selectAll().where("id", "=", deptId).executeTakeFirst() : null;
   if (deptId && !dept) return null;
-  const flags = dept?.flags ?? DeptFlag.ACTIVE;
-  const status = flags & DeptFlag.ACTIVE ? "active" : flags & DeptFlag.ARCHIVED ? "archived" : "disabled";
-  const assignment = flags & DeptFlag.ASSIGN_MEMBERS_ONLY ? "members" : flags & DeptFlag.ASSIGN_PRIMARY_ONLY ? "primary" : "all";
+  const flags = dept?.flags ?? Dept.ACTIVE;
+  const status = flags & Dept.ACTIVE ? "active" : flags & Dept.ARCHIVED ? "archived" : "disabled";
+  const assignment = flags & Dept.ASSIGN_MEMBERS_ONLY ? "members" : flags & Dept.ASSIGN_PRIMARY_ONLY ? "primary" : "all";
   const [depts, slas, schedules, staff, emails, templates, roles] = await Promise.all([
     deptOptions(executor),
     slaOptions(executor),
@@ -70,8 +70,8 @@ export async function deptSections(deptId: number | null): Promise<FormSection[]
           value: assignment,
           options: ["all", "members", "primary"].map((v) => ({ value: v, label: t(`assign.${v}`) })),
         },
-        { kind: "checkbox", name: "disable_auto_claim", label: t("disableAutoClaim"), checked: !!(flags & DeptFlag.DISABLE_AUTO_CLAIM) },
-        { kind: "checkbox", name: "disable_reopen_auto_assign", label: t("disableReopenAutoAssign"), checked: !!(flags & DeptFlag.DISABLE_REOPEN_AUTO_ASSIGN) },
+        { kind: "checkbox", name: "disable_auto_claim", label: t("disableAutoClaim"), checked: !!(flags & Dept.DISABLE_AUTO_CLAIM) },
+        { kind: "checkbox", name: "disable_reopen_auto_assign", label: t("disableReopenAutoAssign"), checked: !!(flags & Dept.DISABLE_REOPEN_AUTO_ASSIGN) },
       ],
     },
     {
@@ -113,7 +113,7 @@ export async function deptSections(deptId: number | null): Promise<FormSection[]
           wide: true,
           selected: [
             ...primary.map((p) => ({ id: String(p.staff_id), role: String(p.role_id), alerts: true })),
-            ...extended.map((e) => ({ id: String(e.staff_id), role: String(e.role_id), alerts: !!(e.flags & 1) })),
+            ...extended.map((e) => ({ id: String(e.staff_id), role: String(e.role_id), alerts: !!(e.flags & StaffDeptAccess.ALERTS) })),
           ],
         },
       ],

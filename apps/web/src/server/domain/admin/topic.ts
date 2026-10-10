@@ -2,22 +2,23 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { table, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
-import { adminDefaults, exists, idOf, type MassResult, type SaveResult } from "./common";
+import { isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { adminDefaults, exists, hasHash, idOf, type MassResult, type SaveResult } from "./common";
 import { ConfigWriter } from "./config-write";
-import { DeptFlag } from "./dept";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { hasHash, isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /**
  * Help topic: scp/helptopics.php → Topic::update / Topic::delete / mass_process (include/class.topic.php),
  * form associati (help_topic_form, Topic::updateForms) e ordinamento (Topic::updateSortOrder).
  */
-export const TopicFlag = { CUSTOM_NUMBERS: 0x0001, ACTIVE: 0x0002, ARCHIVED: 0x0004 } as const;
 
 const TOPIC_OPTS = { touchUpdated: true };
 
@@ -41,7 +42,7 @@ export async function helpTopicsSnapshot(executor: DbOrTx): Promise<TopicInfo[]>
   const rows = await executor.selectFrom("help_topic").select(["topic_id", "topic_pid", "ispublic", "flags", "topic", "dept_id"]).orderBy("sort").execute();
   const topics = new Map<number, { pid: number; public: boolean; disabled: boolean; topic: string; deptId: number }>();
   for (const r of rows)
-    topics.set(r.topic_id, { pid: r.topic_pid, public: !!r.ispublic, disabled: !((r.flags ?? 0) & TopicFlag.ACTIVE), topic: r.topic, deptId: r.dept_id });
+    topics.set(r.topic_id, { pid: r.topic_pid, public: !!r.ispublic, disabled: !((r.flags ?? 0) & Topic.ACTIVE), topic: r.topic, deptId: r.dept_id });
   const out: TopicInfo[] = [];
   for (const [id, base] of topics) {
     let info = base;
@@ -110,7 +111,7 @@ export async function saveTopic(executor: DbOrTx, topicId: number | null, input:
   }
   const deptId = idOf(vars.dept_id);
   const dept = deptId ? await executor.selectFrom("department").select("flags").where("id", "=", deptId).executeTakeFirst() : undefined;
-  if (dept && !((dept.flags ?? 0) & DeptFlag.ACTIVE)) errors.dept_id = "inactive";
+  if (dept && !((dept.flags ?? 0) & Dept.ACTIVE)) errors.dept_id = "inactive";
   if (!isNumeric(vars.dept_id)) errors.dept_id = "required";
   if (truthy(vars["custom-numbers"]) && !hasHash(vars.number_format)) errors.number_format = "hash";
 
@@ -133,22 +134,22 @@ export async function saveTopic(executor: DbOrTx, topicId: number | null, input:
   topic.set("ispublic", vars.ispublic === undefined || vars.ispublic === null ? null : str(vars.ispublic));
   topic.set("sequence_id", truthy(vars["custom-numbers"]) ? (vars.sequence_id === undefined ? null : str(vars.sequence_id)) : 0);
   topic.set("number_format", vars.number_format === undefined || vars.number_format === null ? null : str(vars.number_format));
-  setFlag(topic, TopicFlag.CUSTOM_NUMBERS, truthy(vars["custom-numbers"]));
+  setFlag(topic, Topic.CUSTOM_NUMBERS, truthy(vars["custom-numbers"]));
   topic.set("noautoresp", isset(vars, "noautoresp") ? 1 : 0);
   topic.set("notes", sanitizeText(str(vars.notes)));
   // FilterAction::setFilterFlags(FLAG_INACTIVE_HT): nessuna scrittura (vedi filters.ts)
   switch (str(vars.status)) {
     case "active":
-      setFlag(topic, TopicFlag.ACTIVE, true);
-      setFlag(topic, TopicFlag.ARCHIVED, false);
+      setFlag(topic, Topic.ACTIVE, true);
+      setFlag(topic, Topic.ARCHIVED, false);
       break;
     case "disabled":
-      setFlag(topic, TopicFlag.ACTIVE, false);
-      setFlag(topic, TopicFlag.ARCHIVED, false);
+      setFlag(topic, Topic.ACTIVE, false);
+      setFlag(topic, Topic.ARCHIVED, false);
       break;
     case "archived":
-      setFlag(topic, TopicFlag.ACTIVE, false);
-      setFlag(topic, TopicFlag.ARCHIVED, true);
+      setFlag(topic, Topic.ACTIVE, false);
+      setFlag(topic, Topic.ARCHIVED, true);
       break;
   }
   // assegnazione automatica: "s<id>" agente, "t<id>" team
@@ -205,7 +206,7 @@ async function updateForms(executor: DbOrTx, topicId: number, vars: PhpVars): Pr
       row.set("extra", phpJsonEncode({ disable: await findDisabled(F.form_id) }));
       await row.save(executor);
       formIds.delete(idx);
-    } else if (F.type !== "T") {
+    } else if (F.type !== FormType.TICKET) {
       await executor.deleteFrom("help_topic_form").where("id", "=", F.id).execute();
     }
   }
@@ -254,8 +255,8 @@ export async function massTopics(executor: DbOrTx, action: TopicMassAction, ids:
     const rows = await executor.selectFrom("help_topic").selectAll().where("topic_id", "in", only).execute();
     for (const r of rows) {
       const t = OrmRow.from("help_topic", "topic_id", r, TOPIC_OPTS);
-      setFlag(t, TopicFlag.ARCHIVED, arch);
-      setFlag(t, TopicFlag.ACTIVE, act);
+      setFlag(t, Topic.ARCHIVED, arch);
+      setFlag(t, Topic.ACTIVE, act);
       await t.save(executor);
       num++;
     }

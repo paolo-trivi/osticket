@@ -1,16 +1,11 @@
 import { DownloadIcon } from "@/icons";
+import { humanSize } from "@/lib/format/size";
 
 interface AttachmentItem {
   id: number;
   name: string;
   size: number;
   href: string;
-}
-
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** Allegati scaricabili (link alla route protetta /api/agent/file/<chiave>). */

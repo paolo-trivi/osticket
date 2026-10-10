@@ -56,7 +56,14 @@
       "no_signature": "Non hai una firma",
       "already_member": "L'utente appartiene già all'organizzazione",
       "due_past": "La scadenza deve essere nel futuro",
-      "invalid_date": "Data non valida"
+      "invalid_date": "Data non valida",
+      "ip": "Indirizzo IP non valido",
+      "number": "Inserisci un numero",
+      "regex": "Valore non valido",
+      "formula": "Il contenuto non può iniziare con = - + @",
+      "phone_ext": "Interno non valido",
+      "phone_ext_missing": "Interno senza numero di telefono",
+      "files_max": "Troppi file"
     }
   },
   "peopleTasks": {

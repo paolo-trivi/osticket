@@ -2,6 +2,8 @@ import { useTranslations } from "next-intl";
 
 import { Link } from "@/i18n/navigation";
 import { ChatIcon } from "@/icons";
+import { safeColor } from "@/lib/color";
+import { Ticket } from "@/lib/osticket/flags";
 import type { QueueColumnDef } from "@/server/domain/queue/engine";
 import type { TicketRow } from "@/server/domain/ticket/rows";
 import { formatDbDate, isoOf, type DateStyle } from "@/server/format/datetime";
@@ -95,11 +97,6 @@ function conditionStyle(column: QueueColumnDef, row: TicketRow): React.CSSProper
 
 const SOURCES = ["Email", "Web", "Phone", "API", "Other"] as const;
 
-/** Colore della priorità dal DB (ticket_priority.priority_color), solo se è un esadecimale valido. */
-function safeColor(color: string | null): string {
-  return color && /^#[0-9a-f]{6}$/i.test(color) ? color : "#98a2b3";
-}
-
 export default function TicketCell({ column, row, tz, locale, assigneeName, staffName }: Props) {
   const tSource = useTranslations("ticketEdit.sources");
   const sourceLabel = (SOURCES as readonly string[]).includes(row.source) ? tSource(row.source as (typeof SOURCES)[number]) : row.source;
@@ -118,7 +115,8 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
     );
   }
   if (column.primary === "cdata__priority" && row.priority) {
-    const color = safeColor(row.priority_color);
+    // colore della priorità dal DB solo se è un esadecimale valido, altrimenti grigio (gray-400)
+    const color = safeColor(row.priority_color) ?? "#98a2b3";
     content = (
       // i colori di osTicket sono tinte pastello pensate come sfondo: testo scuro in entrambi i temi
       <span
@@ -177,10 +175,10 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         );
         break;
       case "MergedFlagDecoration":
-        if (row.flags & 0x3) target.push(<span key={a.c} title="Merged">⇉</span>);
+        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) target.push(<span key={a.c} title="Merged">⇉</span>);
         break;
       case "LinkedFlagDecoration":
-        if (row.flags & 0x8) target.push(<span key={a.c} title="Linked">🔗</span>);
+        if (row.flags & Ticket.LINKED) target.push(<span key={a.c} title="Linked">🔗</span>);
         break;
     }
   }

@@ -3,10 +3,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AccountForm from "@/components/portal/AccountForm";
 import Alert from "@/components/ui/alert/Alert";
 import { redirect } from "@/i18n/navigation";
+import { UserAccountStatus } from "@/lib/osticket/flags";
 import { clientResetToken } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { AccountStatus } from "@/server/domain/client/identity";
 import { configuredLanguages, profileFormValues, renderedContent } from "@/server/domain/client/ui";
 import { baseForms } from "@/server/domain/ticket/create-ui";
 
@@ -31,8 +31,8 @@ export default async function ProfilePage({ params, searchParams }: { params: Pr
   const cfg = await coreConfig();
   const [{ user }, values, resetToken] = await Promise.all([baseForms(db(), cfg, "client"), profileFormValues(cfg, client.id), clientResetToken()]);
   const acct = client.account;
-  const forced = !!acct && (acct.status & AccountStatus.REQUIRE_PASSWD_RESET) !== 0;
-  const resetAllowed = !!acct && !(acct.status & AccountStatus.FORBID_PASSWD_RESET);
+  const forced = !!acct && (acct.status & UserAccountStatus.REQUIRE_PASSWD_RESET) !== 0;
+  const resetAllowed = !!acct && !(acct.status & UserAccountStatus.FORBID_PASSWD_RESET);
   const thanks = sp.confirmed ? await renderedContent(cfg, "registration-thanks") : null;
   const langs = configuredLanguages(cfg).map((code) => ({ code, label: code }));
   return (

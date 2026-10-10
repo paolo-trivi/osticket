@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Hidden, Section, SelectField, TextAreaField, TextField } from "@/components/adminsys/fields";
 import Repeater from "@/components/adminsys/Repeater";
+import { DynamicFormField } from "@/lib/osticket/flags";
 import { htmlDecode } from "@/server/format/html";
 import { SORT_MODES, type listDetail } from "@/server/domain/adminsys/list";
 
@@ -41,7 +42,7 @@ export async function ListFields({ detail }: { detail: Detail | null }) {
               key: String(p.id),
               names: { sort: `prop-sort-${p.id}`, label: `prop-label-${p.id}`, type: `type-${p.id}`, name: `name-${p.id}`, delete: `delete-prop-${p.id}` },
               values: { sort: String(p.sort), label: htmlDecode(p.label), type: p.type, name: p.name },
-              locked: { type: !!(flags & 0x10), name: !!(flags & 0x40000), delete: !!(flags & 0x20) },
+              locked: { type: !!(flags & DynamicFormField.MASK_CHANGE), name: !!(flags & DynamicFormField.MASK_NAME), delete: !!(flags & DynamicFormField.MASK_DELETE) },
             };
           })}
           newNames={{ sort: "prop-sort-new-{i}", label: "prop-label-new-{i}", type: "type-new-{i}", name: "name-new-{i}" }}

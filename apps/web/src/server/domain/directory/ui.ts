@@ -1,7 +1,17 @@
 import "server-only";
 
 import { db, type DbOrTx } from "../../db";
-import { defaultFormOf, entriesFor, fieldChoices, hasData, isEditableToStaff, isRequiredForStaff, isVisibleToStaff, toPhp, type FieldDef, type FormEntry } from "./forms";
+import { defaultFormOf, entriesFor, type FormEntry } from "../forms/answers";
+import {
+  cleanFromDb,
+  fieldChoices,
+  hasData,
+  isEditableToStaff,
+  isPresentationOnly,
+  isRequiredForStaff,
+  isVisibleToStaff,
+  type FieldDef,
+} from "../forms/fields";
 
 /**
  * Dati per i form della UI (utenti, organizzazioni, task): campi dei form dinamici con i valori
@@ -13,15 +23,13 @@ interface DynFieldData {
   label: string;
   type: string;
   required: boolean;
-  hint: string | null;
+  hint: string;
   choices?: Record<string, string>;
   value: string;
 }
 
-const PRESENTATION = new Set(["thread", "break", "info"]);
-
 function valueOf(f: FieldDef, raw: string | null): string {
-  const v = toPhp(f, raw);
+  const v = cleanFromDb(f, raw, null);
   if (v === null || v === undefined) return "";
   if (typeof v === "boolean") return v ? "1" : "";
   if (typeof v === "object") return Object.keys(v)[0] ?? "";
@@ -31,7 +39,7 @@ function valueOf(f: FieldDef, raw: string | null): string {
 /** Campi visibili all'agente di un form (con filtro facoltativo, es. modificabili). */
 function toDynFields(fields: FieldDef[], values: Record<string, string> = {}, filter: (f: FieldDef) => boolean = isVisibleToStaff): DynFieldData[] {
   return fields
-    .filter((f) => hasData(f) && !PRESENTATION.has(f.type) && filter(f))
+    .filter((f) => hasData(f) && !isPresentationOnly(f) && filter(f))
     .map((f) => ({
       id: f.id,
       name: f.name,

@@ -2,15 +2,18 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept } from "@/lib/osticket/flags";
+
 import { table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
 import { GlobalPerm, TicketPerm, type Agent } from "../staff/staff";
+import { ticketThread, ticketThreadId } from "../thread/ids";
 import { assignTicket, assignToStaff, deptCanAssignStaff } from "./assign";
 import { loadDept, staffSortColumns } from "./alerts";
 import type { WriteContext } from "./context";
 import { deleteTicket } from "./delete";
-import { mergeTypeOf, isParentFlags, ticketThread } from "./merge-flags";
-import { logNote, ticketThreadId } from "./post";
+import { mergeTypeOf, isParentFlags } from "./merge-flags";
+import { logNote } from "./post";
 import { TicketRecord } from "./record";
 import { isSelectableStatus, loadStatus, setTicketStatus } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
@@ -52,8 +55,8 @@ export async function massAssignableAgents(executor: DbOrTx, agent: Agent, ticke
       .selectFrom("department")
       .select("id")
       .where("id", "in", depts)
-      .where(sql<boolean>`(flags & 1) = 0`)
-      .where(sql<boolean>`(flags & 16) = 0`)
+      .where(sql<boolean>`(flags & ${sql.lit(Dept.ASSIGN_MEMBERS_ONLY)}) = 0`)
+      .where(sql<boolean>`(flags & ${sql.lit(Dept.ASSIGN_PRIMARY_ONLY)}) = 0`)
       .execute();
     if (!open.length) restrictTo = depts;
   }
@@ -65,7 +68,7 @@ export async function massAssignableAgents(executor: DbOrTx, agent: Agent, ticke
     LEFT JOIN ${table("department")} AD ON (AD.id = A.dept_id)
     WHERE S.onvacation = 0 AND S.isactive = 1
     ${visible ? sql`AND (S.dept_id IN (${sql.join(visible)}) OR A.dept_id IN (${sql.join(visible)}))` : sql``}
-    ${restrictTo ? sql`AND (S.dept_id IN (${sql.join(restrictTo)}) OR (AD.id IN (${sql.join(restrictTo)}) AND (AD.flags & 16) = 0))` : sql``}
+    ${restrictTo ? sql`AND (S.dept_id IN (${sql.join(restrictTo)}) OR (AD.id IN (${sql.join(restrictTo)}) AND (AD.flags & ${sql.lit(Dept.ASSIGN_PRIMARY_ONLY)}) = 0))` : sql``}
     ORDER BY S.${sql.ref(a)}, S.${sql.ref(b)}`.execute(executor);
   return rows.map((r) => ({ id: r.staff_id, name: new PersonsName({ first: r.firstname ?? "", last: r.lastname ?? "" }, nameFormat).toString() }));
 }

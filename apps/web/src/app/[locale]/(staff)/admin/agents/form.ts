@@ -3,6 +3,7 @@ import "server-only";
 import { getTranslations } from "next-intl/server";
 
 import type { FormSection } from "@/lib/admin/form-schema";
+import { StaffDeptAccess, TeamMember } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 import { deptOptions, roleOptions, teamOptions } from "@/server/domain/admin/lookups";
 import { AGENT_PERMISSIONS } from "@/server/domain/admin/staff-admin";
@@ -72,7 +73,7 @@ export async function agentSections(staffId: number | null): Promise<FormSection
           choices: depts,
           roles,
           wide: true,
-          selected: access.map((a) => ({ id: String(a.dept_id), role: String(a.role_id), alerts: !!(a.flags & 1) })),
+          selected: access.map((a) => ({ id: String(a.dept_id), role: String(a.role_id), alerts: !!(a.flags & StaffDeptAccess.ALERTS) })),
         },
       ],
     },
@@ -104,7 +105,7 @@ export async function agentSections(staffId: number | null): Promise<FormSection
           alerts: "team_alerts",
           choices: teams,
           wide: true,
-          selected: memberships.map((m) => ({ id: String(m.team_id), alerts: !!(m.flags & 1) })),
+          selected: memberships.map((m) => ({ id: String(m.team_id), alerts: !!(m.flags & TeamMember.ALERTS) })),
         },
         { kind: "textarea", name: "notes", label: t("notes"), value: s?.notes ?? "", rows: 3, wide: true },
       ],

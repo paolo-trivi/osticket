@@ -5,13 +5,15 @@ import { dirname, join } from "node:path";
 
 import { sql } from "kysely";
 
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { localizeInlineImages } from "../../format/text";
-import { deleteDraftsForNamespace } from "./page";
+import { isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "../../php/values";
+import { deleteDraftsForNamespace } from "../drafts";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
-import { isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "../admin/php";
 import type { Errors } from "../admin/validator";
 
 /**
@@ -183,7 +185,7 @@ async function uploadAttachments(executor: DbOrTx, objectId: number, files: { id
     const name = filename !== null && filename !== "" && file && file.name.toLowerCase() !== String(filename).toLowerCase() ? String(filename) : null;
     await executor
       .insertInto("attachment")
-      .values({ object_id: objectId, type: "T", file_id: f.id, inline: 1, ...(name !== null ? { name } : {}) } as never)
+      .values({ object_id: objectId, type: AttachmentType.EMAIL_TEMPLATE, file_id: f.id, inline: 1, ...(name !== null ? { name } : {}) } as never)
       .execute();
   }
 }
@@ -219,7 +221,7 @@ export async function updateTemplate(executor: DbOrTx, id: number, vars: PhpVars
   // keepOnlyFileIds($keepers, true): lista di id controllata per chiave (bug PHP replicato)
   const keepers = (await inlineFileIds(executor, saved.body)).map((f) => f.id);
   const ids = new Map<number, number>(keepers.map((fid, i) => [i, fid]));
-  const attachments = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", "T").orderBy("id").execute();
+  const attachments = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", AttachmentType.EMAIL_TEMPLATE).orderBy("id").execute();
   for (const a of attachments) {
     if (!ids.has(a.file_id) && !a.lang && a.inline) await executor.deleteFrom("attachment").where("id", "=", a.id).execute();
     ids.delete(a.file_id);

@@ -1,20 +1,22 @@
 import "server-only";
 
-import { sql } from "kysely";
-
 import type { ConfigNamespace } from "../../config/config";
-import { NOW, table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
+import { phpLooseEquals } from "../../php/values";
+import { cdataColumns, upsertCdata } from "./cdata";
 import {
   fieldSearchKeys,
   fieldSearchable,
   fieldToDatabase,
   fieldToString,
+  hasAnswerRow,
   hasData,
   isIdValue,
   isPresentationOnly,
   isStorable,
   parseField,
+  phpCleanValue,
   validateField,
   type CleanValue,
   type DateFormatOptions,
@@ -22,6 +24,7 @@ import {
   type FieldErrorCode,
   type FormSource,
 } from "./fields";
+import type { WriteContext } from "../ticket/context";
 import type { FormDef } from "./load";
 
 /**
@@ -70,6 +73,21 @@ export class FormInstance {
     const v = this.values.get(f.id) ?? null;
     if (v !== null && v !== false) return v;
     return this.fallbacks.has(f.id) ? this.fallbacks.get(f.id)! : v;
+  }
+
+  /**
+   * FormField::getClean di tutti i campi con dati, per id e per nome (Form::getClean), nella forma del
+   * PHP: è la sorgente che User::fromVars riceve e rilegge con i widget (addDynamicData).
+   */
+  cleanVars(): Record<string, CleanValue> {
+    const out: Record<string, CleanValue> = {};
+    for (const f of this.def.fields) {
+      if (!hasData(f)) continue;
+      const v = phpCleanValue(f, this.values.get(f.id) ?? null);
+      out[String(f.id)] = v;
+      if (f.name) out[f.name] = v;
+    }
+    return out;
   }
 
   /** Imposta direttamente un valore (es. oggetto vuoto sostituito dal nome del topic) */
@@ -143,6 +161,24 @@ export class FormInstance {
   }
 }
 
+/**
+ * $cfg->getTimezone(): fuso dell'agente o dell'utente (account) corrente, altrimenti quello predefinito
+ * della config. Usato per i campi data dei form e per formattare le date nei filtri e nell'indice.
+ */
+export async function currentTimezone(ctx: WriteContext): Promise<string> {
+  if (ctx.agent?.row.timezone) return ctx.agent.row.timezone;
+  if (ctx.actor?.kind === "user") {
+    const a = await ctx.tx.selectFrom("user_account").select("timezone").where("user_id", "=", ctx.actor.id).executeTakeFirst();
+    if (a?.timezone) return a.timezone;
+  }
+  return ctx.cfg.str("default_timezone") || "UTC";
+}
+
+/** Fuso e formati delle date dell'utente corrente (opzioni di FormInstance). */
+export async function currentDates(ctx: WriteContext): Promise<DateFormatOptions> {
+  return { cfg: ctx.cfg, timezone: await currentTimezone(ctx) };
+}
+
 /** DynamicList::getConfigurationForm(autocreate): form "L<id>" delle proprietà, creato se manca */
 export async function ensureListPropertiesForm(executor: DbOrTx, listId: number): Promise<number | null> {
   const form = await executor.selectFrom("form").select("id").where("type", "=", `L${listId}`).orderBy("id").executeTakeFirst();
@@ -154,19 +190,6 @@ export async function ensureListPropertiesForm(executor: DbOrTx, listId: number)
     .values({ type: `L${listId}`, title: `${list.name} Properties`, created: NOW, updated: NOW })
     .executeTakeFirstOrThrow();
   return Number(res.insertId);
-}
-
-const CDATA: Record<string, { table: string; key: string }> = {
-  T: { table: "ticket__cdata", key: "ticket_id" },
-  A: { table: "task__cdata", key: "task_id" },
-  U: { table: "user__cdata", key: "user_id" },
-  O: { table: "organization__cdata", key: "org_id" },
-};
-
-async function cdataColumns(executor: DbOrTx, tableName: string): Promise<Set<string> | null> {
-  const res = await sql<Record<string, unknown>>`SHOW COLUMNS FROM ${table(tableName as `${string}__cdata`)}`.execute(executor).catch(() => null);
-  if (!res) return null;
-  return new Set(res.rows.map((r) => String(r.Field)));
 }
 
 /**
@@ -194,20 +217,18 @@ export async function saveFormEntry(
     .executeTakeFirstOrThrow();
   const entryId = Number(res.insertId);
 
-  const cdata = CDATA[inst.def.type];
-  const columns = cdata ? await cdataColumns(executor, cdata.table) : null;
+  const columns = await cdataColumns(executor, inst.def.type);
   for (const f of inst.fields) {
-    if (!hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+    if (!hasAnswerRow(f)) continue;
     const value = inst.effective(f);
     const db = fieldToDatabase(f, value);
-    await executor.insertInto("form_entry_values").values({ entry_id: entryId, field_id: f.id, value: db.value, value_id: db.valueId }).execute();
-    if (cdata && columns) {
-      const col = f.name || `field_${f.id}`;
-      if (!columns.has(col)) continue;
-      const keys = fieldSearchKeys(f, value);
-      await sql`INSERT INTO ${table(cdata.table as `${string}__cdata`)} SET ${sql.ref(col)} = ${keys}, ${sql.ref(cdata.key)} = ${objectId}
-        ON DUPLICATE KEY UPDATE ${sql.ref(col)} = ${keys}`.execute(executor);
-    }
+    // risposta nuova: VerySimpleModel inserisce solo i campi "sporchi", e un valore uguale a NULL per il
+    // confronto debole ("", false) non lo è → la colonna resta NULL
+    await executor
+      .insertInto("form_entry_values")
+      .values({ entry_id: entryId, field_id: f.id, value: phpLooseEquals(null, db.value) ? null : db.value, value_id: phpLooseEquals(null, db.valueId) ? null : db.valueId })
+      .execute();
+    await upsertCdata(executor, inst.def.type, objectId, f, fieldSearchKeys(f, value), columns);
   }
   return entryId;
 }

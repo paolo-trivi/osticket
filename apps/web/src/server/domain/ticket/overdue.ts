@@ -1,13 +1,16 @@
 import "server-only";
 
+import { SLA } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
 import { GlobalPerm } from "../staff/staff";
+import { ticketThread } from "../thread/ids";
 import { createThreadEntry } from "../thread/write";
 import { deptAlertEmail, deptAlertMembers, loadDept, sendStaffAlerts, teamAlertMembers } from "./alerts";
 import { agentDisplayName, type WriteContext } from "./context";
 import type { EditResult } from "./edit";
 import { logTicketEvent } from "./events";
-import { ticketThread } from "./merge-flags";
 import { TicketRecord } from "./record";
 import { stateOf } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
@@ -16,9 +19,6 @@ import { checkStaffPerm, loadTicket } from "./ticket";
  * Voci "Segna come scaduto" e "Ban/Unban email" del menu "Altro" della vista ticket
  * (scp/tickets.php a=process do=overdue|banemail|unbanemail).
  */
-
-/** Sla::FLAG_NOALERTS */
-const SLA_NOALERTS = 0x0004;
 
 /**
  * Ticket::onOverdue($whine): avviso "ticket.overdue" all'assegnatario (agente o membri del team) se
@@ -30,7 +30,7 @@ async function onOverdue(ctx: WriteContext, rec: TicketRecord, comments = ""): P
   const { tx, cfg } = ctx;
   if (rec.get("sla_id")) {
     const sla = await tx.selectFrom("sla").select("flags").where("id", "=", rec.get("sla_id")).executeTakeFirst();
-    if (sla && sla.flags & SLA_NOALERTS) return;
+    if (sla && sla.flags & SLA.NOALERTS) return;
   }
   if (!cfg.bool("overdue_alert_active")) return;
   const dept = await loadDept(tx, rec.get("dept_id"));
@@ -83,7 +83,7 @@ export async function markTicketOverdue(ctx: WriteContext, input: { ticketId: nu
   if (thread) {
     await createThreadEntry(tx, cfg, {
       threadId: thread.id,
-      type: "N",
+      type: ThreadEntryType.NOTE,
       body: `Ticket flagged as overdue by ${agentDisplayName(agent, cfg)}`,
       format: "html",
       title: "Ticket Marked Overdue",

@@ -1,11 +1,12 @@
 "use server";
 
 import type { AdminFormState } from "@/lib/admin/form-schema";
+import { adminFormResult, massRedirect } from "@/server/actions/result";
 import { parsePhpForm, selectedIds } from "@/server/domain/admin/form-data";
-import { str, truthy } from "@/server/domain/admin/php";
+import { str, truthy } from "@/server/php/values";
 import { addSchedule, deleteScheduleEntries, deleteSchedules, saveScheduleEntry, updateSchedule } from "@/server/domain/admin/schedule";
 
-import { adminWrite, formResult, massRedirect, requireAdminAction } from "../_shared/server";
+import { adminWrite, requireAdminAction } from "../_shared/server";
 
 /** ajax.schedule.php add / clone */
 export async function addScheduleAction(_prev: AdminFormState, form: FormData): Promise<AdminFormState> {
@@ -13,14 +14,14 @@ export async function addScheduleAction(_prev: AdminFormState, form: FormData): 
   const vars = parsePhpForm(form);
   const clone = Number(str(vars.clone)) || null;
   const r = await adminWrite((tx) => addSchedule(tx, vars, clone));
-  return formResult(r, { path: "/admin/schedules", locale, created: (id) => `/admin/schedules/${id}?created=1` });
+  return adminFormResult(r, { locale, created: (id) => `/admin/schedules/${id}?created=1` });
 }
 
 /** scp/schedules.php do=update */
 export async function updateScheduleAction(scheduleId: number, _prev: AdminFormState, form: FormData): Promise<AdminFormState> {
   const { locale } = await requireAdminAction();
   const r = await adminWrite((tx) => updateSchedule(tx, scheduleId, parsePhpForm(form)));
-  return formResult(r, { path: "/admin/schedules", locale });
+  return adminFormResult(r, { locale });
 }
 
 /** ajax.schedule.php addEntry / updateEntry */
@@ -43,7 +44,7 @@ export async function saveEntryAction(scheduleId: number, entryId: number | null
     yearly_month: str(v.yearly_month),
   };
   const r = await adminWrite((tx) => saveScheduleEntry(tx, scheduleId, entryId, input, { actorId: agent.id }));
-  return formResult(r, { path: "/admin/schedules", locale, created: entryId ? undefined : () => `/admin/schedules/${scheduleId}?entry_added=1` });
+  return adminFormResult(r, { locale, created: entryId ? undefined : () => `/admin/schedules/${scheduleId}?entry_added=1` });
 }
 
 /** ajax.schedule.php deleteEntries */

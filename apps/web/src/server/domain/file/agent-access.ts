@@ -1,20 +1,12 @@
 import "server-only";
 
+import { AttachmentType, ObjectType } from "@/lib/osticket/object-types";
+
 import { db, type DbOrTx } from "../../db";
 import { cannedAccessible, faqVisibleToAgent } from "../kb/kb";
 import type { Agent } from "../staff/staff";
 import { checkTaskPerm, loadTask } from "../task/tasks";
 import { checkStaffPerm, loadTicket } from "../ticket/ticket";
-
-/** Valori di attachment.type serviti agli agenti (ObjectModel / Attachment di osTicket). */
-const AttachmentType = {
-  /** voce di thread (ThreadEntry): ticket (thread.object_type 'T') o task ('A') */
-  THREAD_ENTRY: "H",
-  /** FAQ della knowledge base */
-  FAQ: "F",
-  /** risposta predefinita (Canned) */
-  CANNED: "C",
-} as const;
 
 interface AgentFileRef {
   fileId: number;
@@ -74,11 +66,11 @@ async function canSee(
     case AttachmentType.THREAD_ENTRY: {
       if (!ref.thread_object_id) return false;
       // 'C' è trattato come ticket per compatibilità con la route precedente
-      if (ref.thread_object_type === "T" || ref.thread_object_type === "C") {
+      if (ref.thread_object_type === ObjectType.TICKET || ref.thread_object_type === ObjectType.CHILD_TICKET) {
         const ticket = await loadTicket(ref.thread_object_id, agent.id, executor);
         return !!ticket && (await checkStaffPerm(ticket, agent, undefined, executor));
       }
-      if (ref.thread_object_type === "A") {
+      if (ref.thread_object_type === ObjectType.TASK) {
         const task = await loadTask(ref.thread_object_id, executor);
         return !!task && checkTaskPerm(task, agent);
       }

@@ -1,12 +1,13 @@
 import "server-only";
 
+import { Collaborator } from "@/lib/osticket/flags";
+
 import { NOW, type DbOrTx } from "../../db";
 import { TicketPerm } from "../staff/staff";
-import { CollabFlag } from "./collab";
+import { ticketThread } from "../thread/ids";
 import type { WriteContext } from "./context";
 import type { EditResult } from "./edit";
 import { logTicketEvent } from "./events";
-import { ticketThread } from "./merge-flags";
 import { TicketRecord, type TicketColumns } from "./record";
 import { checkStaffPerm, loadTicket, roleOn, type TicketDetail } from "./ticket";
 
@@ -59,7 +60,7 @@ export async function addTicketCollaborator(
   if (existing) return { error: "already_collaborator" };
   const res = await tx
     .insertInto("thread_collaborator")
-    .values({ flags: CollabFlag.ACTIVE | CollabFlag.CC, thread_id: threadId, user_id: userId, role: "M", created: NOW, updated: NOW })
+    .values({ flags: Collaborator.ACTIVE | Collaborator.CC, thread_id: threadId, user_id: userId, role: "M", created: NOW, updated: NOW })
     .executeTakeFirstOrThrow();
   if (event) await logTicketEvent(tx, ticket, threadId, ctx.actor, "collab", { add: { [String(userId)]: { name } } });
   return { id: Number(res.insertId) };
@@ -100,8 +101,8 @@ export async function updateCollaborators(ctx: WriteContext, input: { ticketId: 
     for (const id of cids) {
       // Il PHP riattiva anche collaboratori di altri thread (Collaborator::lookup senza filtro): qui no
       const c = await tx.selectFrom("thread_collaborator").select(["id", "flags"]).where("id", "=", id).where("thread_id", "=", threadId).executeTakeFirst();
-      if (c && !(c.flags & CollabFlag.ACTIVE)) {
-        await tx.updateTable("thread_collaborator").set({ flags: c.flags | CollabFlag.ACTIVE, updated: NOW }).where("id", "=", c.id).execute();
+      if (c && !(c.flags & Collaborator.ACTIVE)) {
+        await tx.updateTable("thread_collaborator").set({ flags: c.flags | Collaborator.ACTIVE, updated: NOW }).where("id", "=", c.id).execute();
       }
     }
   }
@@ -109,8 +110,8 @@ export async function updateCollaborators(ctx: WriteContext, input: { ticketId: 
   inactive = inactive.where("id", "not in", cids.length ? cids : [0]);
   const rows = await inactive.execute();
   for (const c of rows) {
-    if (c.flags & CollabFlag.ACTIVE) {
-      await tx.updateTable("thread_collaborator").set({ flags: c.flags & ~CollabFlag.ACTIVE, updated: NOW }).where("id", "=", c.id).execute();
+    if (c.flags & Collaborator.ACTIVE) {
+      await tx.updateTable("thread_collaborator").set({ flags: c.flags & ~Collaborator.ACTIVE, updated: NOW }).where("id", "=", c.id).execute();
     }
   }
   if (rows.length) await tx.updateTable("thread_collaborator").set({ updated: NOW }).where("id", "in", rows.map((r) => r.id)).execute();

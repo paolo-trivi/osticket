@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { CustomQueue, Dept, DynamicForm, Schedule } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { db, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
 import { helpTopicsSnapshot } from "./topic";
@@ -23,7 +26,7 @@ export async function deptOptions(executor: DbOrTx = db()): Promise<(Opt & { act
     return r.name;
   };
   return rows
-    .map((r) => ({ value: String(r.id), label: full(r.id), active: !!(r.flags & 0x4), ispublic: !!r.ispublic }))
+    .map((r) => ({ value: String(r.id), label: full(r.id), active: !!(r.flags & Dept.ACTIVE), ispublic: !!r.ispublic }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -49,8 +52,8 @@ export async function slaOptions(executor: DbOrTx = db()): Promise<Opt[]> {
 
 export async function scheduleOptions(executor: DbOrTx = db(), type?: "bizhrs" | "hdays"): Promise<Opt[]> {
   let q = executor.selectFrom("schedule").select(["id", "name", "flags"]).orderBy("name");
-  if (type === "bizhrs") q = q.where(sql<boolean>`(flags & 1) != 0`);
-  if (type === "hdays") q = q.where(sql<boolean>`(flags & 1) = 0`);
+  if (type === "bizhrs") q = q.where(sql<boolean>`(flags & ${sql.lit(Schedule.BIZHRS)}) != 0`);
+  if (type === "hdays") q = q.where(sql<boolean>`(flags & ${sql.lit(Schedule.BIZHRS)}) = 0`);
   return (await q.execute()).map((r) => ({ value: String(r.id), label: r.name }));
 }
 
@@ -92,13 +95,13 @@ export async function topicOptions(executor: DbOrTx = db()): Promise<(Opt & { ac
 }
 
 export async function queueOptions(executor: DbOrTx = db()): Promise<(Opt & { parent: number; sort: number })[]> {
-  const rows = await executor.selectFrom("queue").select(["id", "parent_id", "title", "sort"]).where(sql<boolean>`(flags & 2) != 0`).orderBy("parent_id").orderBy("sort").execute();
+  const rows = await executor.selectFrom("queue").select(["id", "parent_id", "title", "sort"]).where(sql<boolean>`(flags & ${sql.lit(CustomQueue.QUEUE)}) != 0`).orderBy("parent_id").orderBy("sort").execute();
   return rows.map((r) => ({ value: String(r.id), label: r.title ?? "", parent: r.parent_id, sort: r.sort }));
 }
 
 /** Form dinamici con i campi (per i form associati agli help topic). */
 export async function formsWithFields(executor: DbOrTx = db()): Promise<{ id: number; title: string; type: string; fields: Opt[] }[]> {
-  const forms = await executor.selectFrom("form").select(["id", "title", "type"]).where("type", "in", ["T", "G"]).where(sql<boolean>`(flags & 2) = 0`).orderBy("title").execute();
+  const forms = await executor.selectFrom("form").select(["id", "title", "type"]).where("type", "in", [FormType.TICKET, FormType.GENERIC]).where(sql<boolean>`(flags & ${sql.lit(DynamicForm.DELETED)}) = 0`).orderBy("title").execute();
   const out = [];
   for (const f of forms) {
     const fields = await executor.selectFrom("form_field").select(["id", "label"]).where("form_id", "=", f.id).orderBy("sort").execute();

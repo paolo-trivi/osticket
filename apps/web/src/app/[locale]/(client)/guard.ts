@@ -1,8 +1,9 @@
 import "server-only";
 
 import { redirect } from "@/i18n/navigation";
+import { UserAccountStatus } from "@/lib/osticket/flags";
 import { currentClient } from "@/server/auth/client-auth";
-import { AccountStatus, type ClientIdentity } from "@/server/domain/client/identity";
+import type { ClientIdentity } from "@/server/domain/client/identity";
 
 /**
  * Protezione delle pagine del portale (secure.inc.php): cliente autenticato, altrimenti login con
@@ -14,6 +15,6 @@ export async function requireClient(locale: string, next: string, opts: { allowG
   if (!client) redirect({ href: `/login?next=${encodeURIComponent(next)}`, locale });
   const c = client as ClientIdentity;
   if (c.guest && opts.allowGuest === false) redirect({ href: `/tickets/${c.guest.ticketId}`, locale });
-  if (!opts.skipPwCheck && c.account && c.account.status & AccountStatus.REQUIRE_PASSWD_RESET) redirect({ href: "/profile?pwchange=1", locale });
+  if (!opts.skipPwCheck && c.account && c.account.status & UserAccountStatus.REQUIRE_PASSWD_RESET) redirect({ href: "/profile?pwchange=1", locale });
   return c;
 }

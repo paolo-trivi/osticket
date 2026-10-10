@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { PhpVal, PhpVars } from "./php";
+import type { PhpVal, PhpVars } from "../../php/values";
 
 /**
  * FormData → $_POST di PHP: `nome[]` diventa una lista, `nome[chiave]` una mappa, gli altri campi

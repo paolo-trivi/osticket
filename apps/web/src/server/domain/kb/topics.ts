@@ -1,13 +1,12 @@
 import "server-only";
 
+import { Topic } from "@/lib/osticket/flags";
+
 import { db, type DbOrTx } from "../../db";
 import { GlobalPerm, type Agent } from "../staff/staff";
 import { visibleTopicIds, type HelpTopicInfo } from "./topic-filter";
 
 export { faqVisibleForTopics,   } from "./topic-filter";
-
-/** Topic::FLAG_ACTIVE */
-const TOPIC_FLAG_ACTIVE = 0x0002;
 
 /**
  * Topic::getHelpTopics(): tutti i topic in ordine `sort` con il nome completo "Padre / Figlio".
@@ -27,7 +26,7 @@ export async function loadHelpTopics(executor: DbOrTx = db()): Promise<Map<numbe
       id: r.topic_id,
       pid: r.topic_pid,
       isPublic: !!r.ispublic,
-      disabled: (Number(r.flags ?? 0) & TOPIC_FLAG_ACTIVE) === 0,
+      disabled: (Number(r.flags ?? 0) & Topic.ACTIVE) === 0,
       name: r.topic,
       deptId: r.dept_id,
     });

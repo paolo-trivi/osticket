@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { comparePassword } from "@/server/auth/passwd";
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { massStaff, saveStaff, setAgentPassword, type StaffMassAction } from "@/server/domain/admin/staff-admin";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";

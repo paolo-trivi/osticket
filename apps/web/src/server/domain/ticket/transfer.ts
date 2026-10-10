@@ -1,19 +1,19 @@
 import "server-only";
 
+import { Dept, SLA } from "@/lib/osticket/flags";
+
 import { loadStaffInfo, staffVar, entryVar } from "../../mail/objects";
 import { TicketPerm } from "../staff/staff";
+import { ticketThreadId } from "../thread/ids";
 import { deptAlertEmail, deptAlertMembers, deptIsMember, loadDept, sendStaffAlerts, teamAlertMembers } from "./alerts";
 import { deleteReferralOf, selectableDepts, threadRefer } from "./assign";
 import type { WriteContext } from "./context";
 import { logTicketEvent } from "./events";
-import { postNote, ticketThreadId } from "./post";
+import { postNote } from "./post";
 import { TicketRecord } from "./record";
-import { DeptFlag, stateOf } from "./status";
+import { stateOf } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { reopenTicket, type ActionResult } from "./ticket-state";
-
-/** SLA::FLAG_TRANSIENT */
-const SLA_TRANSIENT = 0x0008;
 
 interface TransferInput {
   ticketId: number;
@@ -55,7 +55,7 @@ export async function transferTicket(ctx: WriteContext, input: TransferInput): P
   rec.set("dept_id", dept.id);
   const state = await stateOf(tx, rec.row);
   const assigned = state === "open" && !!(rec.get("staff_id") || rec.get("team_id"));
-  if (assigned && rec.get("staff_id") && dept.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) {
+  if (assigned && rec.get("staff_id") && dept.flags & Dept.ASSIGN_MEMBERS_ONLY) {
     const staff = await tx.selectFrom("staff").select("staff_id").where("staff_id", "=", rec.get("staff_id")).executeTakeFirst();
     if (staff && !(await deptIsMember(tx, dept, staff.staff_id))) rec.set("staff_id", 0);
   }
@@ -65,7 +65,7 @@ export async function transferTicket(ctx: WriteContext, input: TransferInput): P
 
   // SLA del nuovo reparto
   const sla = rec.get("sla_id") ? await tx.selectFrom("sla").select(["id", "flags"]).where("id", "=", rec.get("sla_id")).executeTakeFirst() : undefined;
-  if (!rec.get("sla_id") || (sla && sla.flags & SLA_TRANSIENT)) {
+  if (!rec.get("sla_id") || (sla && sla.flags & SLA.TRANSIENT)) {
     if (dept.sla_id && dept.sla_id !== rec.get("sla_id")) {
       // selectSLAId($trump) → setSLAId: lo SLA deve esistere
       const exists = await tx.selectFrom("sla").select("id").where("id", "=", dept.sla_id).executeTakeFirst();

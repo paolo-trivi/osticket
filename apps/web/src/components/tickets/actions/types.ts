@@ -42,9 +42,3 @@ export type ActionKind =
   | "markAnswered"
   | "markUnanswered"
   | { status: number };
-
-/** Esito da mostrare nella vista dopo un'azione riuscita (messaggio di sistema del PHP). */
-export interface ActionNotice {
-  kind: "success";
-  text: string;
-}

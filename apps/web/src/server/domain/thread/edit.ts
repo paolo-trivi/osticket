@@ -2,17 +2,20 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { ThreadEntry } from "@/lib/osticket/flags";
+import { AttachmentType, ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { NOW, table } from "../../db";
 import { htmlChars } from "../../format/html";
 import { cleanEntryBody } from "../../format/text";
 import { deleteSearchRow } from "../search/index-writer";
 import { TicketPerm, type Agent } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
-import { ticketThread } from "../ticket/merge-flags";
 import { TicketRecord } from "../ticket/record";
 import { roleOnRow, stateOf } from "../ticket/status";
 import { checkStaffPerm, loadTicket } from "../ticket/ticket";
-import { createThreadEntry, EntryFlag } from "./write";
+import { ticketThread } from "./ids";
+import { createThreadEntry } from "./write";
 
 /**
  * Modifica di una voce del thread di un ticket (include/class.thread_actions.php TEA_EditThreadEntry
@@ -44,7 +47,7 @@ interface EntryRow {
  * dei ticket del reparto che gestisce, o tutte con il permesso thread.edit del suo ruolo.
  */
 export function canEditEntry(entry: Pick<EntryRow, "staff_id" | "user_id" | "type">, agent: Agent, ticket: { deptManagerId: number; roleHasThreadEdit: boolean }): boolean {
-  const visible = entry.type === "R" ? !!entry.staff_id : !!(entry.staff_id || entry.user_id);
+  const visible = entry.type === ThreadEntryType.RESPONSE ? !!entry.staff_id : !!(entry.staff_id || entry.user_id);
   if (!visible) return false;
   return agent.id === entry.staff_id || ticket.deptManagerId === agent.id || ticket.roleHasThreadEdit;
 }
@@ -75,7 +78,7 @@ export async function editThreadEntry(ctx: WriteContext, input: { ticketId: numb
   const thread = await ticketThread(tx, input.ticketId);
   let old = (await tx.selectFrom("thread_entry").selectAll().where("id", "=", input.entryId).executeTakeFirst()) as EntryRow | undefined;
   // La voce deve appartenere al thread del ticket (tipo 'T')
-  if (!old || !thread || thread.object_type !== "T" || old.thread_id !== thread.id) return { error: "not_found" };
+  if (!old || !thread || thread.object_type !== ObjectType.TICKET || old.thread_id !== thread.id) return { error: "not_found" };
   const perms = await entryEditContext(ctx, input.ticketId, agent);
   if (!perms || !canEditEntry(old, agent, perms)) return { error: "denied" };
 
@@ -100,10 +103,10 @@ export async function editThreadEntry(ctx: WriteContext, input: { ticketId: numb
   });
 
   // Allegati non inline spostati sulla nuova voce
-  await tx.updateTable("attachment").set({ object_id: created.id }).where("type", "=", "H").where("object_id", "=", old.id).where("inline", "=", 0).execute();
+  await tx.updateTable("attachment").set({ object_id: created.id }).where("type", "=", AttachmentType.THREAD_ENTRY).where("object_id", "=", old.id).where("inline", "=", 0).execute();
 
   let pid = old.id;
-  if (old.flags & EntryFlag.EDITED && old.editor === agent.id && old.editor_type === "S" && !(old.flags & EntryFlag.GUARDED)) {
+  if (old.flags & ThreadEntry.EDITED && old.editor === agent.id && old.editor_type === ObjectType.STAFF && !(old.flags & ThreadEntry.GUARDED)) {
     // Sostituzione della modifica precedente: si riparte dall'originale
     const original = (await tx.selectFrom("thread_entry").selectAll().where("id", "=", old.pid).executeTakeFirst()) as EntryRow | undefined;
     pid = old.pid;
@@ -112,14 +115,14 @@ export async function editThreadEntry(ctx: WriteContext, input: { ticketId: numb
     if (original) old = original;
   }
 
-  const flags = (old.flags & ~(EntryFlag.HIDDEN | EntryFlag.GUARDED)) | EntryFlag.EDITED;
+  const flags = (old.flags & ~(ThreadEntry.HIDDEN | ThreadEntry.GUARDED)) | ThreadEntry.EDITED;
   await tx
     .updateTable("thread_entry")
-    .set({ pid, flags, editor: agent.id, editor_type: "S", created: old.created, updated: NOW })
+    .set({ pid, flags, editor: agent.id, editor_type: ObjectType.STAFF, created: old.created, updated: NOW })
     .where("id", "=", created.id)
     .execute();
-  if (!(old.flags & EntryFlag.HIDDEN)) {
-    await tx.updateTable("thread_entry").set({ flags: old.flags | EntryFlag.HIDDEN }).where("id", "=", old.id).execute();
+  if (!(old.flags & ThreadEntry.HIDDEN)) {
+    await tx.updateTable("thread_entry").set({ flags: old.flags | ThreadEntry.HIDDEN }).where("id", "=", old.id).execute();
   }
   return { ok: true, id: created.id };
 }

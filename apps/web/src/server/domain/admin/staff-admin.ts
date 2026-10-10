@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, StaffDeptAccess, TeamMember } from "@/lib/osticket/flags";
+
 import { hashPassword } from "../../auth/passwd";
 import type { ConfigNamespace } from "../../config/config";
 import { loadConfigNamespace } from "../../config/config";
@@ -11,18 +13,17 @@ import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
 import { randCode } from "../../mail/message-id";
 import { loadStaffInfo, staffVar } from "../../mail/objects";
+import { at, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { logSystem } from "../../system/syslog";
 import { MISC_RAND_CHARS, checkPasswordPolicy, type PasswordError } from "../directory/accounts";
 import { alertOrDefaultEmail, baseUrl, loadContentPage, sendContentMail } from "../directory/content-mail";
-import { formatPhone, isValidEmail } from "../directory/forms";
-import { isPhone } from "../staff/profile";
+import { formatPhone } from "../forms/fields";
+import { isPhone, isValidEmail } from "../forms/validator";
 import { exists, idOf, type MassResult, type SaveResult } from "./common";
-import { ACCESS_ALERTS, DeptFlag } from "./dept";
 import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { at, isset, list, phpLooseEquals, str, truthy, usernameError, type PhpVal, type PhpVars } from "./php";
 import { ALL_PERMISSIONS, rebuildPermissions } from "./role";
-import { MEMBER_ALERTS } from "./team";
+import { usernameError } from "./validator";
 
 /**
  * Agenti: scp/staff.php → Staff::update / Staff::create / Staff::delete / mass_process
@@ -88,7 +89,7 @@ async function setDepartmentId(executor: DbOrTx, row: OrmRow, deptId: PhpVal, ea
     const da = OrmRow.create("staff_dept_access", ["staff_id", "dept_id"]);
     da.set("dept_id", old);
     da.set("role_id", row.get("role_id"));
-    setFlag(da, ACCESS_ALERTS, true);
+    setFlag(da, StaffDeptAccess.ALERTS, true);
     da.set("staff_id", staffId);
     access.push(da);
   }
@@ -146,7 +147,7 @@ export async function saveStaff(executor: DbOrTx, staffId: number | null, input:
   if (!truthy(vars.role_id)) errors.role_id = "required";
   const deptId = idOf(vars.dept_id);
   const dept = deptId ? await executor.selectFrom("department").select("flags").where("id", "=", deptId).executeTakeFirst() : undefined;
-  if (dept && !((dept.flags ?? 0) & DeptFlag.ACTIVE)) errors.dept_id = "inactive";
+  if (dept && !((dept.flags ?? 0) & Dept.ACTIVE)) errors.dept_id = "inactive";
 
   // Deve restare almeno un amministratore attivo
   if (vars.isadmin !== "1" || vars.islocked === "1") {
@@ -227,7 +228,7 @@ async function updateAccess(executor: DbOrTx, staff: OrmRow, access: OrmRow[], w
     } else {
       da.set("role_id", str(roleId));
     }
-    setFlag(da, ACCESS_ALERTS, truthy(alerts));
+    setFlag(da, StaffDeptAccess.ALERTS, truthy(alerts));
     if (!hasErr()) await da.save(executor);
   }
   if (Object.keys(accErrors).length) errors.dept_access = JSON.stringify(accErrors);
@@ -248,7 +249,7 @@ async function updateTeams(executor: DbOrTx, staffId: number, membership: [PhpVa
       m.set("staff_id", staffId);
       rows.push(m);
     }
-    setFlag(m, MEMBER_ALERTS, truthy(alerts));
+    setFlag(m, TeamMember.ALERTS, truthy(alerts));
     if (noErr()) await m.save(executor);
     dropped.delete(m.num("team_id"));
   }

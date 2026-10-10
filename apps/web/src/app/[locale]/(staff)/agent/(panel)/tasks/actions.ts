@@ -5,12 +5,15 @@ import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
 import type { PeopleActionState } from "@/components/people/types";
+import { TaskModel } from "@/lib/osticket/flags";
+import { formHtml, formIds, formNum, formStr } from "@/server/actions/form-data";
+import { nonce } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { db } from "@/server/db";
 import { TaskPerm, type Agent } from "@/server/domain/staff/staff";
 import { loadTaskRow, type TaskDbRow } from "@/server/domain/task/model";
-import { checkTaskPerm, loadTask, TaskFlag, type TaskRow } from "@/server/domain/task/tasks";
+import { checkTaskPerm, loadTask, type TaskRow } from "@/server/domain/task/tasks";
 import {
   assignTask,
   claimTask,
@@ -31,21 +34,11 @@ import type { WriteContext } from "@/server/domain/ticket/context";
 import { selectableDepts } from "@/server/domain/ticket/assign";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
-import { sanitizeText } from "@/server/format/text";
 
 /**
  * Server action dei task (scp/tasks.php, include/ajax.tasks.php). Sessione e permessi sono ricontrollati
  * qui come negli endpoint PHP (Task::checkStaffPerm con il permesso del ruolo nel reparto del task).
  */
-
-/** Campo HTML del form: vuoto se contiene solo tag/spazi; sanificato come Format::sanitize. */
-function html(form: FormData, name: string): string {
-  const raw = String(form.get(name) ?? "");
-  if (!raw.replace(/<[^>]*>|&nbsp;|\s/g, "")) return "";
-  return sanitizeText(raw);
-}
-
-const nonce = () => Date.now();
 
 function fromResult(r: TaskResult): PeopleActionState {
   return r.ok ? { ok: true, nonce: nonce() } : { error: r.error, nonce: nonce() };
@@ -59,7 +52,7 @@ async function withTask(
 ): Promise<PeopleActionState> {
   const agent = await currentAgent();
   if (!agent) return { error: "session_expired" };
-  const id = Number(form.get("taskId") ?? 0);
+  const id = formNum(form, "taskId");
   const row = id ? await loadTask(id) : null;
   if (!row || !checkTaskPerm(row, agent)) return { error: "not_found", nonce: nonce() };
   if (perm && !checkTaskPerm(row, agent, perm)) return { error: "forbidden", nonce: nonce() };
@@ -80,7 +73,7 @@ export async function taskNoteAction(_prev: PeopleActionState, form: FormData): 
   return withTask(form, null, async (ctx, task, row, agent) => {
     const status = statusOf(form);
     if (status && !canChangeStatus(row, agent, status)) return { error: "forbidden", nonce: nonce() };
-    const r = await postTaskNote(ctx, task, { note: html(form, "note"), title: String(form.get("title") ?? "").trim(), status: status ?? undefined });
+    const r = await postTaskNote(ctx, task, { note: formHtml(form, "note"), title: formStr(form, "title").trim(), status: status ?? undefined });
     if (r.ok) await deleteDraftsFor(ctx.tx, `task.note.${task.id}`, agent.id);
     return fromResult(r);
   });
@@ -94,14 +87,14 @@ export async function taskReplyAction(_prev: PeopleActionState, form: FormData):
   return withTask(form, TaskPerm.REPLY, async (ctx, task, row, agent) => {
     const status = statusOf(form);
     if (status && !canChangeStatus(row, agent, status)) return { error: "forbidden", nonce: nonce() };
-    const r = await postTaskReply(ctx, task, { response: html(form, "response"), status: status ?? undefined });
+    const r = await postTaskReply(ctx, task, { response: formHtml(form, "response"), status: status ?? undefined });
     if (r.ok) await deleteDraftsFor(ctx.tx, `task.response.${task.id}`, agent.id);
     return fromResult(r);
   });
 }
 
 function statusOf(form: FormData): "open" | "closed" | null {
-  const s = String(form.get("status") ?? "");
+  const s = formStr(form, "status");
   return s === "open" || s === "closed" ? s : null;
 }
 
@@ -113,34 +106,34 @@ function canChangeStatus(row: TaskRow, agent: Agent, status: "open" | "closed"):
 export async function taskStatusAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const status = statusOf(form);
   if (!status) return { error: "invalid", nonce: nonce() };
-  return withTask(form, status === "closed" ? TaskPerm.CLOSE : TaskPerm.CREATE, async (ctx, task) => fromResult(await setTaskStatus(ctx, task, status, html(form, "comments"))));
+  return withTask(form, status === "closed" ? TaskPerm.CLOSE : TaskPerm.CREATE, async (ctx, task) => fromResult(await setTaskStatus(ctx, task, status, formHtml(form, "comments"))));
 }
 
 /** ajax.tasks.php:assign (solo task aperti: AssignmentForm del PHP) */
 export async function taskAssignAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.ASSIGN, async (ctx, task) => {
-    if ((task.flags & TaskFlag.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
-    const raw = String(form.get("assignee") ?? "");
+    if ((task.flags & TaskModel.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
+    const raw = formStr(form, "assignee");
     const m = /^([st])(\d+)$/.exec(raw);
     if (!m) return { error: "unknown_assignee", nonce: nonce() };
-    return fromResult(await assignTask(ctx, task, { type: m[1] === "s" ? "staff" : "team", id: Number(m[2]) }, html(form, "comments")));
+    return fromResult(await assignTask(ctx, task, { type: m[1] === "s" ? "staff" : "team", id: Number(m[2]) }, formHtml(form, "comments")));
   });
 }
 
 /** ajax.tasks.php:claim */
 export async function taskClaimAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.ASSIGN, async (ctx, task) => {
-    if ((task.flags & TaskFlag.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
-    return fromResult(await claimTask(ctx, task, html(form, "comments")));
+    if ((task.flags & TaskModel.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
+    return fromResult(await claimTask(ctx, task, formHtml(form, "comments")));
   });
 }
 
 /** ajax.tasks.php:transfer (reparti selezionabili come DepartmentField) */
 export async function taskTransferAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.TRANSFER, async (ctx, task, _row, agent) => {
-    const deptId = Number(form.get("dept") ?? 0);
+    const deptId = formNum(form, "dept");
     if (!(await selectableDepts(ctx.tx, agent, task.dept_id)).some((d) => d.id === deptId)) return { error: "dept_required", nonce: nonce() };
-    return fromResult(await transferTask(ctx, task, deptId, html(form, "comments")));
+    return fromResult(await transferTask(ctx, task, deptId, formHtml(form, "comments")));
   });
 }
 
@@ -149,20 +142,20 @@ export async function taskEditAction(_prev: PeopleActionState, form: FormData): 
   return withTask(form, TaskPerm.EDIT, async (ctx, task) => {
     const fields: Record<string, unknown> = {};
     for (const [k, v] of form.entries()) if (k.startsWith("f:")) fields[k.slice(2)] = String(v);
-    return fromResult(await updateTaskFields(ctx, task, fields, html(form, "note")));
+    return fromResult(await updateTaskFields(ctx, task, fields, formHtml(form, "note")));
   });
 }
 
 /** ajax.tasks.php:editField duedate: `due` è un istante ISO (vuoto = rimozione) */
 export async function taskDueDateAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.EDIT, async (ctx, task) =>
-    fromResult(await updateTaskDueDate(ctx, task, String(form.get("due") ?? "") || null, html(form, "comments"))),
+    fromResult(await updateTaskDueDate(ctx, task, formStr(form, "due") || null, formHtml(form, "comments"))),
   );
 }
 
 /** ajax.tasks.php:delete */
 export async function taskDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const r = await withTask(form, TaskPerm.DELETE, async (ctx, task) => fromResult(await deleteTask(ctx, task, html(form, "comments"))));
+  const r = await withTask(form, TaskPerm.DELETE, async (ctx, task) => fromResult(await deleteTask(ctx, task, formHtml(form, "comments"))));
   // La pagina del task non esiste più: redirect lato server (il refresh della vista darebbe 404)
   if (r.ok) redirect({ href: "/agent/tasks", locale: await getLocale() });
   return r;
@@ -175,23 +168,23 @@ export async function taskDeleteAction(_prev: PeopleActionState, form: FormData)
 export async function taskCreateAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const agent = await currentAgent();
   if (!agent) return { error: "session_expired" };
-  const ticketId = Number(form.get("ticketId") ?? 0) || undefined;
+  const ticketId = formNum(form, "ticketId") || undefined;
   if (ticketId) {
     const t = await loadTicket(ticketId, agent.id);
     if (!t || !(await checkStaffPerm(t, agent, TaskPerm.CREATE))) return { error: "forbidden", nonce: nonce() };
   } else if (!agent.hasPermInAnyRole(TaskPerm.CREATE)) return { error: "forbidden", nonce: nonce() };
-  const deptId = Number(form.get("dept") ?? 0);
+  const deptId = formNum(form, "dept");
   if (!deptId || !(await selectableDepts(db(), agent, null)).some((d) => d.id === deptId)) return { error: "dept_required", fields: { dept: "required" }, nonce: nonce() };
-  const raw = String(form.get("assignee") ?? "");
+  const raw = formStr(form, "assignee");
   const m = /^([st])(\d+)$/.exec(raw);
   const r = await runWrite({ agent, ip: await clientIp() }, async (ctx) => {
     const res = await createTask(ctx, {
       ticketId,
-      title: String(form.get("title") ?? ""),
-      description: html(form, "description"),
+      title: formStr(form, "title"),
+      description: formHtml(form, "description"),
       deptId,
       assignee: m ? { type: m[1] === "s" ? "staff" : "team", id: Number(m[2]) } : null,
-      duedate: String(form.get("due") ?? "") || null,
+      duedate: formStr(form, "due") || null,
     });
     if (res.ok) await deleteDraftsFor(ctx.tx, "task.add", agent.id);
     return res;
@@ -205,9 +198,9 @@ export async function taskCreateAction(_prev: PeopleActionState, form: FormData)
 export async function taskMassAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const agent = await currentAgent();
   if (!agent) return { error: "session_expired" };
-  const ids = form.getAll("tids").map((v) => Number(v)).filter((n) => n > 0);
+  const ids = formIds(form, "tids");
   if (!ids.length) return { error: "none_selected", nonce: nonce() };
-  const action = String(form.get("do") ?? "");
+  const action = formStr(form, "do");
   let op: TaskMassAction;
   switch (action) {
     case "claim":
@@ -216,13 +209,13 @@ export async function taskMassAction(_prev: PeopleActionState, form: FormData): 
     case "close":
     case "reopen":
     case "delete":
-      op = { action, comments: html(form, "comments") };
+      op = { action, comments: formHtml(form, "comments") };
       break;
     case "transfer":
-      op = { action: "transfer", deptId: Number(form.get("dept") ?? 0) };
+      op = { action: "transfer", deptId: formNum(form, "dept") };
       break;
     case "assign": {
-      const m = /^([st])(\d+)$/.exec(String(form.get("assignee") ?? ""));
+      const m = /^([st])(\d+)$/.exec(formStr(form, "assignee"));
       if (!m) return { error: "unknown_assignee", nonce: nonce() };
       op = { action: "assign", to: { type: m[1] === "s" ? "staff" : "team", id: Number(m[2]) } };
       break;

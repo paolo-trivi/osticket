@@ -1,12 +1,13 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Callout } from "@/components/adminsys/fields";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
+import Callout from "@/components/common/Callout";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
+import { PluginInstance } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
-import { listPlugins, PLUGIN_INSTANCE_ENABLED } from "@/server/domain/adminsys/plugin";
+import { listPlugins } from "@/server/domain/adminsys/plugin";
 
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
@@ -91,8 +92,8 @@ export default async function PluginsPage({ params, searchParams }: { params: Pr
                   sel: <input type="checkbox" name="ids[]" value={i.id} className="h-4 w-4 accent-brand-500" aria-label={i.name} />,
                   name: i.name,
                   status: (
-                    <Badge size="sm" color={i.flags & PLUGIN_INSTANCE_ENABLED ? "success" : "light"}>
-                      {i.flags & PLUGIN_INSTANCE_ENABLED ? c("active") : c("disabled")}
+                    <Badge size="sm" color={i.flags & PluginInstance.ENABLED ? "success" : "light"}>
+                      {i.flags & PluginInstance.ENABLED ? c("active") : c("disabled")}
                     </Badge>
                   ),
                   updated: date(i.updated),

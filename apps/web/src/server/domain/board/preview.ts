@@ -2,11 +2,13 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { ThreadEntry } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { db, type DbOrTx } from "../../db";
 import { agentTimeZone, formatDbDate } from "../../format/datetime";
 import { decodeHtml401Entities, htmlDecode, phpStripTags } from "../../format/html";
 import type { Agent } from "../staff/staff";
-import { EntryFlag } from "../thread/write";
 import { checkStaffPerm, loadTicket } from "../ticket/ticket";
 import type { BoardPreview } from "./types";
 
@@ -54,7 +56,7 @@ export async function ticketPreview(
           .selectFrom("thread_entry")
           .select(["id", "type", "poster", "created", "body", "format"])
           .where("thread_id", "=", t.thread_id)
-          .where(sql<boolean>`(flags & ${sql.lit(EntryFlag.HIDDEN)}) = 0`)
+          .where(sql<boolean>`(flags & ${sql.lit(ThreadEntry.HIDDEN)}) = 0`)
           .orderBy("created", "desc")
           .orderBy("id", "desc")
           .limit(3)
@@ -66,7 +68,7 @@ export async function ticketPreview(
     number: t.number ?? "",
     entries: rows.map((r) => ({
       id: Number(r.id),
-      type: r.type === "R" ? "R" : r.type === "N" ? "N" : "M",
+      type: r.type === ThreadEntryType.RESPONSE ? ThreadEntryType.RESPONSE : r.type === ThreadEntryType.NOTE ? ThreadEntryType.NOTE : ThreadEntryType.MESSAGE,
       poster: r.poster ?? "",
       when: formatDbDate(r.created, tz, locale, "human"),
       whenTitle: formatDbDate(r.created, tz, locale),

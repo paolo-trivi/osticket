@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useActionState, type ReactNode } from "react";
 
+import Callout from "@/components/common/Callout";
 import Button from "@/components/ui/button/Button";
 
 /** Esito di una server action dell'area adminsys (errori già tradotti, chiave = campo del POST). */
@@ -43,12 +44,12 @@ export default function SysForm({
   return (
     <form action={formAction} className="space-y-6" key={resetOnSave && state.status === "saved" ? state.nonce : undefined}>
       {state.status === "saved" && (
-        <div role="status" className="rounded-lg border border-success-500 bg-success-50 p-4 text-sm text-success-700 dark:border-success-500/30 dark:bg-success-500/15 dark:text-success-400">
+        <Callout tone="success" role="status">
           {state.message ?? savedMessage ?? t("saved")}
-        </div>
+        </Callout>
       )}
       {state.status === "error" && (
-        <div role="alert" className="rounded-lg border border-error-500 bg-error-50 p-4 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+        <Callout tone="error" role="alert">
           <p>{state.message ?? t("fixErrors")}</p>
           {errors.length > 0 && (
             <ul className="mt-2 list-disc ps-5">
@@ -57,7 +58,7 @@ export default function SysForm({
               ))}
             </ul>
           )}
-        </div>
+        </Callout>
       )}
       {children}
       <div className="flex flex-wrap justify-end gap-3">

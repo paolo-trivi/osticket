@@ -1,10 +1,11 @@
 "use server";
 
 import type { SysFormState } from "@/components/adminsys/SysForm";
-import { str } from "@/server/domain/admin/php";
+import { massRedirect, sysFormResult } from "@/server/actions/result";
+import { str } from "@/server/php/values";
 import { massPages, savePage, type PageMassAction } from "@/server/domain/adminsys/page";
 
-import { adminWrite, formResult, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 /** scp/pages.php do=add / do=update */
 export async function savePageAction(pageId: number | null, _prev: SysFormState, form: FormData): Promise<SysFormState> {
@@ -12,7 +13,7 @@ export async function savePageAction(pageId: number | null, _prev: SysFormState,
   const vars = parsePhpForm(form);
   if (pageId) vars.id = String(pageId);
   const r = await adminWrite((tx) => savePage(tx, pageId, vars));
-  return formResult(r, { locale, created: pageId ? undefined : (id) => `/admin/pages/${id}?ok=created` });
+  return sysFormResult(r, { locale, created: pageId ? undefined : (id) => `/admin/pages/${id}?ok=created` });
 }
 
 const ACTIONS: PageMassAction[] = ["enable", "disable", "delete"];

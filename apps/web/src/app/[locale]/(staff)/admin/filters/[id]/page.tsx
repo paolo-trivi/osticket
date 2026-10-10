@@ -2,13 +2,14 @@ import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import BackLink from "@/components/adminsys/BackLink";
-import { Callout } from "@/components/adminsys/fields";
 import SysForm from "@/components/adminsys/SysForm";
 import SysNotice from "@/components/adminsys/SysNotice";
+import Callout from "@/components/common/Callout";
 import { PageHeader } from "@/components/common/DataTable";
 import { redirect } from "@/i18n/navigation";
+import { Filter } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
-import { FilterFlag, filterInfo } from "@/server/domain/adminsys/filter";
+import { filterInfo } from "@/server/domain/adminsys/filter";
 
 import { requireAdmin } from "../../guard";
 import { saveFilterAction } from "../actions";
@@ -32,9 +33,9 @@ export default async function EditFilterPage({ params, searchParams }: { params:
     <div className="space-y-6">
       <PageHeader title={info.filter.name} subtitle={t("edit")} actions={<BackLink href="/admin/filters" label={c("back")} />} />
       <SysNotice sp={sp} />
-      {flags & FilterFlag.DELETED_OBJECT ? <Callout tone="warning">{t("flags.deleted")}</Callout> : null}
-      {flags & FilterFlag.INACTIVE_DEPT ? <Callout tone="warning">{t("flags.dept")}</Callout> : null}
-      {flags & FilterFlag.INACTIVE_HT ? <Callout tone="warning">{t("flags.topic")}</Callout> : null}
+      {flags & Filter.DELETED_OBJECT ? <Callout tone="warning">{t("flags.deleted")}</Callout> : null}
+      {flags & Filter.INACTIVE_DEPT ? <Callout tone="warning">{t("flags.dept")}</Callout> : null}
+      {flags & Filter.INACTIVE_HT ? <Callout tone="warning">{t("flags.topic")}</Callout> : null}
       <SysForm action={saveFilterAction.bind(null, filterId)} labels={await filterLabels()}>
         <FilterFields info={info} />
       </SysForm>

@@ -1,13 +1,14 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Callout } from "@/components/adminsys/fields";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
+import Callout from "@/components/common/Callout";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
+import { CustomQueue } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
-import { listQueues, QueueFlag } from "@/server/domain/adminsys/queue";
+import { listQueues } from "@/server/domain/adminsys/queue";
 
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
@@ -25,7 +26,7 @@ export default async function QueuesPage({ params, searchParams }: { params: Pro
   const cfg = await coreConfig();
   // OsticketConfig::getDefaultTicketQueueId(): 1 se la chiave manca
   const def = cfg.has("default_ticket_queue") ? cfg.int("default_ticket_queue") : 1;
-  const queues = (await listQueues(db())).filter((q) => q.flags & QueueFlag.QUEUE && !q.staff_id);
+  const queues = (await listQueues(db())).filter((q) => q.flags & CustomQueue.QUEUE && !q.staff_id);
   const byId = new Map(queues.map((q) => [q.id, q]));
   const fullName = (id: number, seen = new Set<number>()): string => {
     const q = byId.get(id);
@@ -76,11 +77,11 @@ export default async function QueuesPage({ params, searchParams }: { params: Pro
                   </span>
                 ),
                 status: (
-                  <Badge size="sm" color={q.flags & QueueFlag.DISABLED ? "light" : "success"}>
-                    {q.flags & QueueFlag.DISABLED ? c("disabled") : c("active")}
+                  <Badge size="sm" color={q.flags & CustomQueue.DISABLED ? "light" : "success"}>
+                    {q.flags & CustomQueue.DISABLED ? c("disabled") : c("active")}
                   </Badge>
                 ),
-                columns: q.flags & QueueFlag.INHERIT_COLUMNS ? t("inherited") : q.columns,
+                columns: q.flags & CustomQueue.INHERIT_COLUMNS ? t("inherited") : q.columns,
                 updated: date(q.updated),
               },
             }))}

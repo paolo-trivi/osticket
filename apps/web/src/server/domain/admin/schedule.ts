@@ -1,12 +1,14 @@
 import "server-only";
 
+import { Schedule } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
+import { list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { type MassResult, type SaveResult } from "./common";
 import { ConfigWriter } from "./config-write";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
-import { list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./php";
 
 /**
  * Orari: scp/schedules.php (update, eliminazione) e ajax.schedule.php (nuovo orario/clonazione,
@@ -15,7 +17,7 @@ import { list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "./
  *
  * Differenza: ajax.schedule.php richiede solo un agente autenticato (bug di permessi): qui solo admin.
  */
-export const ScheduleFlag = { BIZHRS: 0x0001 } as const;
+
 const OPTS = { touchUpdated: true };
 
 export const FREQUENCIES = ["never", "daily", "weekly", "monthly", "yearly"] as const;
@@ -37,7 +39,7 @@ export async function addSchedule(executor: DbOrTx, vars: PhpVars, cloneId?: num
   const name = str(vars.name);
   if (await executor.selectFrom("schedule").select("id").where("name", "=", name).executeTakeFirst()) return { ok: false, errors: { name: "in_use" } };
   const src = cloneId ? await executor.selectFrom("schedule").selectAll().where("id", "=", cloneId).executeTakeFirst() : undefined;
-  if (src && ((src.flags & ScheduleFlag.BIZHRS) ? "bizhrs" : "hdays") !== str(vars.type)) return { ok: false, errors: { sid: "type" } };
+  if (src && ((src.flags & Schedule.BIZHRS) ? "bizhrs" : "hdays") !== str(vars.type)) return { ok: false, errors: { sid: "type" } };
   // Schedule::create($vars): salvato subito (created, updated, descrizione sanitizzata), poi il tipo
   const s = OrmRow.create("schedule", "id", OPTS);
   s.set("name", name);
@@ -45,7 +47,7 @@ export async function addSchedule(executor: DbOrTx, vars: PhpVars, cloneId?: num
   s.set("description", sanitizeText(str(vars.description)));
   s.set("created", SQL_NOW);
   await s.save(executor);
-  setFlag(s, ScheduleFlag.BIZHRS, str(vars.type) === "bizhrs");
+  setFlag(s, Schedule.BIZHRS, str(vars.type) === "bizhrs");
   await s.save(executor);
   const id = s.num("id");
   if (src) {
@@ -291,7 +293,7 @@ async function entryUniqueErrors(executor: DbOrTx, scheduleId: number, vars: Ent
 export async function saveScheduleEntry(executor: DbOrTx, scheduleId: number, entryId: number | null, input: EntryInput, opts: { actorId: number }): Promise<SaveResult> {
   const sch = await executor.selectFrom("schedule").select(["id", "flags"]).where("id", "=", scheduleId).executeTakeFirst();
   if (!sch) return { ok: false, errors: { err: "not_found" } };
-  const processed = processEntryForm(input, !(sch.flags & ScheduleFlag.BIZHRS), await effectiveTimezone(executor, opts.actorId));
+  const processed = processEntryForm(input, !(sch.flags & Schedule.BIZHRS), await effectiveTimezone(executor, opts.actorId));
   if ("errors" in processed) return { ok: false, errors: processed.errors };
   const vars = processed.vars;
   let row: OrmRow;

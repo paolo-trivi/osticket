@@ -5,7 +5,8 @@ import type { AttachInput } from "../file/upload";
 import { postMessage, type PostMessageResult } from "../ticket/message";
 import { runWrite } from "../write";
 import { clientDisplayName, type ClientIdentity } from "./identity";
-import { clientActor, deleteDraftsForNamespace } from "./open";
+import { deleteDraftsForNamespace } from "../drafts";
+import { clientActor } from "./open";
 import { clientCanAccess, editTicketAsClient, type ClientEditResult } from "./tickets";
 
 /**

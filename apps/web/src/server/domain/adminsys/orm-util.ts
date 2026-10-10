@@ -1,7 +1,7 @@
 import "server-only";
 
+import { str, type PhpVal } from "../../php/values";
 import type { OrmValue } from "../admin/orm";
-import { str, type PhpVal } from "../admin/php";
 
 /** Valore di un OrmRow come variabile PHP (NOW() simbolico → null). */
 export const pv = (v: OrmValue): PhpVal => (typeof v === "symbol" ? null : v);

@@ -1,20 +1,21 @@
 import "server-only";
 
-import { sql } from "kysely";
+import { Collaborator } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
 
 import { type DbOrTx } from "../../db";
 import { phpTrim, sanitizeText, editorSpacing, stripEmptyLines } from "../../format/text";
 import { loadSystemEmail, type MailContact, type SystemEmail, sendMail } from "../../mail/mailer";
-import { buildTicketVars, companyVar, contactVar, entryVar, formAnswerMap, loadStaffInfo, loadUserContact, staffVar, userPersonsName } from "../../mail/objects";
+import { buildTicketVars, companyVar, contactVar, entryVar, formAnswerMap, loadUserContact, userPersonsName } from "../../mail/objects";
 import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
 import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
-import { loadAgent } from "../staff/staff";
+import { deptAlertEmail, replaceAlertVars, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import { ticketThreadId } from "../thread/ids";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { addTicketCollaborator } from "./collaborators";
-import { agentDisplayName, type WriteContext } from "./context";
+import type { WriteContext } from "./context";
 import { mergeTypeOf } from "./merge-flags";
-import { ticketThreadId } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
 import { loadStatus, ticketIsReopenable } from "./status";
 import { reopenTicket } from "./ticket-state";
@@ -67,7 +68,7 @@ async function recipientsAll(ctx: WriteContext, ownerId: number, threadId: numbe
     .orderBy("c.id")
     .execute();
   for (const c of collabs) {
-    if (!(c.flags & 1)) continue;
+    if (!(c.flags & Collaborator.ACTIVE)) continue;
     const u = await loadUserContact(ctx.tx, c.user_id);
     if (u) out.push({ kind: "collab", listId: c.id, userId: c.user_id, name: userPersonsName(u, ctx.cfg).toString(), email: u.email });
   }
@@ -147,7 +148,7 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
 
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "M",
+    type: ThreadEntryType.MESSAGE,
     body,
     format,
     staffId: 0,
@@ -177,8 +178,7 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
   const tplGroup = await templateGroupFor(tx, rec.get("dept_id"), cfg);
   const company = await companyVar(tx);
   const url = cfg.str("helpdesk_url").replace(/\/+$/, "");
-  const deptEmail = async (): Promise<SystemEmail | null> =>
-    (await loadSystemEmail(dept?.email_id ?? 0, tx)) ?? (await loadSystemEmail(cfg.int("default_email_id"), tx));
+  const deptEmail = (): Promise<SystemEmail | null> => deptAlertEmail(tx, cfg, dept?.email_id);
 
   const entryRow = await tx.selectFrom("thread_entry").selectAll().where("id", "=", entry.id).executeTakeFirstOrThrow();
   const messageVar = entryVar(entryRow, cfg, ctx.dbZone, null);
@@ -240,8 +240,8 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
     const tpl = email ? await loadMsgTemplate(tx, tplGroup, "message.alert") : null;
     const tv = tpl ? await buildTicketVars(tx, rec.id, cfg, ctx.dbZone) : null;
     if (email && tpl && tv) {
-      const first = new VariableReplacer().assign({ message: messageVar, poster: input.poster || tv.ownerVar, ticket: tv.ticket, url, company });
-      const msg = { subj: first.replaceVars(tpl.subj), body: first.replaceVars(tpl.body) };
+      const vars = { ticket: tv.ticket, url, company };
+      const msg = replaceAlertVars(tpl, { ...vars, message: messageVar, poster: input.poster || tv.ownerVar });
       const recipients: number[] = [];
       if (cfg.bool("message_alert_laststaff")) {
         const { lastRespondentId } = await import("./status");
@@ -265,20 +265,8 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
         if (code.startsWith("s")) recipients.push(Number(code.slice(1)));
         else if (code.startsWith("t")) recipients.push(...(await teamAlertMembers(tx, Number(code.slice(1)))));
       }
-      const sent: string[] = [];
-      for (const id of recipients) {
-        const staff = await loadAgent(id, tx);
-        if (!staff || !staff.email || !staff.isAvailable || sent.includes(staff.email)) continue;
-        const info = await loadStaffInfo(tx, staff.id);
-        const r = new VariableReplacer().assign({ recipient: info ? staffVar(info, cfg) : null, ticket: tv.ticket, url, company });
-        const subject = r.replaceVars(msg.subj);
-        const htmlBody = r.replaceVars(msg.body);
-        const to: MailContact = { name: agentDisplayName(staff, cfg), address: staff.email };
-        ctx.after.push(async () => {
-          await sendMail({ email, to: [to], subject, body: htmlBody, recipient: { userId: staff.id, utype: "S" }, thread: { entryId: entry.id, threadId }, notice: true });
-        });
-        sent.push(staff.email);
-      }
+      // agenti senza indirizzo esclusi (`!$staff->getEmail()`)
+      await sendStaffAlerts(ctx, { email, msg, vars, recipients, skip: (staff) => !staff.email, thread: { entryId: entry.id, threadId } });
     }
   }
   // Signal object.created (type message): nessun ascoltatore nel core
@@ -293,13 +281,6 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
 function collaboratorVar(u: { id: number; name: string; email: string; org_name: string | null }, cfg: WriteContext["cfg"], ticketId: number, numCollaborators: number, url: string): TemplateVariable {
   const name = userPersonsName(u, cfg);
   return new VarBag({ name, email: u.email, id: u.id, ticket_link: numCollaborators ? `${url}/tickets.php?id=${ticketId}` : `${url}/view.php?id=${ticketId}` }, () => name.toString());
-}
-
-/** Team::getMembersForAlerts: membri con flag ALERTS */
-async function teamAlertMembers(executor: DbOrTx, teamId: number): Promise<number[]> {
-  if (!teamId) return [];
-  const rows = await executor.selectFrom("team_member").select("staff_id").where("team_id", "=", teamId).where(sql<boolean>`(flags & 1) != 0`).execute();
-  return rows.map((r) => r.staff_id);
 }
 
 /**

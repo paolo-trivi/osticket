@@ -1,14 +1,14 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 
 import type { EditActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions-edit";
-import { Dropdown } from "@/components/ui/dropdown/Dropdown";
+import ActionNotice from "@/components/common/ActionNotice";
+import MenuButton from "@/components/common/MenuButton";
+import { menuButtonClass, menuItemClass } from "@/components/common/menu-classes";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { useRouter } from "@/i18n/navigation";
-import { ChevronDownIcon } from "@/icons";
-import { cn } from "@/utils";
 
 import CollaboratorsDialog from "./dialogs/CollaboratorsDialog";
 import ConfirmDialog from "./dialogs/ConfirmDialog";
@@ -19,27 +19,6 @@ import MergeDialog from "./dialogs/MergeDialog";
 import OwnerDialog from "./dialogs/OwnerDialog";
 import UpdateTicketDialog from "./dialogs/UpdateTicketDialog";
 import type { ExtraKind, TicketExtraData } from "./types";
-
-const itemClass =
-  "block w-full rounded-lg px-3 py-2 text-start text-theme-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300";
-const buttonClass =
-  "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-theme-sm text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5";
-
-function MenuButton({ label, children }: { label: string; children: (close: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  return (
-    <div className="relative">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={cn("dropdown-toggle", buttonClass)}>
-        {label}
-        <ChevronDownIcon className={cn("size-4 transition-transform", open && "rotate-180")} />
-      </button>
-      <Dropdown isOpen={open} onClose={close} className="w-64 p-2">
-        {children(close)}
-      </Dropdown>
-    </div>
-  );
-}
 
 /**
  * Pulsanti dell'area "ticketedit" nella vista ticket: "Modifica" e menu "Gestisci" (cambia
@@ -71,7 +50,7 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
   const refresh = useCallback(() => router.refresh(), [router]);
 
   const item = (label: string, k: ExtraKind, closeMenu: () => void) => (
-    <DropdownItem key={k} baseClassName={itemClass} onClick={() => setKind(k)} onItemClick={closeMenu}>
+    <DropdownItem key={k} baseClassName={menuItemClass} onClick={() => setKind(k)} onItemClick={closeMenu}>
       {label}
     </DropdownItem>
   );
@@ -86,12 +65,12 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
   return (
     <>
       {can.edit && (
-        <button type="button" onClick={() => setKind("edit")} className={buttonClass}>
+        <button type="button" onClick={() => setKind("edit")} className={menuButtonClass}>
           {t("edit")}
         </button>
       )}
       {hasMenu && (
-        <MenuButton label={t("manage")}>
+        <MenuButton label={t("manage")} width="w-64">
           {(c) => (
             <>
               {can.edit && item(t("editField"), "field", c)}
@@ -108,12 +87,9 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
         </MenuButton>
       )}
       {notice && (
-        <div role="status" className="flex basis-full items-center justify-between gap-3 rounded-lg bg-success-50 px-4 py-2 text-theme-sm text-success-700 dark:bg-success-500/15 dark:text-success-400">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} className="text-theme-xs underline">
-            {t("close")}
-          </button>
-        </div>
+        <ActionNotice closeLabel={t("close")} onClose={() => setNotice(null)}>
+          {notice}
+        </ActionNotice>
       )}
       {kind === "edit" && <UpdateTicketDialog data={data} onClose={close} onSuccess={onSuccess} />}
       {kind === "field" && <EditFieldDialog data={data} onClose={close} onSuccess={onSuccess} />}

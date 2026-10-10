@@ -1,39 +1,22 @@
 import "server-only";
 
-import { promises as dns } from "node:dns";
-
 import { DateTime } from "luxon";
+
+import { DynamicFormField } from "@/lib/osticket/flags";
 
 import type { ConfigNamespace } from "../../config/config";
 import { htmlChars, phpStripTags, stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
-import { htmlSearchable, sanitizeText, searchable, stripEmoticons } from "../../format/text";
+import { htmlSearchable, phpTrim, sanitizeText, searchable, stripEmoticons } from "../../format/text";
+import { intval, isArray, isset, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
+import { isFormula, isIp, isPhone, isValidEmail, phpIsNumeric } from "./validator";
 
 /**
  * Campi dei form dinamici (include/class.forms.php + class.dynamic_forms.php): flag di visibilità,
  * configurazione con i default del tipo, parse dell'input, validazione, conversione verso il DB
- * (`form_entry_values.value` / `value_id`), testo per filtri, indice e cdata.
+ * (`form_entry_values.value` / `value_id`), testo per filtri, indice e cdata. Unica definizione dei
+ * campi per ticket, task, utenti, organizzazioni e azienda; i validatori sono in ./validator.
  */
-
-/** DynamicFormField::FLAG_* */
-export const FieldFlag = {
-  ENABLED: 0x00001,
-  EXT_STORED: 0x00002,
-  CLOSE_REQUIRED: 0x00004,
-  MASK_CHANGE: 0x00010,
-  MASK_DELETE: 0x00020,
-  MASK_EDIT: 0x00040,
-  MASK_DISABLE: 0x00080,
-  CLIENT_VIEW: 0x00100,
-  CLIENT_EDIT: 0x00200,
-  CLIENT_REQUIRED: 0x00400,
-  AGENT_VIEW: 0x01000,
-  AGENT_EDIT: 0x02000,
-  AGENT_REQUIRED: 0x04000,
-  MASK_REQUIRE: 0x10000,
-  MASK_VIEW: 0x20000,
-  MASK_NAME: 0x40000,
-} as const;
 
 /** Contesto di compilazione: agente (staff) o cliente (web). */
 export type FormAudience = "staff" | "client";
@@ -59,28 +42,36 @@ export function hasFlag(f: Pick<FieldDef, "flags">, flag: number): boolean {
   return (f.flags & flag) !== 0;
 }
 function isEnabled(f: FieldDef): boolean {
-  return !f.disabled && hasFlag(f, FieldFlag.ENABLED);
+  return !f.disabled && hasFlag(f, DynamicFormField.ENABLED);
 }
 export function isVisibleTo(f: FieldDef, who: FormAudience): boolean {
-  return isEnabled(f) && hasFlag(f, who === "staff" ? FieldFlag.AGENT_VIEW : FieldFlag.CLIENT_VIEW);
+  return isEnabled(f) && hasFlag(f, who === "staff" ? DynamicFormField.AGENT_VIEW : DynamicFormField.CLIENT_VIEW);
 }
 export function isEditableTo(f: FieldDef, who: FormAudience): boolean {
-  return isEnabled(f) && hasFlag(f, who === "staff" ? FieldFlag.AGENT_EDIT : FieldFlag.CLIENT_EDIT);
+  return isEnabled(f) && hasFlag(f, who === "staff" ? DynamicFormField.AGENT_EDIT : DynamicFormField.CLIENT_EDIT);
 }
 export function isRequiredFor(f: FieldDef, who: FormAudience): boolean {
-  return hasFlag(f, who === "staff" ? FieldFlag.AGENT_REQUIRED : FieldFlag.CLIENT_REQUIRED);
+  return hasFlag(f, who === "staff" ? DynamicFormField.AGENT_REQUIRED : DynamicFormField.CLIENT_REQUIRED);
 }
+/** Scorciatoie per il contesto agente (directory, task, azienda). */
+export const isVisibleToStaff = (f: FieldDef) => isVisibleTo(f, "staff");
+export const isEditableToStaff = (f: FieldDef) => isEditableTo(f, "staff");
+export const isRequiredForStaff = (f: FieldDef) => isRequiredFor(f, "staff");
 /** FormField::hasData: niente dati per separatori e testo informativo */
 export function hasData(f: FieldDef): boolean {
   return f.type !== "break" && f.type !== "info";
 }
 /** FormField::isStorable */
 export function isStorable(f: FieldDef): boolean {
-  return (f.flags & FieldFlag.EXT_STORED) === 0;
+  return (f.flags & DynamicFormField.EXT_STORED) === 0;
 }
 /** ThreadEntryField è "presentation only": il corpo diventa il primo messaggio */
 export function isPresentationOnly(f: FieldDef): boolean {
   return f.type === "thread";
+}
+/** Campo con una riga form_entry_values (DynamicFormEntry::create / saveAnswers). */
+export function hasAnswerRow(f: FieldDef): boolean {
+  return hasData(f) && isStorable(f) && !isPresentationOnly(f);
 }
 
 /** Default di getConfigurationOptions() per tipo. */
@@ -129,8 +120,6 @@ export function fieldConfig(type: string, raw: string | null, cfg: ConfigNamespa
   return out;
 }
 
-const truthy = (v: unknown) => !(v === undefined || v === null || v === false || v === "" || v === "0" || v === 0);
-
 /**
  * Valore "pulito" di un campo (getClean):
  * - testo, memo, telefono, data, fuso: stringa o null;
@@ -144,16 +133,27 @@ export function isIdValue(v: CleanValue): v is { id: number; label: string } {
   return !!v && typeof v === "object" && "id" in v && "label" in v && typeof (v as { id: unknown }).id === "number";
 }
 
-/** ChoiceField::getChoices per il tipo choices (righe key:value) */
-export function parseChoiceLines(text: string): Record<string, string> {
+/**
+ * ChoiceField::getChoices per il tipo choices (righe "chiave:etichetta"): `list($key, $val) =
+ * explode(':', $choice, 2)`, etichetta = chiave se `$val == null` (assente o ""), poi trim di entrambe.
+ */
+function parseChoiceLines(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of String(text ?? "").split("\n")) {
     const idx = line.indexOf(":");
-    const key = (idx >= 0 ? line.slice(0, idx) : line).trim();
-    const val = idx >= 0 ? line.slice(idx + 1).trim() : key;
-    out[key] = val === "" && idx < 0 ? key : val || key;
+    const key = idx >= 0 ? line.slice(0, idx) : line;
+    const val = idx >= 0 ? line.slice(idx + 1) : "";
+    out[key.trim()] = (val === "" ? key : val).trim();
   }
   return out;
+}
+
+/** Scelte di un campo: già risolte (liste, priorità, reparti) o dalla configurazione "choices". */
+export function fieldChoices(f: FieldDef): Record<string, string> {
+  if (f.choices) return f.choices;
+  const raw = f.config.choices;
+  if (raw && typeof raw === "object") return raw as Record<string, string>;
+  return parseChoiceLines(String(raw ?? ""));
 }
 
 /** Abbreviazioni di fuso riconosciute da strtotime/new DateTime (offset in minuti) */
@@ -226,141 +226,237 @@ function phpFormatDate(dt: DateTime, o: DateFormatOptions, withTime = false): st
   const z = dt.setZone(o.timezone || "UTC");
   if (o.cfg.str("date_formats") === "custom") return z.setLocale("en-US").toFormat(o.cfg.str(withTime ? "datetime_format" : "date_format") || "MM/dd/y");
   const locale = (o.cfg.str("system_language") || "en_US").replace("_", "-");
-  const date = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeZone: z.zoneName ?? "UTC" }).format(z.toJSDate());
-  if (!withTime) return date;
-  const time = new Intl.DateTimeFormat(locale, { timeStyle: "short", timeZone: z.zoneName ?? "UTC" }).format(z.toJSDate());
-  return `${date} ${time}`.replace(/\u202f/g, " ");
+  // ICU >= 72 (PHP intl) separa l'ora da AM/PM con U+202F; V8 pu\u00f2 restituire uno spazio normale
+  const icu = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(locale, { ...opts, timeZone: z.zoneName ?? "UTC" })
+      .formatToParts(z.toJSDate())
+      .map((p, i, all) => (p.type === "literal" && p.value === " " && all[i + 1]?.type === "dayPeriod" ? "\u202f" : p.value))
+      .join("");
+  const date = icu({ dateStyle: "short" });
+  return withTime ? `${date} ${icu({ timeStyle: "short" })}` : date;
 }
 
 /** Sorgente dei valori (POST/vars): per nome del campo o per id, come Widget::getValue. */
 export type FormSource = Record<string, unknown>;
 
-function rawValue(f: FieldDef, source: FormSource): unknown {
-  if (f.name && source[f.name] !== undefined) return source[f.name];
-  if (source[String(f.id)] !== undefined) return source[String(f.id)];
-  return undefined;
+/**
+ * Widget::getValue di base: primo nome valorizzato (isset) tra nome e id del campo. Al posto del
+ * nome "hash" dei form PHP (Widget::$name) la sorgente TS usa il nome o l'id del campo; l'interno
+ * del telefono è `<nome o id>-ext`.
+ */
+function rawValue(f: FieldDef, source: FormSource): PhpVal {
+  for (const k of [f.name, String(f.id)]) if (k && isset(source as PhpVars, k)) return source[k] as PhpVal;
+  return null;
+}
+
+/** Prima chiave di un array PHP (reset + key), null se vuoto. */
+function firstKey(v: PhpVal): string | null {
+  return isArray(v) ? (Object.keys(v)[0] ?? null) : null;
+}
+
+/** Array PHP chiave → etichetta come mappa di stringhe. */
+function strMap(v: PhpVal): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (isArray(v)) for (const [k, x] of Object.entries(v)) out[k] = str(x);
+  return out;
 }
 
 /**
- * Widget::getValue + FormField::parse per tipo. `timezone` è il fuso dell'utente corrente
- * ($cfg->getTimezone()) usato da DatetimePickerWidget.
+ * SelectionField::lookupChoice (liste personalizzate): voce per etichetta (array_search debole sulle
+ * scelte; una chiave "0" non vale). Le voci disattivate e la ricerca per abbreviazione (`extra`), che
+ * nel PHP interrogano il DB, non sono replicate.
  */
-export function parseField(f: FieldDef, source: FormSource, timezone = "UTC"): CleanValue {
+function lookupListChoice(choices: Record<string, string>, value: PhpVal): Record<string, string> | null {
+  const k = Object.keys(choices).find((key) => phpLooseEquals(choices[key], value));
+  return k && truthy(k) ? { [k]: choices[k] } : null;
+}
+
+/**
+ * ChoicesWidget::getValue (scelte, liste, priorità, reparti, fusi): un valore "falso" vale null; ogni
+ * valore inviato presente fra le scelte (o trovato da lookupChoice) entra nella selezione; un primo
+ * valore sconosciuto viene restituito tale e quale (testo da validare/convertire in parse).
+ */
+function choicesWidgetValue(raw: PhpVal, choices: Record<string, string>, lookup?: (v: PhpVal) => Record<string, string> | null): PhpVal {
+  if (!truthy(raw)) return null;
+  const items: [string, PhpVal][] = isArray(raw) ? Object.entries(raw) : [["0", raw]];
+  const values: Record<string, string> = {};
+  for (const [k, v] of items) {
+    const key = isArray(v) ? null : str(v);
+    const found = key === null ? null : Object.hasOwn(choices, key) ? { [key]: choices[key] } : (lookup?.(v) ?? null);
+    if (found) {
+      // $values[$v] = …, $values += $i
+      for (const [ik, iv] of Object.entries(found)) if (ik === key || !Object.hasOwn(values, ik)) values[ik] = iv;
+    } else if (!truthy(k) && truthy(v)) return v;
+  }
+  return values;
+}
+
+/**
+ * ChoiceField::to_php sul valore del widget (parse = to_php($value ?: null)): testo JSON decodificato,
+ * elenco "a,b" ridotto alle chiavi note, selezione singola ridotta alla chiave se non multiselect.
+ * La chiave nota diventa {chiave: etichetta} (rappresentazione TS, equivalente per to_database,
+ * toString e getKeys); un valore sconosciuto resta testo, come nel PHP.
+ */
+function choicesToPhp(f: FieldDef, choices: Record<string, string>, input: PhpVal): CleanValue {
+  let value: PhpVal = input;
+  if (!truthy(value)) return null;
+  if (typeof value === "string") {
+    const decoded = phpJsonDecode<PhpVal>(value, null);
+    if (truthy(decoded)) value = decoded;
+  }
+  if (typeof value === "string" && value.indexOf(",") > 0) {
+    const vals = value.split(",").map((v) => phpTrim(v));
+    const known: Record<string, string> = {};
+    for (const v of vals) if (Object.hasOwn(choices, v)) known[v] = choices[v];
+    value = truthy(known) ? known : vals[0];
+  }
+  if (!truthy(f.config.multiselect as PhpVal) && isArray(value) && Object.keys(value).length < 2) value = firstKey(value);
+  if (value === null) return null;
+  if (isArray(value)) return strMap(value);
+  const key = str(value);
+  return Object.hasOwn(choices, key) ? { [key]: choices[key] } : key;
+}
+
+/**
+ * SelectionField::parse (liste): selezione {id: valore} delle voci note per chiave o per valore; un
+ * valore non riconosciuto non produce selezione. Non replicati (il PHP interroga il DB): le voci
+ * disattivate cercate per id e il numero sconosciuto salvato come voce anonima ("[22]").
+ */
+function listToPhp(choices: Record<string, string>, input: PhpVal): CleanValue {
+  let value: PhpVal = input;
+  if (truthy(value) && !isArray(value)) {
+    const decoded = phpJsonDecode<PhpVal>(str(value), null);
+    value = truthy(decoded) ? decoded : [value];
+  }
+  const sel: Record<string, string> = {};
+  if (truthy(value) && isArray(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      if (truthy(k) && Object.hasOwn(choices, String(intval(k)))) sel[String(intval(k))] = choices[String(intval(k))];
+      else if (Object.hasOwn(choices, k)) sel[k] = choices[k];
+      else if (!isArray(v) && Object.hasOwn(choices, str(v))) sel[str(v)] = choices[str(v)];
+    }
+  }
+  return Object.keys(sel).length ? sel : null;
+}
+
+/**
+ * Widget::getValue per tipo (il valore che FormField::parse riceve). `timezone` è il fuso dell'utente
+ * corrente ($cfg->getTimezone()) usato da DatetimePickerWidget.
+ */
+function widgetValue(f: FieldDef, source: FormSource, timezone: string): PhpVal {
   const raw = rawValue(f, source);
   switch (f.type) {
-    case "text": {
-      if (raw === undefined || raw === null) return null;
-      // Format::strip_emoticons(Format::striptags($value))
-      return stripEmoticons(stripTags(String(raw)));
-    }
-    case "memo": {
-      // TextareaField::parse: nessun trim (solo Format::sanitize se HTML)
-      if (raw === undefined || raw === null) return null;
-      const v = String(raw);
-      return f.config.html ? sanitizeText(v) : v;
-    }
     case "phone": {
-      if (raw === undefined || raw === null) return null;
-      const name = f.name || String(f.id);
-      const ext = source[`${name}-ext`];
-      const base = String(raw).trim() + (truthy(ext) ? `X${String(ext)}` : "");
-      const val = base.replace(/[^\dX]/g, "");
-      return val || base;
+      // PhoneNumberWidget::getValue: $base . $ext, con 'X' davanti solo a un interno "vero" (un
+      // interno "0" viene accodato senza separatore: "0655512" + "0" → "06555120")
+      if (raw === null) return null;
+      const ext = source[`${f.name || f.id}-ext`] as PhpVal;
+      return str(raw) + (truthy(ext) ? `X${str(ext)}` : str(ext));
     }
-    case "bool":
-      return truthy(raw);
-    case "choices": {
-      const choices = f.choices ?? parseChoiceLines(String(f.config.choices ?? ""));
-      const values = Array.isArray(raw) ? raw.map(String) : truthy(raw) ? [String(raw)] : [];
-      const out: Record<string, string> = {};
-      for (const v of values) if (v in choices) out[v] = choices[v];
-      return Object.keys(out).length ? out : null;
-    }
+    case "choices":
+      return choicesWidgetValue(raw, fieldChoices(f));
     case "priority":
-    case "department": {
-      const id = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
-      if (!raw || !Number.isFinite(id) || !f.choices || !(String(id) in f.choices)) return null;
-      return { id, label: f.choices[String(id)] };
-    }
+    case "department":
+    case "timezone":
+      return choicesWidgetValue(raw, f.choices ?? {});
     case "datetime": {
-      // DatetimePickerWidget::getValue: data letta in UTC, portata nel fuso del campo/utente,
-      // salvata come 'Y-m-d H:i:s T' (es. "2026-09-30 02:00:00 CEST"); valore non interpretabile invariato
-      if (raw === undefined || raw === null) return null;
-      const v = String(raw);
-      if (!v) return "";
-      const dt = phpParseDateTime(v);
-      if (!dt) return v.trim();
+      // DatetimePickerWidget::getValue: data letta nel fuso del PHP (UTC), portata nel fuso del
+      // campo/utente e salvata come 'Y-m-d H:i:s T' (es. "2026-09-30 02:00:00 CEST"); valore "falso"
+      // o non interpretabile invariato
+      if (!truthy(raw)) return raw;
+      const dt = phpParseDateTime(str(raw));
+      if (!dt) return raw;
       const z = dt.setZone(String(f.config.timezone || timezone || "UTC"));
       return `${z.toFormat("yyyy-MM-dd HH:mm:ss")} ${phpTzAbbr(z)}`;
     }
-    case "timezone":
-      return raw === undefined || raw === null || raw === "" ? null : String(raw).trim();
+    default:
+      if (f.type.startsWith("list-")) {
+        const choices = f.choices ?? {};
+        return choicesWidgetValue(raw, choices, (v) => lookupListChoice(choices, v));
+      }
+      return raw;
+  }
+}
+
+/**
+ * FormField::parse per tipo, sul valore del widget o su un valore diretto (import CSV:
+ * `$f->parse(trim($csv))`). Valore assente (null) → null: il PHP darebbe "" per il testo, ma la
+ * risposta salvata resta comunque NULL (nuova entry) o quella precedente (entry esistente).
+ */
+export function parseFieldValue(f: FieldDef, value: PhpVal): CleanValue {
+  switch (f.type) {
+    case "text":
+      // TextboxField::parse: Format::strip_emoticons(Format::striptags($value)), nessun trim
+      return value === null || value === undefined ? null : stripEmoticons(stripTags(str(value)));
+    case "memo": {
+      // TextareaField::parse: nessun trim (solo Format::sanitize se HTML)
+      if (value === null || value === undefined || value === false) return null;
+      return f.config.html ? sanitizeText(str(value)) : str(value);
+    }
+    case "phone": {
+      // PhoneField::parse: solo cifre e "X", altrimenti il testo originale (non rifilato) da validare
+      if (value === null || value === undefined || value === false) return null;
+      const base = str(value);
+      return base.replace(/[^\dX]/g, "") || base;
+    }
+    case "bool":
+      // BooleanField::getClean usa il valore del widget senza parse: vero/falso come (bool) PHP
+      return truthy(value);
+    case "choices":
+      return choicesToPhp(f, fieldChoices(f), value);
+    case "timezone": {
+      // ChoiceField::parse: chiave della selezione o testo inviato
+      const v = choicesToPhp({ ...f, config: { ...f.config, multiselect: false } }, f.choices ?? {}, value);
+      return v !== null && typeof v === "object" ? (Object.keys(v)[0] ?? null) : v;
+    }
+    case "priority":
+    case "department": {
+      // PriorityField/DepartmentField::parse($id): chiave della selezione (o id inviato) fra le scelte
+      const id = isArray(value) ? firstKey(value) : value === null || value === undefined ? null : str(value);
+      if (!id || !f.choices || !Object.hasOwn(f.choices, String(Number(id)))) return null;
+      return { id: Number(id), label: f.choices[String(Number(id))] };
+    }
+    case "datetime":
+      if (value === null || value === undefined || value === false) return null;
+      return typeof value === "string" ? phpTrim(value) : str(value);
     case "files": {
       // valori "id,nome" (POST) o {id: nome}
       const out: Record<string, string> = {};
-      const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Object.entries(raw as Record<string, string>).map(([k, v]) => `${k},${v}`) : [];
-      for (const item of list) {
-        const [id, ...rest] = String(item).split(",");
+      const items = Array.isArray(value) ? value : isArray(value) ? Object.entries(value).map(([k, v]) => `${k},${str(v)}`) : [];
+      for (const item of items) {
+        const [id, ...rest] = str(item).split(",");
         if (id) out[id] = rest.join(",");
       }
       return Object.keys(out).length ? out : null;
     }
-    default: {
-      if (f.type.startsWith("list-")) {
-        const choices = f.choices ?? {};
-        const values = Array.isArray(raw) ? raw.map(String) : truthy(raw) ? [String(raw)] : [];
-        const out: Record<string, string> = {};
-        for (const v of values) if (v in choices) out[v] = choices[v];
-        return Object.keys(out).length ? out : null;
-      }
-      if (raw === undefined || raw === null) return null;
-      return typeof raw === "string" ? raw.trim() : String(raw);
-    }
+    default:
+      if (f.type.startsWith("list-")) return listToPhp(f.choices ?? {}, value);
+      // FormField::parse: trim delle stringhe
+      if (value === null || value === undefined) return null;
+      return typeof value === "string" ? phpTrim(value) : str(value);
   }
 }
 
-/** Validator::is_formula */
-function isFormula(text: string): boolean {
-  return /(^[^=+@-][\s\S]*$)|(^\+\d+$)/.test(text);
+/**
+ * Valore "pulito" di un campo da una sorgente (FormField::getClean = parse(Widget::getValue)): unica
+ * lettura dell'input dei form dinamici per ticket, portale, utenti, organizzazioni, task e azienda.
+ */
+export function parseField(f: FieldDef, source: FormSource, timezone = "UTC"): CleanValue {
+  return parseFieldValue(f, widgetValue(f, source, timezone));
 }
 
-/** Validator::is_email (Mail_RFC822): un solo indirizzo, mailbox presente, host diverso da localhost. */
-export function isEmail(email: string): boolean {
-  const m = /^\s*(?:"[^"]*"|[^\s@<>(),;:"[\]]+)@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*|\[[0-9.]+\])\s*$/.exec(email ?? "");
-  if (!m) return false;
-  return m[1].toLowerCase() !== "localhost";
+/** Il campo ha un valore nella sorgente (isset per nome o id, come Widget::getValue). */
+export function inSource(f: FieldDef, source: FormSource): boolean {
+  return rawValue(f, source) !== null;
 }
 
-/** Validator::is_valid_email con verify_email_addrs: record MX, altrimenti A/AAAA del dominio. */
-async function isValidEmail(email: string, cfg: ConfigNamespace): Promise<boolean> {
-  if (!isEmail(email)) return false;
-  if (!cfg.bool("verify_email_addrs")) return true;
-  const host = email.trim().split("@").pop()!.replace(/^\[|\]$/g, "");
-  try {
-    const mx = await dns.resolveMx(`${host}.`);
-    if (mx.length) return true;
-  } catch {
-    /* nessun MX */
-  }
-  let n = 0;
-  for (const fn of [dns.resolve4, dns.resolve6]) {
-    try {
-      n += (await fn(`${host}.`)).length;
-    } catch {
-      /* nessun record */
-    }
-  }
-  return n > 0;
-}
-
-function phpIsNumeric(v: string): boolean {
-  return /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(v);
-}
-
-/** Validator::is_phone */
-function isPhone(v: string): boolean {
-  const stripped = v.replace(/\(|\)|-|\.|\+|[  ]+/g, "");
-  return phpIsNumeric(stripped) && stripped.length >= 7 && stripped.length <= 16;
+/**
+ * Valore pulito nella forma di FormField::getClean del PHP, per riusarlo come sorgente (User::fromVars
+ * riceve getClean() e lo rilegge con i widget): la scelta singola torna alla sola chiave.
+ */
+export function phpCleanValue(f: FieldDef, v: CleanValue): CleanValue {
+  if (f.type === "choices" && !truthy(f.config.multiselect as PhpVal) && v && typeof v === "object" && !isIdValue(v) && Object.keys(v).length === 1) return Object.keys(v)[0];
+  return v;
 }
 
 /** Messaggi di errore dei validatori (testo inglese del PHP, tradotto dalla UI tramite il codice). */
@@ -381,9 +477,9 @@ export async function validateField(f: FieldDef, value: CleanValue, required: bo
       const v = value === "0" ? "&#48" : htmlChars(String(value));
       let validator = String(f.config.validator ?? "");
       if (!validator) validator = "formula";
-      if (validator === "email" && !(await isValidEmail(v, cfg))) errors.push("email");
+      if (validator === "email" && !(await isValidEmail(v, cfg.bool("verify_email_addrs")))) errors.push("email");
       else if (validator === "phone" && !isPhone(v)) errors.push("phone");
-      else if (validator === "ip" && !/^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-f:]+$/i.test(v.trim())) errors.push("ip");
+      else if (validator === "ip" && !isIp(v)) errors.push("ip");
       else if (validator === "number" && !phpIsNumeric(v === "&#48" ? "0" : v)) errors.push("number");
       else if (validator === "regex") {
         const m = /^(.)(.*)\1([a-z]*)$/s.exec(String(f.config.regex ?? ""));
@@ -417,7 +513,7 @@ export async function validateField(f: FieldDef, value: CleanValue, required: bo
 }
 
 /** Format::phone */
-function formatPhone(phone: string): string {
+export function formatPhone(phone: string): string {
   const stripped = phone.replace(/[^0-9]/g, "");
   if (stripped.length === 7) return stripped.replace(/([0-9]{3})([0-9]{4})/, "$1-$2");
   if (stripped.length === 10) return stripped.replace(/([0-9]{3})([0-9]{3})([0-9]{4})/, "($1) $2-$3");
@@ -447,9 +543,21 @@ export function fieldToString(f: FieldDef, value: CleanValue, dates?: DateFormat
     }
     default:
       if (isIdValue(value)) return value.label;
+      if (f.type === "choices" && typeof value === "string") return Object.values(choiceSelection(f, value)).join(", ");
       if (typeof value === "object") return Object.values(value).join(", ");
       return String(value);
   }
+}
+
+/**
+ * ChoiceField::getChoice per un valore testuale: la scelta corrispondente o, se sconosciuto, quella
+ * predefinita del campo (nessuna se manca).
+ */
+function choiceSelection(f: FieldDef, value: string): Record<string, string> {
+  const choices = fieldChoices(f);
+  if (Object.hasOwn(choices, value)) return { [value]: choices[value] };
+  const d = str(f.config.default as PhpVal);
+  return truthy(d) && Object.hasOwn(choices, d) ? { [d]: choices[d] } : {};
 }
 
 /** FormField::searchable (null = non indicizzabile) */
@@ -481,6 +589,7 @@ export function fieldToDatabase(f: FieldDef, value: CleanValue): { value: string
 export function fieldSearchKeys(f: FieldDef, value: CleanValue): string {
   if (value === null || value === undefined) return f.type === "bool" ? "0" : "";
   if (f.type === "priority" || f.type === "department") return isIdValue(value) ? String(value.id) : "";
+  if (f.type === "choices" && typeof value === "string") return Object.keys(choiceSelection(f, value)).join(", ");
   if (f.type === "choices" || f.type.startsWith("list-")) return typeof value === "object" ? Object.keys(value).join(", ") : String(value);
   if (f.type === "bool") return value ? "1" : "0";
   return fieldToDatabase(f, value).value ?? "";

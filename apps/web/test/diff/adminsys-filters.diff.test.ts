@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { massFilters, saveFilter, type FilterMassAction } from "@/server/domain/adminsys/filter";
 
 import { compareWorkingDatabases, execBoth, prepareSnapshot, resetWorkingDatabases, runPhp } from "./lib/harness";

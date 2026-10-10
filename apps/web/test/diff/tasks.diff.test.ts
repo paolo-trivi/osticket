@@ -69,6 +69,22 @@ describe("task: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("campi aggiuntivi del form del task: data nel fuso dell'agente, testo numerico", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (70, 5, 13057, 'datetime', 'Intervento', 'intervento', '{"time":true}', 3, '', NOW(), NOW()),
+        (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
+      "ALTER TABLE {p}task__cdata ADD COLUMN intervento mediumtext",
+    );
+    const fields = { intervento: "2026-11-03 14:30", stanza: "12" };
+    const args = { agent: 2, title: "Con campi", description: "<p>desc</p>", deptId: 1, duedate: "", fields };
+    const php = await runPhp<{ ok: boolean; id: number; number: string }>({ op: "task.create", args });
+    const ts = await asAgent(2, (ctx) => createTask(ctx, { title: args.title, description: args.description, deptId: 1, fields }));
+    expect(php.ok).toBe(true);
+    expect(ts).toEqual({ ok: true, id: php.id, number: php.number });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("creazione autonoma con team e scadenza", async () => {
     const args = { agent: 2, title: "Standalone", description: "<p>desc</p>", deptId: 3, assignee: "t1", duedate: "2027-02-01T08:15:00Z" };
     await runPhp({ op: "task.create", args });
@@ -118,6 +134,36 @@ describe("task: PHP vs TypeScript", () => {
       "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26");
     await runPhp({ op: "task.status", args: { agent: 2, task: 3, status: "open", comments: "<p>di nuovo</p>" } });
     await withTask(2, 3, (ctx, t) => setTaskStatus(ctx, t, "open", "<p>di nuovo</p>"));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("riapertura del ticket dal task: stato di riapertura non consentito o non aperto (TicketStatus::getReopenStatus)", async () => {
+    // Stato "Closed" con reopenstatus ma allowreopen falso, "Resolved" con reopenstatus verso uno stato chiuso:
+    // in entrambi i casi il PHP ignora la configurazione e usa lo stato predefinito.
+    await execBoth(
+      "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":false,\"reopenstatus\":6}' WHERE id = 3",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":3}' WHERE id = 2",
+      "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id IN (2, 3)",
+      "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
+      "UPDATE {p}ticket SET status_id = 2, closed = NOW(), topic_id = 0 WHERE ticket_id = 24",
+    );
+    await runPhp({ op: "task.status", args: { agent: 2, task: 3, status: "open", comments: "" } });
+    await runPhp({ op: "task.status", args: { agent: 2, task: 2, status: "open", comments: "" } });
+    await withTask(2, 3, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
+    await withTask(2, 2, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("riapertura del ticket dal task con stato di riapertura configurato", async () => {
+    await execBoth(
+      "INSERT INTO {p}ticket_status (id, name, state, mode, flags, sort, properties, created, updated) VALUES (6, 'Riaperto', 'open', 1, 0, 6, '{\"description\":\"\"}', NOW(), NOW())",
+      "UPDATE {p}ticket_status SET properties = '{\"allowreopen\":true,\"reopenstatus\":6}' WHERE id = 3",
+      "UPDATE {p}task SET flags = 0, closed = NOW() WHERE id = 3",
+      "UPDATE {p}ticket SET status_id = 3, closed = NOW(), topic_id = 0 WHERE ticket_id = 26",
+    );
+    await runPhp({ op: "task.status", args: { agent: 2, task: 3, status: "open", comments: "" } });
+    await withTask(2, 3, (ctx, t) => setTaskStatus(ctx, t, "open", ""));
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

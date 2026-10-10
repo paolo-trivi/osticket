@@ -1,29 +1,16 @@
+import { renderThreadBody } from "@/components/common/thread-body";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
 import type { ThreadEntryView } from "@/server/domain/ticket/ticket";
 import { formatDbDate, isoOf } from "@/server/format/datetime";
-import { safeHtml, textToHtml } from "@/server/format/sanitize";
 import { cn } from "@/utils";
 import { withBase } from "@/lib/base-path";
+import { humanSize } from "@/lib/format/size";
 
 const KIND_STYLE: Record<ThreadEntryView["type"], string> = {
   M: "border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3",
   R: "border-brand-200 bg-brand-25 dark:border-brand-800 dark:bg-brand-500/5",
   N: "border-warning-200 bg-warning-25 dark:border-warning-800 dark:bg-warning-500/5",
 };
-
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** Corpo dell'entry: HTML ri-sanitizzato, immagini inline cid:<chiave> servite dalla route protetta. */
-function renderBody(entry: ThreadEntryView, iframeWhitelist: string[]): string {
-  const html = entry.format === "html" ? entry.body : textToHtml(entry.body);
-  return safeHtml(html, { iframeWhitelist, decode: false }).replace(
-    /src="cid:([A-Za-z0-9_-]+)"/g,
-    (_, key: string) => `src="${withBase(`/api/agent/file/${key}`)}?disposition=inline"`,
-  );
-}
 
 export default function ThreadEntryCard({
   entry,
@@ -38,7 +25,7 @@ export default function ThreadEntryCard({
   labels: { note: string; reply: string; message: string; edited: string; via: string };
   iframeWhitelist: string[];
 }) {
-  const kindLabel = entry.type === "N" ? labels.note : entry.type === "R" ? labels.reply : labels.message;
+  const kindLabel = entry.type === ThreadEntryType.NOTE ? labels.note : entry.type === ThreadEntryType.RESPONSE ? labels.reply : labels.message;
   const files = entry.attachments.filter((a) => !a.inline);
   return (
     <article id={`entry-${entry.id}`} className={cn("rounded-2xl border", KIND_STYLE[entry.type])}>
@@ -47,7 +34,7 @@ export default function ThreadEntryCard({
           <span
             className={cn(
               "flex size-9 items-center justify-center rounded-full text-sm font-semibold",
-              entry.type === "M" ? "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300" : "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
+              entry.type === ThreadEntryType.MESSAGE ? "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300" : "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
             )}
           >
             {entry.poster.slice(0, 2).toUpperCase()}
@@ -65,12 +52,12 @@ export default function ThreadEntryCard({
           {entry.editor_name ? ` · ${labels.edited} ${entry.editor_name}` : ""}
         </time>
       </header>
-      {entry.title && entry.type === "N" && (
+      {entry.title && entry.type === ThreadEntryType.NOTE && (
         <p className="px-5 pt-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{entry.title}</p>
       )}
       <div
         className="thread-body prose prose-sm max-w-none px-5 py-4 text-gray-700 dark:prose-invert dark:text-gray-300"
-        dangerouslySetInnerHTML={{ __html: renderBody(entry, iframeWhitelist) }}
+        dangerouslySetInnerHTML={{ __html: renderThreadBody(entry, { area: "agent", iframeWhitelist }) }}
       />
       {files.length > 0 && (
         <footer className="flex flex-wrap gap-2 border-t border-inherit px-5 py-3">

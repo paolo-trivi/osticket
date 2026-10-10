@@ -28,7 +28,8 @@ $OPS['task.create'] = function (array $op) {
     $thisstaff = people_staff($op);
     $a = $op['args'];
     $form = TaskForm::getInstance();
-    $form->setSource(['title' => $a['title'], 'description' => $a['description'] ?? '']);
+    // campi aggiuntivi del form del task (per nome), poi titolo e descrizione
+    $form->setSource(array_merge($a['fields'] ?? [], ['title' => $a['title'], 'description' => $a['description'] ?? '']));
     $iform = TaskForm::getInternalForm([
         'dept_id' => $a['deptId'],
         'assignee' => $a['assignee'] ?? '',

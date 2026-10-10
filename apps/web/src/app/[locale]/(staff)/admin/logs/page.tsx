@@ -1,8 +1,9 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Callout, controlClass } from "@/components/adminsys/fields";
+import { controlClass } from "@/components/adminsys/fields";
 import SysNotice from "@/components/adminsys/SysNotice";
 import MassBar from "@/components/admin/MassBar";
+import Callout from "@/components/common/Callout";
 import LinkPager from "@/components/common/LinkPager";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";

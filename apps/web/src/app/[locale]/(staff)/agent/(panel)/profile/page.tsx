@@ -8,6 +8,7 @@ import ProfileForm from "@/components/people/profile/ProfileForm";
 import PermissionList from "@/components/people/profile/PermissionList";
 import { PasswordCard, TwoFactorCard } from "@/components/people/profile/SecurityCards";
 import Badge from "@/components/ui/badge/Badge";
+import { CustomQueue } from "@/lib/osticket/flags";
 import { staff2faConfig } from "@/server/auth/mfa";
 import { sessionResetToken } from "@/server/auth/staff-recovery";
 import { coreConfig } from "@/server/config/config";
@@ -46,7 +47,7 @@ export default async function ProfilePage({ params, searchParams }: { params: Pr
   // Code proposte come coda predefinita: pubbliche o personali (CustomQueue::queues)
   const { rows: queues } = await sql<{ id: number; title: string; parent: string | null }>`
     SELECT Q.id, Q.title, P.title AS parent FROM ${table("queue")} Q LEFT JOIN ${table("queue")} P ON (P.id = Q.parent_id)
-    WHERE (Q.flags & 1) != 0 OR Q.staff_id = ${agent.id} ORDER BY Q.sort, Q.id`.execute(db());
+    WHERE (Q.flags & ${sql.lit(CustomQueue.PUBLIC)}) != 0 OR Q.staff_id = ${agent.id} ORDER BY Q.sort, Q.id`.execute(db());
   const twofa = staff2faConfig(agent.config);
   const resetToken = await sessionResetToken();
   const forced = !!sp.pwchange || agent.mustChangePassword;

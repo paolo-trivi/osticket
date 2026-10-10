@@ -1,9 +1,9 @@
+import { Dept, Ticket } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { TicketPerm, type Agent } from "@/server/domain/staff/staff";
 import { deptIsMember, loadDept } from "@/server/domain/ticket/alerts";
 import { activeTeams, assignableAgents, listReferrals, referralChoices, selectableDepts } from "@/server/domain/ticket/assign";
-import { DeptFlag } from "@/server/domain/ticket/status";
 import { closeBlocker, ticketStatusChoices } from "@/server/domain/ticket/ticket-state";
 import { roleOn, type TicketDetail } from "@/server/domain/ticket/ticket";
 import { PersonsName } from "@/server/format/persons-name";
@@ -34,7 +34,7 @@ export default async function TicketActionsMenu({ ticket, agent }: { ticket: Tic
 
   const canAssign = isOpen && role.perms.has(TicketPerm.ASSIGN);
   const canClaim =
-    canAssign && !staff && (!dept || !(dept.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) || (await deptIsMember(executor, dept, agent.id)));
+    canAssign && !staff && (!dept || !(dept.flags & Dept.ASSIGN_MEMBERS_ONLY) || (await deptIsMember(executor, dept, agent.id)));
   const canTransfer = role.perms.has(TicketPerm.TRANSFER);
   const canRelease = isAssigned && (isManager || role.perms.has(TicketPerm.RELEASE));
   const canMark = isOpen && (isManager || role.perms.has(TicketPerm.MARKANSWERED));
@@ -87,7 +87,7 @@ export default async function TicketActionsMenu({ ticket, agent }: { ticket: Tic
     statuses,
     currentStatusId: ticket.status_id,
     closeBlocker: blocker,
-    hasChildren: !!(ticket.flags & 0x10) && children.length > 0,
+    hasChildren: !!(ticket.flags & Ticket.PARENT) && children.length > 0,
   };
 
   if (!Object.values(data.can).some(Boolean)) return null;

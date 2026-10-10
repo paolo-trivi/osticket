@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql, type RawBuilder } from "kysely";
 
+import { CustomQueue, QueueColumn, Ticket } from "@/lib/osticket/flags";
+import { FormType, ObjectType } from "@/lib/osticket/object-types";
+
 import { coreConfig } from "../../config/config";
 import { db, table, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
@@ -13,15 +16,6 @@ import { keywordRelevanceSql, keywordTicketIds } from "./search";
  * Code dei ticket (CustomQueue/SavedQueue di include/class.queue.php e class.search.php):
  * ereditarietà di criteri/colonne/ordinamenti, visibilità dell'agente, lista paginata e contatori.
  */
-const QueueFlag = {
-  PUBLIC: 0x0001,
-  QUEUE: 0x0002,
-  DISABLED: 0x0004,
-  INHERIT_CRITERIA: 0x0008,
-  INHERIT_COLUMNS: 0x0010,
-  INHERIT_SORTING: 0x0020,
-  INHERIT_DEF_SORT: 0x0040,
-} as const;
 
 interface QueueRow {
   id: number;
@@ -72,7 +66,7 @@ export class TicketQueue {
     return (this.row.flags & flag) !== 0;
   }
   get isAQueue() {
-    return this.has(QueueFlag.QUEUE);
+    return this.has(CustomQueue.QUEUE);
   }
   get isASubQueue(): boolean {
     return this.parent ? this.parent.isASubQueue : this.isAQueue;
@@ -93,23 +87,23 @@ export class TicketQueue {
   /** Criteri effettivi come getBasicQuery(): quelli del padre se la coda li eredita, poi i propri. */
   effectiveCriteria(): Criterion[] {
     const inherited =
-      this.parent && this.has(QueueFlag.INHERIT_CRITERIA) && this.row.parent_id ? this.parent.effectiveCriteria() : [];
+      this.parent && this.has(CustomQueue.INHERIT_CRITERIA) && this.row.parent_id ? this.parent.effectiveCriteria() : [];
     return [...inherited, ...this.ownCriteria()];
   }
 
   /** Coda da cui prendere le colonne (columns_id, ereditarietà, oppure la coda stessa). */
   columnsSource(): TicketQueue {
     if (this.row.columns_id && this.all.get(this.row.columns_id)) return this.all.get(this.row.columns_id)!.columnsSource();
-    if (this.row.parent_id && this.has(QueueFlag.INHERIT_COLUMNS) && this.parent) return this.parent.columnsSource();
+    if (this.row.parent_id && this.has(CustomQueue.INHERIT_COLUMNS) && this.parent) return this.parent.columnsSource();
     return this;
   }
 
   sortSource(): TicketQueue {
-    return this.has(QueueFlag.INHERIT_SORTING) && this.parent ? this.parent.sortSource() : this;
+    return this.has(CustomQueue.INHERIT_SORTING) && this.parent ? this.parent.sortSource() : this;
   }
 
   defaultSortId(): number | null {
-    if (this.has(QueueFlag.INHERIT_DEF_SORT) && this.parent) {
+    if (this.has(CustomQueue.INHERIT_DEF_SORT) && this.parent) {
       const id = this.parent.defaultSortId();
       if (id) return id;
     }
@@ -121,7 +115,7 @@ export async function loadQueues(executor: DbOrTx = db()): Promise<Map<number, T
   const rows = await executor
     .selectFrom("queue")
     .select(["id", "parent_id", "columns_id", "sort_id", "flags", "staff_id", "sort", "title", "config", "filter"])
-    .where((eb) => eb.or([eb("root", "=", "T"), eb("root", "is", null)]))
+    .where((eb) => eb.or([eb("root", "=", ObjectType.TICKET), eb("root", "is", null)]))
     .orderBy("sort")
     .execute();
   const all = new Map<number, TicketQueue>();
@@ -174,7 +168,7 @@ export function quickSearchCriteria(query: string): Criterion[] | null {
 /** Code visibili nella navigazione dell'agente: di sistema o personali, non disattivate. */
 export function navigableQueues(all: Map<number, TicketQueue>, agent: Agent): TicketQueue[] {
   return [...all.values()].filter(
-    (q) => !q.has(QueueFlag.DISABLED) && (q.row.staff_id === 0 || q.row.staff_id === agent.id) && (q.isAQueue || q.row.staff_id === agent.id),
+    (q) => !q.has(CustomQueue.DISABLED) && (q.row.staff_id === 0 || q.row.staff_id === agent.id) && (q.isAQueue || q.row.staff_id === agent.id),
   );
 }
 
@@ -192,7 +186,7 @@ async function loadFieldRegistry(executor: DbOrTx = db()): Promise<FieldRegistry
     .selectFrom("form_field as ff")
     .innerJoin("form as f", "f.id", "ff.form_id")
     .select(["ff.id", "ff.name", "ff.type"])
-    .where("f.type", "=", "T")
+    .where("f.type", "=", FormType.TICKET)
     .where("ff.type", "not in", ["thread", "break", "info"])
     .execute();
   for (const f of ticketFields) {
@@ -256,21 +250,21 @@ function referralExists(objectType: "T" | "C", refType: "S" | "E" | "D", ids: nu
 export function visibilitySql(agent: Agent, excludeArchived: boolean): RawBuilder<unknown> {
   const assigned: RawBuilder<unknown>[] = [
     sql`T.staff_id = ${agent.id}`,
-    referralExists("T", "S", [agent.id]),
-    referralExists("C", "S", [agent.id]),
+    referralExists(ObjectType.TICKET, ObjectType.STAFF, [agent.id]),
+    referralExists(ObjectType.CHILD_TICKET, ObjectType.STAFF, [agent.id]),
   ];
   const teams = agent.teamIds.filter(Boolean);
   if (teams.length) {
-    assigned.push(sql`T.team_id IN (${sql.join(teams)})`, referralExists("T", "E", teams), referralExists("C", "E", teams));
+    assigned.push(sql`T.team_id IN (${sql.join(teams)})`, referralExists(ObjectType.TICKET, ObjectType.TEAM, teams), referralExists(ObjectType.CHILD_TICKET, ObjectType.TEAM, teams));
   }
   const visibility: RawBuilder<unknown>[] = [
     sql`(ST.state IN ('open', 'closed') AND (${sql.join(assigned, sql` OR `)}))`,
   ];
   if (!agent.isAccessLimited && agent.deptIds.length) {
     const depts = [...agent.deptIds];
-    let inDept = sql`(T.dept_id IN (${sql.join(depts)}) OR ${referralExists("T", "D", depts)})`;
+    let inDept = sql`(T.dept_id IN (${sql.join(depts)}) OR ${referralExists(ObjectType.TICKET, ObjectType.DEPT, depts)})`;
     if (excludeArchived) inDept = sql`(ST.state IN ('open', 'closed') AND ${inDept})`;
-    visibility.push(inDept, referralExists("C", "D", depts));
+    visibility.push(inDept, referralExists(ObjectType.CHILD_TICKET, ObjectType.DEPT, depts));
   }
   return sql`(${sql.join(visibility, sql` OR `)})`;
 }
@@ -353,7 +347,7 @@ async function loadColumnDefs(queue: TicketQueue, executor: DbOrTx): Promise<Que
     truncate: r.truncate,
     annotations: phpJsonDecode(r.annotations, []),
     conditions: phpJsonDecode(r.conditions, []),
-    sortable: (r.bits & 0x0001) !== 0,
+    sortable: (r.bits & QueueColumn.SORTABLE) !== 0,
   }));
 }
 
@@ -458,9 +452,9 @@ export async function orderKeyValues(
   return new Map(rows.map((r) => [Number(r.ticket_id), String(r.k)]));
 }
 
-/** Le code non mostrano i ticket figli di un merge, salvo i collegati (Ticket::FLAG_LINKED = 8). Alias T. */
+/** Le code non mostrano i ticket figli di un merge, salvo i collegati (Ticket::FLAG_LINKED). Alias T. */
 export function mergeChildFilterSql(): RawBuilder<unknown> {
-  return sql`(T.ticket_pid IS NULL OR (T.flags & 8) != 0)`;
+  return sql`(T.ticket_pid IS NULL OR (T.flags & ${sql.lit(Ticket.LINKED)}) != 0)`;
 }
 
 /**

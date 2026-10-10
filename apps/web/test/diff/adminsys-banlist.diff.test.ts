@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { addBanRule, massBanRules, updateBanRule, type BanMassAction } from "@/server/domain/adminsys/banlist";
 import { updateEmailsSettings } from "@/server/domain/adminsys/email-settings";
 
@@ -94,6 +94,22 @@ describe("ban list: PHP vs TypeScript", () => {
     const same = { do: "update", val: "test2@example.com", isactive: "0", notes: "Aggiornata" };
     await both(same, (t) => updateBanRule(t, 1, same), 1);
     await both({ do: "update", val: "x", isactive: "1" }, (t) => updateBanRule(t, 1, { do: "update", val: "x", isactive: "1" }), 1);
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
+  it("indirizzi validi solo per Validator::is_email (RFC 822) o solo per le vecchie regex", async () => {
+    // accettati dal PHP: dominio senza punto, "Nome <indirizzo>", host LOCALHOST maiuscolo, virgola finale
+    for (const val of ["user@intranet", "Spam Bot <bot@bad.example>", "x@LOCALHOST", "list@bad.example,"]) {
+      const vars = { do: "add", val, isactive: "1", notes: "" };
+      const r = await both(vars, (t) => addBanRule(t, vars));
+      expect(r.ts.ok).toBe(true);
+    }
+    // rifiutati dal PHP: punti consecutivi, carattere non ASCII, due indirizzi
+    for (const val of ["a..b@bad.example", "àb@bad.example", "a@bad.example, b@bad.example"]) {
+      const vars = { do: "add", val, isactive: "1", notes: "" };
+      const r = await both(vars, (t) => addBanRule(t, vars));
+      expect(r.ts.ok).toBe(false);
+    }
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 

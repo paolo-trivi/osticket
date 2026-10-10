@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDb, db, type Tx } from "@/server/db";
-import type { PhpVars } from "@/server/domain/admin/php";
+import type { PhpVars } from "@/server/php/values";
 import { sendTestEmail } from "@/server/domain/adminsys/email-test";
 import { deleteLogs, listLogs } from "@/server/domain/adminsys/logs";
 import { massPlugins } from "@/server/domain/adminsys/plugin";

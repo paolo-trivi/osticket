@@ -2,7 +2,10 @@ import "server-only";
 
 import { NOW, type DbOrTx } from "../../db";
 import type { TicketTable } from "../../db/schema.gen";
+import { phpLooseEquals } from "../../php/values";
 import { reindexTicket } from "../search/index-writer";
+
+export { phpLooseEquals };
 
 /**
  * Riga `ticket` con la semantica di VerySimpleModel (include/class.orm.php):
@@ -42,18 +45,6 @@ export type TicketColumns = {
   created: string;
   updated: string;
 };
-
-/** Confronto debole PHP 8 tra valori scalari letti dal DB e nuovi valori. */
-export function phpLooseEquals(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || a === undefined || b === null || b === undefined) {
-    const other = a === null || a === undefined ? b : a;
-    return other === null || other === undefined || other === "" || other === 0 || other === false;
-  }
-  const isNum = (v: unknown) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v)));
-  if (isNum(a) && isNum(b)) return Number(a) === Number(b);
-  return String(a) === String(b);
-}
 
 export class TicketRecord {
   private readonly dirty = new Set<keyof TicketColumns>();

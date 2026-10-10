@@ -3,10 +3,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AdminList from "@/components/admin/AdminList";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { SLA } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { htmlDecode } from "@/server/format/html";
-import { SlaFlag } from "@/server/domain/admin/sla";
 
 import { requireAdmin } from "../guard";
 import { massSlaAction } from "./actions";
@@ -52,8 +52,8 @@ export default async function SlaPage({ params, searchParams }: { params: Promis
             </Link>
           ),
           status: (
-            <Badge size="sm" color={r.flags & SlaFlag.ACTIVE ? "success" : "light"}>
-              {r.flags & SlaFlag.ACTIVE ? t("active") : t("disabled")}
+            <Badge size="sm" color={r.flags & SLA.ACTIVE ? "success" : "light"}>
+              {r.flags & SLA.ACTIVE ? t("active") : t("disabled")}
             </Badge>
           ),
           grace: `${r.grace_period} h`,

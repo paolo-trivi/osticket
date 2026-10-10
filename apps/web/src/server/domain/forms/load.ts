@@ -1,9 +1,11 @@
 import "server-only";
 
+import { Dept, DynamicListItem } from "@/lib/osticket/flags";
+
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
-import { fieldConfig, parseChoiceLines, type FieldDef, type FormAudience } from "./fields";
+import { fieldChoices, fieldConfig, type FieldDef, type FormAudience } from "./fields";
 
 /**
  * Lettura dei form dinamici dal DB (DynamicForm / DynamicFormField) con i campi ordinati per `sort`
@@ -17,11 +19,8 @@ export interface FormDef {
   fields: FieldDef[];
 }
 
-/** Flag di Dept usati per le scelte del campo reparto */
-const DEPT_ACTIVE = 0x0004;
-
 async function resolveChoices(executor: DbOrTx, f: FieldDef, audience: FormAudience): Promise<void> {
-  if (f.type === "choices") f.choices = parseChoiceLines(String(f.config.choices ?? ""));
+  if (f.type === "choices") f.choices = fieldChoices(f);
   else if (f.type === "priority") {
     const rows = await executor.selectFrom("ticket_priority").select(["priority_id", "priority_desc"]).orderBy("priority_urgency", "desc").execute();
     f.choices = Object.fromEntries(rows.map((r) => [String(r.priority_id), r.priority_desc]));
@@ -29,7 +28,7 @@ async function resolveChoices(executor: DbOrTx, f: FieldDef, audience: FormAudie
     let q = executor.selectFrom("department").select(["id", "name", "flags", "ispublic"]).orderBy("name");
     if (audience === "client") q = q.where("ispublic", "=", 1);
     const rows = await q.execute();
-    f.choices = Object.fromEntries(rows.filter((r) => r.flags & DEPT_ACTIVE).map((r) => [String(r.id), r.name]));
+    f.choices = Object.fromEntries(rows.filter((r) => r.flags & Dept.ACTIVE).map((r) => [String(r.id), r.name]));
   } else if (f.type.startsWith("list-")) {
     const listId = Number(f.type.slice(5));
     const list = await executor.selectFrom("list").select(["id", "sort_mode", "type"]).where("id", "=", listId).executeTakeFirst();
@@ -38,8 +37,8 @@ async function resolveChoices(executor: DbOrTx, f: FieldDef, audience: FormAudie
       return;
     }
     const rows = await executor.selectFrom("list_items").select(["id", "value", "sort", "status"]).where("list_id", "=", listId).execute();
-    // DynamicListItem::ENABLED = 1
-    const enabled = rows.filter((r) => r.status & 1);
+    // DynamicListItem::ENABLED
+    const enabled = rows.filter((r) => r.status & DynamicListItem.ENABLED);
     if (list.sort_mode === "Alpha") enabled.sort((a, b) => a.value.localeCompare(b.value));
     else if (list.sort_mode === "-Alpha") enabled.sort((a, b) => b.value.localeCompare(a.value));
     else enabled.sort((a, b) => a.sort - b.sort);

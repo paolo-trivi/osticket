@@ -1,16 +1,16 @@
 import "server-only";
 
-import { sql } from "kysely";
+import { Dept, Team } from "@/lib/osticket/flags";
 
-import { table, type DbOrTx } from "../../db";
+import type { DbOrTx } from "../../db";
 import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from "../../mail/mailer";
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, staffVar } from "../../mail/objects";
-import { loadMsgTemplate, templateGroupFor, type TemplateCode } from "../../mail/templates";
 import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { adminAlertMail, logWithAdminAlert } from "../../system/admin-alert";
 import { entryAttachmentsForMail } from "../file/upload";
-import { loadAgent, type Agent } from "../staff/staff";
-import { agentDisplayName, type WriteContext } from "./context";
+import { parseAddressList } from "../forms/validator";
+import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, replaceAlertVars, sendAdminAlert, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import type { WriteContext } from "./context";
 
 /**
  * Notifiche della creazione del ticket (include/class.ticket.php): auto-risposta `ticket.autoresp` e
@@ -44,7 +44,7 @@ export async function loadDept(executor: DbOrTx, id: number): Promise<DeptInfo |
 
 /** Dept::getEmail / getAlertEmail: email del reparto o default_email_id */
 export async function deptEmail(ctx: WriteContext, dept: DeptInfo): Promise<SystemEmail | null> {
-  return (await loadSystemEmail(dept.email_id, ctx.tx)) ?? (await loadSystemEmail(ctx.cfg.int("default_email_id"), ctx.tx));
+  return deptAlertEmail(ctx.tx, ctx.cfg, dept.email_id);
 }
 
 /** Dept::getAutoRespEmail */
@@ -52,30 +52,9 @@ async function deptAutoRespEmail(ctx: WriteContext, dept: DeptInfo): Promise<Sys
   return (await loadSystemEmail(dept.autoresp_email_id, ctx.tx)) ?? (await deptEmail(ctx, dept));
 }
 
-/** Ordinamento dei nomi degli agenti (Staff::getsortby) */
-function staffOrder(cfg: WriteContext["cfg"]) {
-  return ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format")) ? sql`S.lastname, S.firstname` : sql`S.firstname, S.lastname`;
-}
-
-/** Dept::getMembersForAlerts: membri disponibili primari, o estesi con flag ALERTS se il reparto lo consente */
-async function deptMembersForAlerts(ctx: WriteContext, dept: DeptInfo): Promise<number[]> {
-  if (dept.group_membership === 2) return [];
-  const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
-    LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${dept.id})
-    WHERE S.isactive = 1 AND S.onvacation = 0
-      AND (S.dept_id = ${dept.id} OR S.staff_id = ${dept.manager_id} OR A.dept_id = ${dept.id})
-      AND (S.dept_id = ${dept.id} OR (${dept.group_membership} = 1 AND (A.flags & 1) != 0))
-    ORDER BY ${staffOrder(ctx.cfg)}`.execute(ctx.tx);
-  return rows.map((r) => r.staff_id);
-}
-
-async function staffContact(ctx: WriteContext, agent: Agent): Promise<{ to: MailContact; var: TemplateVariable | null }> {
-  const info = await loadStaffInfo(ctx.tx, agent.id);
-  return { to: { name: agentDisplayName(agent, ctx.cfg), address: agent.email }, var: info ? staffVar(info, ctx.cfg) : null };
-}
-
-async function template(ctx: WriteContext, deptId: number, code: TemplateCode) {
-  return loadMsgTemplate(ctx.tx, await templateGroupFor(ctx.tx, deptId, ctx.cfg), code);
+/** Dept::getMembersForAlerts (../staff-alerts.ts) */
+function deptMembersForAlerts(ctx: WriteContext, dept: DeptInfo): Promise<number[]> {
+  return deptAlertMembers(ctx.tx, dept, ctx.cfg.str("agent_name_format"));
 }
 
 async function entryTemplateVar(ctx: WriteContext, entryId: number): Promise<TemplateVariable | string> {
@@ -111,7 +90,7 @@ export async function onNewTicket(
   const thread = { entryId: 0, threadId: t.threadId };
 
   if (autorespond && cfg.bool("ticket_autoresponder") && dept.ticket_auto_response) {
-    const tpl = await template(ctx, dept.id, "ticket.autoresp");
+    const tpl = await deptMsgTemplate(ctx, dept.id, "ticket.autoresp");
     if (tpl && tv.ownerVar && tv.owner) {
       const r = new VariableReplacer().assign({
         message,
@@ -133,11 +112,11 @@ export async function onNewTicket(
 
   if (!alertstaff || !cfg.bool("ticket_alert_active")) return;
   const alertEmail = await deptEmail(ctx, dept);
-  const tpl = await template(ctx, dept.id, "ticket.alert");
+  const tpl = await deptMsgTemplate(ctx, dept.id, "ticket.alert");
   if (!alertEmail || !tpl) return;
-  const first = new VariableReplacer().assign({ message, ticket: tv.ticket, url: baseUrl(ctx), company });
-  const msg = { subj: first.replaceVars(tpl.subj), body: first.replaceVars(tpl.body) };
-  const sent: string[] = [];
+  const msg = replaceAlertVars(tpl, { message, ticket: tv.ticket, url: baseUrl(ctx), company });
+  const common = { ticket: tv.ticket, url: baseUrl(ctx), company };
+  let sent: string[] = [];
   const members = await deptMembersForAlerts(ctx, dept);
   if (members.length) {
     const recipients: number[] = [];
@@ -154,32 +133,12 @@ export async function onNewTicket(
         .executeTakeFirst();
       const code = org?.manager ?? "";
       if (code.startsWith("s")) recipients.push(Number(code.slice(1)));
-      else if (code.startsWith("t")) {
-        const tm = await tx.selectFrom("team_member").select("staff_id").where("team_id", "=", Number(code.slice(1))).where(sql<boolean>`(flags & 1) != 0`).execute();
-        recipients.push(...tm.map((m) => m.staff_id));
-      }
+      else if (code.startsWith("t")) recipients.push(...(await teamAlertMembers(tx, Number(code.slice(1)))));
     }
-    for (const id of recipients) {
-      const staff = await loadAgent(id, tx);
-      if (!staff || !staff.isAvailable || sent.includes(staff.email)) continue;
-      const c = await staffContact(ctx, staff);
-      const r = new VariableReplacer().assign({ recipient: c.var, ticket: tv.ticket, url: baseUrl(ctx), company });
-      const subject = r.replaceVars(msg.subj);
-      const body = r.replaceVars(msg.body);
-      ctx.after.push(async () => {
-        await sendMail({ email: alertEmail, to: [c.to], subject, body, recipient: { userId: staff.id, utype: "S" }, thread, notice: true });
-      });
-      sent.push(staff.email);
-    }
+    sent = await sendStaffAlerts(ctx, { email: alertEmail, msg, vars: common, recipients, thread });
   }
-  const adminEmail = cfg.str("admin_email");
-  if (cfg.bool("ticket_alert_admin") && !sent.includes(adminEmail) && dept.group_membership !== 2) {
-    const r = new VariableReplacer().assign({ recipient: "Admin", ticket: tv.ticket, url: baseUrl(ctx), company });
-    const subject = r.replaceVars(msg.subj);
-    const body = r.replaceVars(msg.body);
-    ctx.after.push(async () => {
-      await sendMail({ email: alertEmail, to: [{ name: "", address: adminEmail }], subject, body, recipient: { userId: 0, utype: "M" }, thread, notice: true });
-    });
+  if (cfg.bool("ticket_alert_admin") && !sent.includes(cfg.str("admin_email")) && dept.group_membership !== Dept.ALERTS_DISABLED) {
+    sendAdminAlert(ctx, { email: alertEmail, msg, vars: common, utype: "M", thread });
   }
 }
 
@@ -208,41 +167,28 @@ export async function onAssignAlert(
     if (team) {
       const { VarBag } = await import("../../mail/variables");
       assigneeVar = new VarBag({ name: team.name, id: team.team_id }, team.name);
-      if (!(team.flags & 0x0002)) {
-        const members = await tx
-          .selectFrom("team_member")
-          .select("staff_id")
-          .where("team_id", "=", team.team_id)
-          .where(sql<boolean>`(flags & 1) != 0`)
-          .execute();
-        if (cfg.bool("assigned_alert_team_members") && members.length) recipients.push(...members.map((m) => m.staff_id));
+      if (!(team.flags & Team.NOALERTS)) {
+        const members = await teamAlertMembers(tx, team.team_id);
+        if (cfg.bool("assigned_alert_team_members") && members.length) recipients.push(...members);
         else if (cfg.bool("assigned_alert_team_lead") && team.lead_id) recipients.push(team.lead_id);
       }
     }
   }
-  const tpl = recipients.length ? await template(ctx, dept.id, "assigned.alert") : null;
+  const tpl = recipients.length ? await deptMsgTemplate(ctx, dept.id, "assigned.alert") : null;
   if (!tpl) return;
   const tv = await buildTicketVars(tx, t.ticketId, cfg, ctx.dbZone);
   if (!tv) return;
   const assignerInfo = ctx.agent ? await loadStaffInfo(tx, ctx.agent.id) : null;
   const assigner: TemplateVariable | string = assignerInfo ? staffVar(assignerInfo, cfg) : "SYSTEM (Auto Assignment)";
   const company = await companyVar(tx);
-  const first = new VariableReplacer().assign({ comments: comments || "", assignee: assigneeVar, assigner, ticket: tv.ticket, url: baseUrl(ctx), company });
-  const msg = { subj: first.replaceVars(tpl.subj), body: first.replaceVars(tpl.body) };
-  const sent: string[] = [];
-  for (const id of recipients) {
-    const staff = await loadAgent(id, tx);
-    if (!staff || !staff.isAvailable || sent.includes(staff.email)) continue;
-    const c = await staffContact(ctx, staff);
-    const r = new VariableReplacer().assign({ recipient: c.var, ticket: tv.ticket, url: baseUrl(ctx), company });
-    const subject = r.replaceVars(msg.subj);
-    const body = r.replaceVars(msg.body);
-    const thread = noteEntry ? { entryId: noteEntry.id, threadId: noteEntry.threadId } : undefined;
-    ctx.after.push(async () => {
-      await sendMail({ email, to: [c.to], subject, body, recipient: { userId: staff.id, utype: "S" }, thread, notice: true });
-    });
-    sent.push(staff.email);
-  }
+  const msg = replaceAlertVars(tpl, { comments: comments || "", assignee: assigneeVar, assigner, ticket: tv.ticket, url: baseUrl(ctx), company });
+  await sendStaffAlerts(ctx, {
+    email,
+    msg,
+    vars: { ticket: tv.ticket, url: baseUrl(ctx), company },
+    recipients,
+    thread: noteEntry ? { entryId: noteEntry.id, threadId: noteEntry.threadId } : undefined,
+  });
 }
 
 /** Ticket::open: notifica `ticket.notice` del nuovo ticket aperto per conto del cliente */
@@ -255,7 +201,7 @@ export async function sendNewTicketNotice(
   const { tx, cfg, agent } = ctx;
   const dept = await loadDept(tx, t.deptId);
   if (!dept) return;
-  const tpl = await template(ctx, dept.id, "ticket.notice");
+  const tpl = await deptMsgTemplate(ctx, dept.id, "ticket.notice");
   const email = await deptEmail(ctx, dept);
   if (!tpl || !email) return;
   const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
@@ -308,7 +254,7 @@ export async function onOpenLimit(
   if (warn) ctx.after.push(async () => void (await sendMail(warn)));
   if (!sendNotice || !cfg.bool("overlimit_notice_active")) return;
   const dept = await loadDept(tx, t.deptId);
-  const tpl = dept ? await template(ctx, dept.id, "ticket.overlimit") : null;
+  const tpl = dept ? await deptMsgTemplate(ctx, dept.id, "ticket.overlimit") : null;
   const email = dept ? await deptAutoRespEmail(ctx, dept) : null;
   const tv = await buildTicketVars(tx, t.ticketId, cfg, ctx.dbZone);
   if (dept && tpl && email && tv && tv.owner && tv.ownerVar) {
@@ -326,30 +272,6 @@ export async function onOpenLimit(
     `Maximum open tickets reached for ${t.email}.\n` + `Open tickets: ${await t.numOpenTickets()}\n` + `Max allowed: ${max}` + "\n\nNotice sent to the user.";
   const mail = await adminAlertMail(cfg, "Overlimit Notice", alert, tx);
   ctx.after.push(async () => void (await sendMail(mail)));
-}
-
-/** Mail_Parse::parseAddressList semplificato: indirizzi separati da virgole, "Nome" <box@host> o box@host */
-function parseAddressList(list: string): { personal: string; mailbox: string; host: string }[] | null {
-  const out: { personal: string; mailbox: string; host: string }[] = [];
-  const parts: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (const ch of list) {
-    if (ch === '"') quoted = !quoted;
-    if (ch === "," && !quoted) {
-      parts.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  parts.push(cur);
-  for (const raw of parts) {
-    const p = raw.trim();
-    if (!p) continue;
-    const m = /^(.*?)\s*<([^<>@\s]+)@([^<>\s]+)>$/.exec(p) ?? /^()([^<>@\s]+)@([^<>\s]+)$/.exec(p);
-    if (!m) return null;
-    out.push({ personal: m[1].trim(), mailbox: m[2], host: m[3] });
-  }
-  return out;
 }
 
 /**
@@ -378,10 +300,13 @@ export async function sendFilterEmail(
   const from = await loadSystemEmail(Number(config.from) || 0, tx);
   const replacer = new VariableReplacer().assign({ user: `"${submitter.name}" <${submitter.email}>` });
   const to = replacer.replaceVars(String(config.recipients ?? ""));
-  const mails = parseAddressList(to);
-  if (!mails) return;
+  // Mail_Parse::parseAddressList: Mail_RFC822 senza validazione degli atomi; lista vuota → nessun invio
+  const mails = to ? parseAddressList(to, { validate: false }) : [];
+  if (!mails?.length) return;
   const { VarBag } = await import("../../mail/variables");
   for (const R of mails) {
+    // un gruppo ("Nome: a@b;") non ha mailbox: il PHP tenterebbe un invio non valido
+    if (R.group) continue;
     const personal = R.personal.replace(/^"|"$/g, "");
     const address = `${R.mailbox}@${R.host}`;
     // Differenza: il PHP passa "personal <box@host>" come stringa a Message::addTo e il nome tra

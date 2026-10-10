@@ -1,21 +1,26 @@
 import "server-only";
 
-import { sql } from "kysely";
 import { DateTime } from "luxon";
 
+import { DynamicFormField, SLA, Topic } from "@/lib/osticket/flags";
+import { FormType, ObjectType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
-import { NOW, table, type DbOrTx } from "../../db";
+import { NOW, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { phpStripTags } from "../../format/html";
 import { editorSpacing, phpTrim, sanitizeText } from "../../format/text";
+import { isNumeric } from "../../php/values";
+import { upsertCdata } from "../forms/cdata";
 import {
   fieldSearchKeys,
   fieldToDatabase,
+  hasAnswerRow,
   hasData,
+  hasFlag,
   isEditableTo,
   isPresentationOnly,
   isRequiredFor,
-  isStorable,
   isVisibleTo,
   parseField,
   phpParseDateTime,
@@ -29,9 +34,9 @@ import {
 import { loadFormDef } from "../forms/load";
 import { reindexTicket } from "../search/index-writer";
 import { TicketPerm } from "../staff/staff";
+import { currentTicketThreadId, ticketThread } from "../thread/ids";
 import type { WriteContext } from "./context";
 import { logThreadEvent, logTicketEvent } from "./events";
-import { ticketThread } from "./merge-flags";
 import { logNote, postNote } from "./post";
 import { SQL_NOW, TicketRecord, phpLooseEquals, type TicketColumns } from "./record";
 import { updateEstDueDate } from "./status";
@@ -50,12 +55,6 @@ export type EditResult = { ok: true } | { error: string; detail?: string; fields
 /** Ticket::getSources() */
 export const TICKET_SOURCE_KEYS = ["Phone", "Email", "Web", "API", "Other"] as const;
 
-/** Sla::FLAG_* */
-const SLA_ACTIVE = 0x0001;
-const SLA_TRANSIENT = 0x0008;
-/** Topic::FLAG_ACTIVE */
-const TOPIC_ACTIVE = 0x0002;
-
 /** Frammento JSON già serializzato da inserire così com'è in phpAssocJson. */
 class RawJson {
   constructor(readonly json: string) {}
@@ -71,8 +70,6 @@ function cleanHtmlBody(body: string): string {
   const b = phpTrim(body ?? "", " <>br/\t\n\r") ? body : "";
   return b ? sanitizeText(editorSpacing(b)) : "";
 }
-
-const isNumeric = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(v));
 
 /**
  * Data inserita dall'agente → datetime del DB come Ticket::update / updateField: la stringa è
@@ -115,7 +112,7 @@ async function ticketForms(tx: DbOrTx, cfg: ConfigNamespace, ticketId: number) {
   const entries = await tx
     .selectFrom("form_entry")
     .select(["id", "form_id", "sort"])
-    .where("object_type", "=", "T")
+    .where("object_type", "=", FormType.TICKET)
     .where("object_id", "=", ticketId)
     .orderBy("sort")
     .orderBy("id")
@@ -136,19 +133,6 @@ async function ticketForms(tx: DbOrTx, cfg: ConfigNamespace, ticketId: number) {
   return out;
 }
 
-/** Upsert della colonna *__cdata del campo (DynamicForm::updateDynamicDataView, Signal model.updated). */
-async function updateCdata(tx: DbOrTx, ticketId: number, f: FieldDef, clean: CleanValue): Promise<void> {
-  const col = f.name || `field_${f.id}`;
-  const res = await sql<Record<string, unknown>>`SHOW COLUMNS FROM ${table("ticket__cdata")}`.execute(tx).catch(() => null);
-  if (!res || !res.rows.some((r) => String(r.Field) === col)) {
-    // il PHP esegue comunque la INSERT: se la colonna non esiste la query fallisce senza effetti
-    return;
-  }
-  const keys = fieldSearchKeys(f, clean);
-  await sql`INSERT INTO ${table("ticket__cdata")} SET ${sql.ref(col)} = ${keys}, ticket_id = ${ticketId}
-    ON DUPLICATE KEY UPDATE ${sql.ref(col)} = ${keys}`.execute(tx);
-}
-
 /** DynamicFormEntryAnswer::save: aggiorna value/value_id se cambiano, poi la cdata. */
 async function saveAnswer(tx: DbOrTx, ticketId: number, a: Answer, clean: CleanValue): Promise<boolean> {
   const n = fieldToDatabase(a.field, clean);
@@ -164,7 +148,7 @@ async function saveAnswer(tx: DbOrTx, ticketId: number, a: Answer, clean: CleanV
     .execute();
   a.value = n.value;
   if ("value_id" in set) a.valueId = n.valueId;
-  await updateCdata(tx, ticketId, a.field, clean);
+  await upsertCdata(tx, "T", ticketId, a.field, fieldSearchKeys(a.field, clean));
   return true;
 }
 
@@ -177,7 +161,7 @@ async function addMissingAnswers(tx: DbOrTx, forms: Awaited<ReturnType<typeof ti
   for (const form of forms) {
     for (const a of form.answers) {
       const f = a.field;
-      if (a.exists || !(f.flags & 0x1) || isPresentationOnly(f) || !hasData(f) || !isStorable(f)) continue;
+      if (a.exists || !hasFlag(f, DynamicFormField.ENABLED) || !hasAnswerRow(f)) continue;
       await tx.insertInto("form_entry_values").values({ entry_id: a.entryId, field_id: f.id, value: null, value_id: null }).execute();
       a.exists = true;
     }
@@ -193,10 +177,6 @@ async function guard(ctx: WriteContext, ticketId: number, perm?: string): Promis
   const rec = await TicketRecord.load(tx, ticketId, true);
   if (!rec) return { error: "not_found" };
   return { ok: true, rec };
-}
-
-async function threadIdOf(tx: DbOrTx, ticketId: number): Promise<number> {
-  return (await ticketThread(tx, ticketId))?.id ?? 0;
 }
 
 interface TicketUpdateInput {
@@ -248,7 +228,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   const topic = isNumeric(input.topicId)
     ? await tx.selectFrom("help_topic").select(["topic_id", "flags"]).where("topic_id", "=", Number(input.topicId)).executeTakeFirst()
     : undefined;
-  if (topic && !((topic.flags ?? 0) & TOPIC_ACTIVE)) err("topicId", "inactive");
+  if (topic && !((topic.flags ?? 0) & Topic.ACTIVE)) err("topicId", "inactive");
 
   // Form dinamici: solo i campi memorizzabili, visibili e modificabili dall'agente
   const forms = await ticketForms(tx, cfg, rec.id);
@@ -257,7 +237,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   for (const form of forms) {
     if (!keep.includes(form.entryId)) continue;
     for (const f of form.fields) {
-      if (!hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+      if (!hasAnswerRow(f)) continue;
       const clean = parseField(f, input.vars, cfg.str("default_timezone") || "UTC");
       parsed.set(f.id, clean);
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
@@ -321,14 +301,14 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
     }
     for (const a of form.answers) {
       const f = a.field;
-      if (!a.exists || !hasData(f) || !isStorable(f) || isPresentationOnly(f)) continue;
+      if (!a.exists || !hasAnswerRow(f)) continue;
       if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
       await saveAnswer(tx, rec.id, a, parsed.get(f.id) ?? null);
     }
   }
 
   if (changes.length) {
-    const threadId = await threadIdOf(tx, rec.id);
+    const threadId = await currentTicketThreadId(tx, rec.id);
     if (threadId) {
       const data = phpAssocJson(changes.map(([k, v]) => [k, k === "fields" ? new RawJson(phpAssocJson(v as [string, unknown][])) : v]));
       await logEditedRaw(ctx, rec, threadId, data);
@@ -338,7 +318,7 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   // Riselezione dello SLA se non è stato cambiato e quello attuale manca o è transitorio
   if (!keepSLA) {
     const sla = rec.get("sla_id") ? await tx.selectFrom("sla").select(["id", "flags"]).where("id", "=", rec.get("sla_id")).executeTakeFirst() : undefined;
-    if (!sla || sla.flags & SLA_TRANSIENT) await selectSlaId(ctx, rec);
+    if (!sla || sla.flags & SLA.TRANSIENT) await selectSlaId(ctx, rec);
   }
   await rec.save();
   await updateEstDueDate(ctx, rec);
@@ -352,7 +332,7 @@ async function logEditedRaw(ctx: WriteContext, rec: TicketRecord, threadId: numb
   const staffId = ctx.actor?.kind === "staff" && !rec.row.staff_id ? ctx.actor.id : rec.row.staff_id;
   await logThreadEvent(ctx.tx, {
     threadId,
-    threadType: "T",
+    threadType: ObjectType.TICKET,
     state: "edited",
     data,
     actor: ctx.actor,
@@ -405,7 +385,7 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
   if ("error" in g) return g;
   const { rec } = g;
   const { tx, cfg } = ctx;
-  const threadId = await threadIdOf(tx, rec.id);
+  const threadId = await currentTicketThreadId(tx, rec.id);
 
   let label = "";
   let changes: string | null = null;
@@ -457,7 +437,7 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
         if (phpLooseEquals(raw, rec.get("topic_id"))) return { error: "already_set" };
         // TopicField: topic attivi più quello attuale (Topic::getHelpTopics con whitelist)
         const t = raw ? await tx.selectFrom("help_topic").select(["topic_id", "flags"]).where("topic_id", "=", Number(raw)).executeTakeFirst() : undefined;
-        if (!t || (!((t.flags ?? 0) & TOPIC_ACTIVE) && t.topic_id !== rec.get("topic_id"))) return { error: "invalid", fields: { topic_id: ["invalid"] } };
+        if (!t || (!((t.flags ?? 0) & Topic.ACTIVE) && t.topic_id !== rec.get("topic_id"))) return { error: "invalid", fields: { topic_id: ["invalid"] } };
         val = t.topic_id;
         break;
       }
@@ -468,7 +448,7 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
         if (phpLooseEquals(raw, rec.get("sla_id"))) return { error: "already_set" };
         // SLAField: un valore fuori dalle scelte non cambia lo SLA (il PHP registra comunque un evento vuoto)
         const s = raw ? await tx.selectFrom("sla").select(["id", "flags"]).where("id", "=", Number(raw)).executeTakeFirst() : undefined;
-        val = s && s.flags & SLA_ACTIVE ? s.id : rec.get("sla_id");
+        val = s && s.flags & SLA.ACTIVE ? s.id : rec.get("sla_id");
         break;
       }
       case "source": {

@@ -2,13 +2,16 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, Team } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
+import { staffSortColumns } from "../staff-alerts";
 import type { Agent } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
 import { logThreadEvent, type Actor, type EventState } from "../ticket/events";
-import { DeptFlag } from "../ticket/status";
 
 /** Riga `task` (TaskModel) */
 export interface TaskDbRow {
@@ -34,11 +37,6 @@ export async function loadTaskRow(executor: DbOrTx, id: number, forUpdate = fals
   return (row as unknown as TaskDbRow | undefined) ?? null;
 }
 
-export async function taskThreadId(executor: DbOrTx, taskId: number): Promise<number> {
-  const th = await executor.selectFrom("thread").select("id").where("object_type", "=", "A").where("object_id", "=", taskId).executeTakeFirst();
-  return th?.id ?? 0;
-}
-
 /** Task::logEvent → ThreadEvents::log con ThreadEvent::forTask (staff/team/reparto del task). */
 export async function logTaskEvent(
   ctx: WriteContext,
@@ -52,7 +50,7 @@ export async function logTaskEvent(
   const empty = !data || (typeof data === "object" && !Array.isArray(data) && Object.keys(data).length === 0);
   await logThreadEvent(ctx.tx, {
     threadId,
-    threadType: "A",
+    threadType: ObjectType.TASK,
     state,
     data: empty ? null : data,
     actor: ctx.actor,
@@ -75,36 +73,15 @@ export function agentName(agent: Agent, cfg: ConfigNamespace): string {
   return new PersonsName({ first: agent.name.first, last: agent.name.last }, cfg.str("agent_name_format")).toString();
 }
 
-/** Dept::getMembers() ordinati come Staff::nsort (formato del nome agente). */
-async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespace, alertsOnly: boolean): Promise<number[]> {
-  const d = await executor.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", deptId).executeTakeFirst();
+/** Dept::getMembers(): primari, manager o con accesso esteso, ordinati come Staff::nsort (formato del nome agente). */
+async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespace): Promise<number[]> {
+  const d = await executor.selectFrom("department").select("manager_id").where("id", "=", deptId).executeTakeFirst();
   if (!d) return [];
-  if (alertsOnly && d.group_membership === 2) return [];
-  const order = ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format")) ? sql`S.lastname, S.firstname` : sql`S.firstname, S.lastname`;
-  const alertCond = alertsOnly
-    ? sql`AND S.isactive = 1 AND S.onvacation = 0 AND (S.dept_id = ${deptId} OR (${d.group_membership} = 1 AND (A.flags & 1) != 0))`
-    : sql``;
+  const [x, y] = staffSortColumns(cfg.str("agent_name_format"));
   const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.firstname, S.lastname FROM ${table("staff")} S
     LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${deptId})
-    WHERE (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId}) ${alertCond}
-    ORDER BY ${order}`.execute(executor);
-  return rows.map((r) => r.staff_id);
-}
-
-/** Dept::getMembersForAlerts */
-export function deptMembersForAlerts(executor: DbOrTx, deptId: number, cfg: ConfigNamespace): Promise<number[]> {
-  return deptMembers(executor, deptId, cfg, true);
-}
-
-/** Team::getMembersForAlerts (membri con flag alert, ordine della tabella) */
-export async function teamMembersForAlerts(executor: DbOrTx, teamId: number): Promise<number[]> {
-  const rows = await executor
-    .selectFrom("team_member")
-    .select("staff_id")
-    .where("team_id", "=", teamId)
-    .where(sql<boolean>`(flags & 1) != 0`)
-    .orderBy("staff_id")
-    .execute();
+    WHERE (S.dept_id = ${deptId} OR S.staff_id = ${d.manager_id} OR A.dept_id = ${deptId})
+    ORDER BY S.${sql.ref(x)}, S.${sql.ref(y)}`.execute(executor);
   return rows.map((r) => r.staff_id);
 }
 
@@ -112,8 +89,8 @@ export async function teamMembersForAlerts(executor: DbOrTx, teamId: number): Pr
 export async function deptCanAssign(executor: DbOrTx, deptId: number, staff: Agent, cfg: ConfigNamespace): Promise<boolean> {
   const d = await executor.selectFrom("department").select(["flags"]).where("id", "=", deptId).executeTakeFirst();
   if (!d) return false;
-  if (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY && staff.deptId !== deptId) return false;
-  if (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg, false)).includes(staff.id)) return false;
+  if (d.flags & Dept.ASSIGN_PRIMARY_ONLY && staff.deptId !== deptId) return false;
+  if (d.flags & Dept.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg)).includes(staff.id)) return false;
   return staff.isAvailable;
 }
 
@@ -151,11 +128,11 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
   const conds = [sql`S.isactive = 1 AND S.onvacation = 0`];
   if (deptId) {
     const d = await executor.selectFrom("department").select(["flags"]).where("id", "=", deptId).executeTakeFirst();
-    const primaryOnly = !!d && (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY) !== 0;
-    const membersOnly = !!d && (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) !== 0;
+    const primaryOnly = !!d && (d.flags & Dept.ASSIGN_PRIMARY_ONLY) !== 0;
+    const membersOnly = !!d && (d.flags & Dept.ASSIGN_MEMBERS_ONLY) !== 0;
     if (primaryOnly) conds.push(sql`S.dept_id = ${deptId}`);
     else if (membersOnly) {
-      const ids = await deptMembers(executor, deptId, cfg, false);
+      const ids = await deptMembers(executor, deptId, cfg);
       conds.push(ids.length ? sql`S.staff_id IN (${sql.join(ids)})` : sql`0 = 1`);
     }
   }
@@ -175,6 +152,6 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
 /** Team::getActiveTeams() */
 export async function activeTeams(executor: DbOrTx) {
   const { rows } = await sql<{ team_id: number; name: string }>`SELECT T.team_id, T.name FROM ${table("team")} T
-    WHERE (T.flags & 1) != 0 AND EXISTS (SELECT 1 FROM ${table("team_member")} M WHERE M.team_id = T.team_id) ORDER BY T.name`.execute(executor);
+    WHERE (T.flags & ${sql.lit(Team.ENABLED)}) != 0 AND EXISTS (SELECT 1 FROM ${table("team_member")} M WHERE M.team_id = T.team_id) ORDER BY T.name`.execute(executor);
   return rows.map((r) => ({ id: r.team_id, name: r.name }));
 }

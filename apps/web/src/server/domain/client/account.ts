@@ -1,19 +1,22 @@
 import "server-only";
 
+import { UserAccountStatus } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { hashPassword, checkPassword } from "../../auth/passwd";
 import { coreConfig, type ConfigNamespace } from "../../config/config";
 import { NOW, db, type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
+import { phpLooseEquals, str } from "../../php/values";
 import { checkPasswordPolicy, type PasswordError } from "../directory/accounts";
-import { entriesFor, saveEntryAnswers, createEntry, defaultFormOf, type FieldDef as DirFieldDef, type FormEntry } from "../directory/forms";
+import { addMissingAnswers, entriesFor, saveEntryAnswers, createEntry, defaultFormOf, type FormEntry } from "../forms/answers";
 import { reindexUser } from "../directory/users";
 import { FormInstance } from "../forms/entry";
-import { isEditableTo, isRequiredFor, isVisibleTo, type FieldErrorCode } from "../forms/fields";
+import { hasAnswerRow, isEditableTo, isRequiredFor, isVisibleTo, type FieldErrorCode } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
 import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
 import { resetTokenValid } from "./auth";
 import {
-  AccountStatus,
   isUserId,
   loadClientAccount,
   lookupAccountByUsername,
@@ -56,8 +59,6 @@ interface ClientAccountVars {
   cpasswd?: string;
   [field: string]: unknown;
 }
-
-const str = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
 /**
  * ClientAccount::update($vars) lato cliente ($thisstaff assente). Con un token di reset in sessione
@@ -113,7 +114,7 @@ async function clientAccountUpdate(
     values.passwd = passwd;
     // cancelResetTokens + clearStatus(REQUIRE_PASSWD_RESET)
     await tx.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", `c${userId}`).execute();
-    status &= ~AccountStatus.REQUIRE_PASSWD_RESET;
+    status &= ~UserAccountStatus.REQUIRE_PASSWD_RESET;
     values.status = status;
   }
   if (!acct) {
@@ -123,21 +124,21 @@ async function clientAccountUpdate(
     const set: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(values)) {
       const old = acct[k as keyof ClientAccountRow];
-      if (k === "passwd" ? v !== old : !looseEq(old, v)) set[k] = v;
+      if (k === "passwd" ? v !== old : !phpLooseEquals(old, v)) set[k] = v;
     }
     if (Object.keys(set).length) await tx.updateTable("user_account").set(set as never).where("id", "=", acct.id).execute();
   }
   return { ok: true, passwd };
 }
 
-function looseEq(a: unknown, b: unknown): boolean {
-  const n = (v: unknown) => (v === null || v === undefined ? "" : String(v));
-  return n(a) === n(b);
-}
+/** Campo modificabile dal cliente (DynamicFormField::isEditableToUsers) */
+const clientEditable = (f: Parameters<typeof isEditableTo>[0]) => isEditableTo(f, "client");
 
-/** Campi dei form utente per il cliente */
-const clientEditable = (f: { flags: number }) => (f.flags & 0x00001) !== 0 && (f.flags & 0x00200) !== 0;
-const hasAnswerRow = (f: DirFieldDef) => !["break", "info", "thread"].includes(f.type) && (f.flags & 0x00002) === 0;
+/** $cfg->getTimezone() per il cliente: fuso dell'account, altrimenti quello predefinito. */
+async function clientTimezone(tx: DbOrTx, cfg: ConfigNamespace, userId: number): Promise<string> {
+  const a = await tx.selectFrom("user_account").select("timezone").where("user_id", "=", userId).executeTakeFirst();
+  return a?.timezone || cfg.str("default_timezone") || "UTC";
+}
 
 /** User::getDynamicData($create): entry del form utente, creata vuota se manca */
 async function userEntries(tx: DbOrTx, userId: number): Promise<FormEntry[]> {
@@ -158,17 +159,20 @@ async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId:
   const user = await tx.selectFrom("user").select(["id", "name", "default_email_id"]).where("id", "=", userId).forUpdate().executeTakeFirst();
   if (!user) return { ok: false, err: "unable" };
   const entries = await userEntries(tx, userId);
+  const timezone = await clientTimezone(tx, cfg, userId);
+  // User::getForms: addMissingFields prima della validazione
+  for (const e of entries) await addMissingAnswers(tx, e, userId);
   const fields: Record<string, AccountFieldError> = {};
   for (const e of entries) {
     const def = await loadFormDef(tx, cfg, { id: e.form_id }, "client");
     if (!def) continue;
-    const inst = new FormInstance(def, input);
+    const inst = new FormInstance(def, input, 1, null, { timezone });
     const errs = await inst.validate((f) => isEditableTo(f, "client"), (f) => isRequiredFor(f, "client"), cfg);
     for (const [id, codes] of Object.entries(errs)) {
       const f = def.fields.find((x) => x.id === Number(id));
       fields[f?.name || id] = codes[0];
     }
-    if (!Object.keys(errs).length && e.form_type === "U") {
+    if (!Object.keys(errs).length && e.form_type === FormType.USER) {
       const ef = def.fields.find((x) => x.name === "email");
       const email = ef ? inst.get("email") : null;
       if (ef && isEditableTo(ef, "client") && typeof email === "string" && email) {
@@ -182,9 +186,9 @@ async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId:
   let name: string | undefined;
   let touch = false;
   for (const e of entries) {
-    if (e.form_type === "U") {
+    if (e.form_type === FormType.USER) {
       const def = await loadFormDef(tx, cfg, { id: e.form_id }, "client");
-      const inst = def ? new FormInstance(def, input) : null;
+      const inst = def ? new FormInstance(def, input, 1, null, { timezone }) : null;
       const nf = e.fields.find((x) => x.name === "name");
       if (inst && nf && clientEditable(nf) && input.name !== undefined) {
         const v = inst.get("name");
@@ -197,16 +201,16 @@ async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId:
         if (cur && cur.address !== email) await tx.updateTable("user_email").set({ address: email }).where("id", "=", cur.id).execute();
       }
     }
-    const r = await saveEntryAnswers(tx, e, userId, input, { isEditable: (f) => clientEditable(f) && hasAnswerRow(f), onlyProvided: true });
+    const r = await saveEntryAnswers(tx, e, userId, input, { isEditable: (f) => clientEditable(f) && hasAnswerRow(f), onlyProvided: true, timezone });
     if (r.dirty) touch = true;
   }
   // User::save: nome "sporco" se diverso dal valore attuale (prima della normalizzazione)
   const set: Record<string, unknown> = {};
-  if (name !== undefined && !looseEq(user.name, name)) set.name = normalizeUserName(name);
+  if (name !== undefined && !phpLooseEquals(user.name, name)) set.name = normalizeUserName(name);
   if (Object.keys(set).length || touch) {
     set.updated = NOW;
     await tx.updateTable("user").set(set as never).where("id", "=", userId).execute();
-    await reindexUser(tx, userId);
+    await reindexUser(tx, userId, undefined, { cfg, timezone });
   }
   return { ok: true };
 }
@@ -255,9 +259,10 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
   const res = await db()
     .transaction()
     .execute(async (tx): Promise<AccountResult<{ userId: number }>> => {
-      const def = await loadFormDef(tx, cfg, { type: "U" }, "client");
+      const def = await loadFormDef(tx, cfg, { type: FormType.USER }, "client");
       if (!def) return { ok: false, err: "internal" };
-      const inst = new FormInstance(def, input);
+      const timezone = cfg.str("default_timezone") || "UTC";
+      const inst = new FormInstance(def, input, 1, null, { timezone });
       const errs = await inst.validate((f) => isVisibleTo(f, "client"), (f) => isRequiredFor(f, "client"), cfg);
       const fields: Record<string, AccountFieldError> = {};
       for (const [id, codes] of Object.entries(errs)) fields[def.fields.find((x) => x.id === Number(id))?.name || id] = codes[0];
@@ -286,12 +291,7 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
         // User::fromForm: validazione di tutti i campi ($thisstaff assente) ed email non in uso
         const all = await inst.validate(() => true, (f) => isRequiredFor(f, "client"), cfg);
         if (Object.keys(all).length) return { ok: false, err: "unable" };
-        const clean: Record<string, unknown> = {};
-        for (const f of def.fields) {
-          const v = inst.get(f.name);
-          if (f.name) clean[f.name] = v;
-        }
-        const u = await userFromVars(tx, cfg, input);
+        const u = await userFromVars(tx, cfg, inst.cleanVars(), { dates: { cfg, timezone } });
         if (!u) return { ok: false, err: "unable" };
         userId = u.id;
       }
@@ -330,7 +330,7 @@ export async function requestClientPasswordReset(userid: string, opts: { pad?: b
       .execute(async (tx) => {
         const acct = await lookupAccountByUsername(tx, id);
         if (!acct) return;
-        if (acct.status & AccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
+        if (acct.status & UserAccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
         else if (!acct.passwd || (acct.backend && acct.backend !== "client")) out = { ok: false, error: "unavailable" };
         else {
           send = await prepareUnlockMail(tx, cfg, acct.user_id, "pwreset-client");

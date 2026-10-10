@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { withBase } from "@/lib/base-path";
+import { humanSize } from "@/lib/format/size";
 import { cn } from "@/utils";
 
 interface UploadedFile {
@@ -26,12 +27,6 @@ interface Props {
   accept?: string;
   disabled?: boolean;
   className?: string;
-}
-
-function formatSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /**
@@ -103,7 +98,7 @@ export default function AttachmentInput({ name, uploadUrl, maxSize, accept, disa
             <li key={f.id} className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
               <input type="hidden" name={name} value={f.token} />
               <span className="truncate">{f.name}</span>
-              <span className="text-theme-xs text-gray-400">{formatSize(f.size)}</span>
+              <span className="text-theme-xs text-gray-400">{humanSize(f.size)}</span>
               <button
                 type="button"
                 onClick={() => setFiles((prev) => prev.filter((p) => p.id !== f.id))}

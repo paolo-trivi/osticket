@@ -1,18 +1,19 @@
 import "server-only";
 
+import { Dept, Filter, Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
 import { stripEmoticons } from "../../format/text";
+import { htmlchars, intval, isArray, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
-import { DeptFlag } from "../admin/dept";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { ov, pv } from "./orm-util";
-import { formatHtmlchars, intval, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../admin/php";
-import { TopicFlag } from "../admin/topic";
 import type { Errors } from "../admin/validator";
-import { isEmail } from "../directory/forms";
+import { isEmail, isFormula, parseAddressList } from "../forms/validator";
 import { prepareSupportedMatches } from "../filter/ticket-filter";
 
 /**
@@ -31,7 +32,6 @@ import { prepareSupportedMatches } from "../filter/ticket-filter";
  * - le regole nuove hanno `created` = '0000-00-00 00:00:00' (save_rules non lo imposta).
  * La ban list di sistema ("SYSTEM BAN LIST") ha la sua pagina e qui non si modifica.
  */
-export const FilterFlag = { INACTIVE_HT: 0x0001, INACTIVE_DEPT: 0x0002, DELETED_OBJECT: 0x0004 } as const;
 
 export const MATCH_TYPES = ["equal", "not_equal", "contains", "dn_contain", "starts", "ends", "match", "not_match"] as const;
 export const TARGETS = ["Any", "Web", "API", "Email"] as const;
@@ -85,41 +85,21 @@ export const ACTION_FIELDS: Record<string, ActionField[]> = {
   ],
 };
 
-/** Mail_Parse::parseAddressList + validatore di FA_SendEmail (approssimazione di Mail_RFC822). */
+/**
+ * Validatore dei destinatari di FA_SendEmail: Mail_Parse::parseAddressList (Mail_RFC822 senza
+ * validazione degli atomi, lista vuota per un valore "falso"), poi segnaposto `%{user}` o indirizzo con
+ * mailbox e host diverso da "localhost". Riceve il valore già passato da htmlchars, come il PHP.
+ */
 function recipientsError(value: PhpVal): string | null {
-  const s = str(value);
-  const parts: string[] = [];
-  let cur = "";
-  let quoted = false;
-  let angle = false;
-  for (const ch of s) {
-    if (ch === '"') quoted = !quoted;
-    else if (ch === "<" && !quoted) angle = true;
-    else if (ch === ">" && !quoted) angle = false;
-    if (ch === "," && !quoted && !angle) {
-      parts.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  parts.push(cur);
-  if (quoted || angle || parts.some((p) => !p.trim())) return "address_list";
-  for (const p of parts) {
-    const m = /<([^>]*)>/.exec(p);
-    const addr = (m ? m[1] : p).trim();
-    const at = addr.lastIndexOf("@");
-    const mailbox = at >= 0 ? addr.slice(0, at) : addr;
-    const host = at >= 0 ? addr.slice(at + 1) : "localhost";
-    const ph = /%\{([^}]+)\}/.exec(mailbox);
+  const mails = truthy(value) ? parseAddressList(str(value), { validate: false }) : [];
+  if (!mails?.length) return "address_list";
+  for (const M of mails) {
+    const ph = /%\{([^}]+)\}/.exec(M.mailbox);
     if (ph) {
       if (ph[1] !== "user") return "invalid_variable";
-    } else if (host === "localhost" || !mailbox) return "invalid_address";
+    } else if (M.host === "localhost" || !truthy(M.mailbox)) return "invalid_address";
   }
   return null;
-}
-
-/** Validator::is_formula (validatore forzato dei TextboxField). */
-function formulaError(value: string): string | null {
-  return /(^[^=+@-].*$)|(^\+\d+$)/s.test(value) ? null : "formula";
 }
 
 /** ChoiceField: widget → parse → to_php (i valori numerici diventano numeri, come JsonDataParser). */
@@ -155,11 +135,11 @@ async function parseConfiguration(executor: DbOrTx, type: string, vars: PhpVars)
     }
     // FormField::validateEntry: required, poi i validatori dichiarati; TextboxField li riceve con
     // htmlchars ('0' → '&#48') e aggiunge il validatore "formula"
-    const value: PhpVal = f.kind === "text" ? (clean === "0" ? "&#48" : str(formatHtmlchars(str(clean)))) : clean;
+    const value: PhpVal = f.kind === "text" ? (clean === "0" ? "&#48" : str(htmlchars(str(clean)))) : clean;
     if (f.required && !truthy(value)) errors.push("required");
     const e = f.check?.(value);
     if (e) errors.push(e);
-    if (f.kind === "text" && truthy(value) && formulaError(str(value))) errors.push("formula");
+    if (f.kind === "text" && truthy(value) && !isFormula(str(value))) errors.push("formula");
     config[f.name] = clean;
   }
   return { config, errors };
@@ -194,7 +174,7 @@ export async function matchFieldList(executor: DbOrTx): Promise<{ key: string; g
   if (t) forms.push({ ...t, group: "ticket" });
   const o = await firstOf("O");
   if (o) forms.push({ ...o, group: "organization" });
-  for (const g of await executor.selectFrom("form").select(["id", "title"]).where("type", "=", "G").orderBy("id").execute()) forms.push({ ...g, group: "custom" });
+  for (const g of await executor.selectFrom("form").select(["id", "title"]).where("type", "=", FormType.GENERIC).orderBy("id").execute()) forms.push({ ...g, group: "custom" });
   for (const form of forms) {
     const fields = await executor.selectFrom("form_field").select(["id", "type", "label"]).where("form_id", "=", form.id).orderBy("sort").orderBy("id").execute();
     for (const f of fields) {
@@ -307,10 +287,10 @@ async function isActiveRow(executor: DbOrTx, kind: "dept" | "topic", id: PhpVal)
   if (!n || (typeof id === "string" && !isNumeric(id))) return false;
   if (kind === "dept") {
     const d = await executor.selectFrom("department").select("flags").where("id", "=", n).executeTakeFirst();
-    return !!d && !!(d.flags & DeptFlag.ACTIVE);
+    return !!d && !!(d.flags & Dept.ACTIVE);
   }
   const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", n).executeTakeFirst();
-  return !!t && !!((t.flags ?? 0) & TopicFlag.ACTIVE);
+  return !!t && !!((t.flags ?? 0) & Topic.ACTIVE);
 }
 
 /** FilterAction::lookup($info) per id (stringa numerica o non). */
@@ -322,7 +302,7 @@ async function actionById(executor: DbOrTx, info: PhpVal) {
 /** Filter::validate_actions: true, false o 1 (errore su un valore vuoto). */
 async function validateActions(ctx: Ctx, vars: PhpVars, errors: Errors): Promise<boolean | null | 1> {
   if (truthy(vars.pass)) return true;
-  if (!Array.isArray(vars.actions) && !(vars.actions && typeof vars.actions === "object")) return null;
+  if (!isArray(vars.actions)) return null;
   let info: PhpVal = null;
   for (const v of list(vars.actions)) {
     const sv = str(v);
@@ -359,7 +339,7 @@ async function validateActions(ctx: Ctx, vars: PhpVars, errors: Errors): Promise
     const fa = await actionById(ctx.executor, info);
     if (fa) {
       // Filter::setFlag(...) ×3: ognuna esegue update() sui dati del modello (e ricrea le regole)
-      for (const flag of [FilterFlag.DELETED_OBJECT, FilterFlag.INACTIVE_DEPT, FilterFlag.INACTIVE_HT]) await setFlag(ctx, fa.filter_id, flag, false);
+      for (const flag of [Filter.DELETED_OBJECT, Filter.INACTIVE_DEPT, Filter.INACTIVE_HT]) await setFlag(ctx, fa.filter_id, flag, false);
     }
   }
   return !Object.keys(errors).length;
@@ -393,7 +373,7 @@ async function setFlag(ctx: Ctx, filterId: number, flag: number, on: boolean): P
 
 /** Filter::save_actions */
 async function saveActions(ctx: Ctx, filterId: number, vars: PhpVars, errors: Errors): Promise<void> {
-  if (!Array.isArray(vars.actions) && !(vars.actions && typeof vars.actions === "object")) return;
+  if (!isArray(vars.actions)) return;
   const entries = Array.isArray(vars.actions) ? vars.actions.map((v, i) => [i, v] as const) : Object.entries(vars.actions as Record<string, PhpVal>);
   for (const [sort, v] of entries) {
     const sv = str(v);

@@ -1,9 +1,7 @@
 import "server-only";
 
-import { sql } from "kysely";
-
 import type { ConfigNamespace } from "../../config/config";
-import { table, type DbOrTx } from "../../db";
+import { deleteDraftsForNamespace } from "../drafts";
 import { createTicket, type CreateResult, type CreateTicketVars } from "../ticket/create";
 import type { Actor } from "../ticket/events";
 import { runWrite } from "../write";
@@ -12,14 +10,6 @@ import type { ClientIdentity } from "./identity";
 /**
  * Apertura di un ticket dal portale (open.php → Ticket::create($vars, $errors, 'Web')).
  */
-
-/** Draft::deleteForNamespace($namespace): allegati delle bozze (startswith) e bozze (LIKE) di chiunque */
-export async function deleteDraftsForNamespace(executor: DbOrTx, namespace: string): Promise<void> {
-  const prefix = namespace.replace(/([%_\\])/g, "\\$1") + "%";
-  await sql`DELETE A FROM ${table("attachment")} A JOIN ${table("draft")} D ON (A.type = 'D' AND A.object_id = D.id)
-    WHERE D.namespace LIKE ${prefix}`.execute(executor);
-  await executor.deleteFrom("draft").where("namespace", "like", namespace).execute();
-}
 
 /** $thisclient come attore delle scritture (eventi, fuso dell'utente) */
 export function clientActor(cfg: ConfigNamespace, client: ClientIdentity, ip: string): Actor {

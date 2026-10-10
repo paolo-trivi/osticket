@@ -1,16 +1,17 @@
 "use server";
 
 import type { SysFormState } from "@/components/adminsys/SysForm";
-import { str } from "@/server/domain/admin/php";
+import { massRedirect, sysFormResult } from "@/server/actions/result";
+import { str } from "@/server/php/values";
 import { addTemplateGroup, implementTemplate, massTemplateGroups, updateTemplate, updateTemplateGroup, type TemplateMassAction } from "@/server/domain/adminsys/template";
 
-import { adminWrite, formResult, massRedirect, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
+import { adminWrite, parsePhpForm, requireAdminAction, selectedIds } from "../_sys/server";
 
 /** scp/templates.php do=add (nuovo set, eventualmente clonato) */
 export async function addTemplateGroupAction(_prev: SysFormState, form: FormData): Promise<SysFormState> {
   const { locale } = await requireAdminAction();
   const r = await adminWrite((tx) => addTemplateGroup(tx, parsePhpForm(form)));
-  return formResult(r, { locale, created: (id) => `/admin/templates/${id}?ok=created` });
+  return sysFormResult(r, { locale, created: (id) => `/admin/templates/${id}?ok=created` });
 }
 
 /** scp/templates.php do=update */
@@ -18,7 +19,7 @@ export async function updateTemplateGroupAction(tplId: number, _prev: SysFormSta
   const { locale } = await requireAdminAction();
   const vars = { ...parsePhpForm(form), tpl_id: String(tplId) };
   const r = await adminWrite((tx) => updateTemplateGroup(tx, tplId, vars));
-  return formResult(r, { locale });
+  return sysFormResult(r, { locale });
 }
 
 /** scp/templates.php do=updatetpl (messaggio esistente) o do=implement (messaggio mancante nel set) */
@@ -27,10 +28,10 @@ export async function saveTemplateAction(tplId: number, code: string, templateId
   const vars = parsePhpForm(form);
   if (templateId) {
     const r = await adminWrite((tx) => updateTemplate(tx, templateId, vars));
-    return formResult(r, { locale });
+    return sysFormResult(r, { locale });
   }
   const r = await adminWrite((tx) => implementTemplate(tx, tplId, { ...vars, tpl_id: String(tplId), code_name: code }, agent.id));
-  return formResult(r, { locale, created: () => `/admin/templates/${tplId}/${code.replace(/\./g, "-")}?ok=created` });
+  return sysFormResult(r, { locale, created: () => `/admin/templates/${tplId}/${code.replace(/\./g, "-")}?ok=created` });
 }
 
 const ACTIONS: TemplateMassAction[] = ["enable", "disable", "delete"];
