@@ -25,6 +25,7 @@
     "moveDown": "Sposta giù",
     "select": "— Seleziona —",
     "none": "— Nessuno —",
+    "slaDisabled": "(disattivato)",
     "done": {
       "edit": "Ticket aggiornato.",
       "field": "Campo aggiornato.",
@@ -39,6 +40,7 @@
       "delete": "Ticket eliminato."
     },
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "generic": "Operazione non riuscita. Riprova.",
       "session_expired": "Sessione scaduta: accedi di nuovo.",
       "not_found": "Ticket non trovato o non accessibile.",
@@ -102,7 +104,7 @@
     "selectTopic": "— Seleziona un argomento —",
     "sla": "Piano SLA",
     "duedate": "Scadenza",
-    "duedateTz": "Come in osTicket, l'ora è interpretata in UTC.",
+    "duedateTz": "L'ora è nel tuo fuso orario, come nella vista del ticket.",
     "internalNote": "Nota interna",
     "notePlaceholder": "Motivo della modifica (facoltativo)",
     "sources": {
@@ -122,6 +124,8 @@
     "noCollaborators": "Nessun collaboratore.",
     "collaborator": "Collaboratore",
     "active": "Attivo",
+    "collabActive": "{name}: attivo",
+    "collabRemove": "Rimuovi {name}",
     "addCollaborator": "Aggiungi un collaboratore",
     "deleteTitle": "Elimina il ticket #{number}",
     "deleteConfirm": "Sì, elimina",
@@ -137,6 +141,7 @@
     "entryTitle": "Ticket #{number}: modifica una voce del thread",
     "entry": "Voce",
     "entryTitleField": "Titolo",
+    "entryBody": "Testo della voce",
     "entryTypes": {
       "M": "Messaggio",
       "R": "Risposta",
@@ -147,7 +152,11 @@
     "mergeHelp": "Scegli i ticket da unire. Il primo dell'elenco sarà il ticket padre: riordina con le frecce.",
     "linkHelp": "Scegli i ticket da collegare. Il primo dell'elenco sarà il ticket padre: riordina con le frecce.",
     "addTicket": "Aggiungi un ticket",
-    "ticketNumber": "Numero del ticket",
+    "ticketNumber": "Numero del ticket (almeno 3 cifre)",
+    "noTickets": "Nessun ticket trovato",
+    "mergedNoAdd": "I ticket uniti non si aggiungono a mano: vanno selezionati prima.",
+    "alreadyInList": "Il ticket è già nell'elenco.",
+    "unlinkWarning": "Salvando le modifiche verranno scollegati: {numbers}. Le altre modifiche all'elenco non saranno applicate.",
     "participants": "Partecipanti",
     "participantsUser": "Utente",
     "participantsAll": "Utente + collaboratori",
@@ -200,6 +209,7 @@
       "selectAgent": "— Seleziona un agente —",
       "selectTeam": "— Seleziona un team —",
       "exportTitle": "Esporta la coda «{queue}»",
+      "exportTitleList": "Esporta: {queue}",
       "exportHelp": "Scegli i campi da esportare. Il file CSV contiene i ticket della coda visibili a te.",
       "delimiter": "Separatore",
       "delimiters": {
@@ -210,6 +220,7 @@
       },
       "download": "Scarica CSV",
       "errors": {
+        "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
         "select_tickets": "Seleziona almeno un ticket.",
         "assignee_required": "Scegli un assegnatario.",
         "dept_required": "Scegli un reparto.",

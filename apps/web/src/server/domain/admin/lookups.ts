@@ -1,8 +1,9 @@
 import "server-only";
 
 import { sql } from "kysely";
+import { getTranslations } from "next-intl/server";
 
-import { CustomQueue, Dept, DynamicForm, Schedule } from "@/lib/osticket/flags";
+import { CustomQueue, Dept, DynamicForm, Schedule, SLA, TicketStatus } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
 
 import { db, type DbOrTx } from "../../db";
@@ -45,9 +46,22 @@ export async function teamOptions(executor: DbOrTx = db()): Promise<Opt[]> {
   return rows.map((r) => ({ value: String(r.team_id), label: r.name }));
 }
 
-export async function slaOptions(executor: DbOrTx = db()): Promise<Opt[]> {
+/** SLA::getSLAs(): "<nome> (<n> ore - Attivo|Disabilitato)", anche gli SLA disattivati. */
+export async function slaOptions(executor: DbOrTx = db()): Promise<(Opt & { active: boolean })[]> {
+  const t = await getTranslations("admUi");
   const rows = await executor.selectFrom("sla").select(["id", "name", "grace_period", "flags"]).orderBy("name").execute();
-  return rows.map((r) => ({ value: String(r.id), label: `${r.name} (${r.grace_period}h)` }));
+  return rows.map((r) => {
+    const active = !!(r.flags & SLA.ACTIVE);
+    return {
+      value: String(r.id),
+      label: t("slaOption", {
+        name: r.name,
+        hours: r.grace_period,
+        status: t(active ? "status.active" : "status.disabled"),
+      }),
+      active,
+    };
+  });
 }
 
 export async function scheduleOptions(executor: DbOrTx = db(), type?: "bizhrs" | "hdays"): Promise<Opt[]> {
@@ -72,10 +86,19 @@ export async function priorityOptions(executor: DbOrTx = db()): Promise<Opt[]> {
   return rows.map((r) => ({ value: String(r.priority_id), label: r.priority_desc }));
 }
 
-export async function statusOptions(executor: DbOrTx = db(), states?: string[]): Promise<Opt[]> {
-  let q = executor.selectFrom("ticket_status").select(["id", "name", "state"]).orderBy("sort");
+/** TicketStatusList::getStatuses(): gli stati non abilitati hanno " (disattivato)" come nel PHP. */
+export async function statusOptions(executor: DbOrTx = db(), states?: string[]): Promise<(Opt & { enabled: boolean })[]> {
+  const t = await getTranslations("admUi");
+  let q = executor.selectFrom("ticket_status").select(["id", "name", "state", "mode"]).orderBy("sort");
   if (states) q = q.where("state", "in", states);
-  return (await q.execute()).map((r) => ({ value: String(r.id), label: r.name }));
+  return (await q.execute()).map((r) => {
+    const enabled = !!(r.mode & TicketStatus.ENABLED);
+    return {
+      value: String(r.id),
+      label: enabled ? r.name : `${r.name} ${t("disabledSuffix")}`,
+      enabled,
+    };
+  });
 }
 
 export async function pageOptions(executor: DbOrTx = db(), type?: string): Promise<Opt[]> {

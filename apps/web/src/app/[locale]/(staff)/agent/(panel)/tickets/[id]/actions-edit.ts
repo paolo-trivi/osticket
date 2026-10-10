@@ -15,10 +15,12 @@ import type { WriteContext } from "@/server/domain/ticket/context";
 import { formDataToVars, searchUsers, type UserHit } from "@/server/domain/ticket/create-ui";
 import { ticketHardDelete } from "@/server/domain/ticket/delete";
 import { changeTicketOwner, updateTicket, updateTicketField } from "@/server/domain/ticket/edit";
-import { mergeTickets, unlinkTickets } from "@/server/domain/ticket/merge";
+import { agentLocalToIso } from "@/server/domain/ticket/edit-values";
+import { lookupTicketsByNumber, mergeTickets, unlinkTickets, type TicketNumberHit } from "@/server/domain/ticket/merge";
 import { markTicketOverdue, setTicketEmailBan } from "@/server/domain/ticket/overdue";
 import { changeTicketStatus } from "@/server/domain/ticket/ticket-state";
 import { runWrite } from "@/server/domain/write";
+import { agentTimeZone } from "@/server/format/datetime";
 
 /**
  * Server action dell'area "ticketedit" nella vista ticket: modifica (form completo e singolo campo),
@@ -67,13 +69,14 @@ async function ticketFormVars(ticketId: number, form: FormData): Promise<Record<
 export async function updateTicketAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
   const vars = await ticketFormVars(ticketId, form);
-  return run(ticketId, (ctx) =>
+  return run(ticketId, async (ctx) =>
     updateTicket(ctx, {
       ticketId,
       topicId: formStr(form, "topicId"),
       slaId: formStr(form, "slaId"),
       source: formStr(form, "source"),
-      duedate: formStr(form, "duedate").replace("T", " "),
+      // scadenza nel fuso dell'agente (agentLocalToIso)
+      duedate: agentLocalToIso(formStr(form, "duedate"), await agentTimeZone(ctx.agent ?? null)),
       userId: formStr(form, "user_id") || undefined,
       note: formStr(form, "note"),
       vars,
@@ -97,12 +100,21 @@ export async function updateFieldAction(_prev: EditActionState, form: FormData):
       vars = { source: formStr(form, "value") };
       break;
     case "duedate":
-      vars = { duedate: formStr(form, "value").replace("T", " ") };
+      vars = { duedate: formStr(form, "value") };
       break;
     default:
       vars = await ticketFormVars(ticketId, form);
   }
-  return run(ticketId, (ctx) => updateTicketField(ctx, { ticketId, field, vars, comments: formHtml(form) }));
+  return run(ticketId, async (ctx) => {
+    // editField: DateTimeField nel fuso dell'agente
+    if (field === "duedate") vars.duedate = agentLocalToIso(String(vars.duedate), await agentTimeZone(ctx.agent ?? null));
+    return updateTicketField(ctx, {
+      ticketId,
+      field,
+      vars,
+      comments: formHtml(form),
+    });
+  });
 }
 
 /** do=changeuser */
@@ -129,6 +141,9 @@ export async function updateCollaboratorsAction(_prev: EditActionState, form: Fo
 export async function mergeAction(_prev: EditActionState, form: FormData): Promise<EditActionState> {
   const ticketId = ticketIdOf(form);
   const title = formStr(form, "title") === "link" ? "link" : "merge";
+  // ajax updateMerge: con `dtids[]` (ticket collegati tolti dall'elenco) si scollega soltanto, `tids` è ignorato
+  const dtids = formIds(form, "dtids");
+  if (dtids.length) return run(ticketId, (ctx) => unlinkTickets(ctx, { ticketIds: dtids }));
   const numbers = formStrs(form, "tids").filter(Boolean);
   if (numbers.length < 2) return { error: "select_two", nonce: Date.now() };
   return run(ticketId, (ctx) =>
@@ -199,4 +214,11 @@ export async function searchUsersAction(q: string): Promise<UserHit[]> {
   const agent = await currentAgent();
   if (!agent) return [];
   return searchUsers(db(), q, 10);
+}
+
+/** ajax.php/tickets/number-lookup: ticket per numero (prefisso) per "Aggiungi un ticket" di merge/link. */
+export async function searchTicketsAction(q: string): Promise<TicketNumberHit[]> {
+  const agent = await currentAgent();
+  if (!agent || q.trim().length < 3) return [];
+  return lookupTicketsByNumber(db(), agent, q);
 }

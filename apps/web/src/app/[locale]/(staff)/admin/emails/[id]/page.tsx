@@ -13,6 +13,9 @@ import { emailInfo } from "@/server/domain/adminsys/email";
 import { requireAdmin } from "../../guard";
 import { saveEmailAction, saveEmailAuthAction } from "../actions";
 import { EmailFields, emailLabels } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("emailAccounts");
 
 /**
  * Modifica di un account email con le credenziali "basic" di mailbox e SMTP. I form delle credenziali

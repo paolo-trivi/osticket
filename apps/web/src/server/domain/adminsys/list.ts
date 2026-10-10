@@ -209,8 +209,19 @@ export async function listLists(executor: DbOrTx) {
   const lists = await executor.selectFrom("list").selectAll().orderBy("name").execute();
   const out = [];
   for (const l of lists) {
-    const n = await executor.selectFrom("list_items").select((eb) => eb.fn.countAll<number>().as("n")).where("list_id", "=", l.id).executeTakeFirstOrThrow();
-    out.push({ ...l, items: Number(n.n), system: hasHandler(l) });
+    const system = hasHandler(l);
+    // TicketStatusList::getNumItems(): gli elementi della lista di sistema sono le righe di ticket_status
+    const n = system
+      ? await executor
+          .selectFrom("ticket_status")
+          .select((eb) => eb.fn.countAll<number>().as("n"))
+          .executeTakeFirstOrThrow()
+      : await executor
+          .selectFrom("list_items")
+          .select((eb) => eb.fn.countAll<number>().as("n"))
+          .where("list_id", "=", l.id)
+          .executeTakeFirstOrThrow();
+    out.push({ ...l, items: Number(n.n), system });
   }
   return out;
 }

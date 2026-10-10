@@ -10,10 +10,11 @@ import {
   useState,
 } from "react";
 
+import { useReadOnlyHint } from "@/components/common/WriteGate";
 import { isRtl } from "@/i18n/languages";
 import type { Locale } from "@/i18n/routing";
 import { Link } from "@/i18n/navigation";
-import { CheckLineIcon, MoreDotIcon } from "@/icons";
+import { Check, EllipsisVertical } from "lucide-react";
 import { dropBlock, type DropBlock } from "@/server/domain/board/grouping";
 import type { BoardCard, BoardColumn } from "@/server/domain/board/types";
 import { cn } from "@/utils";
@@ -58,6 +59,7 @@ export default function CardMenu({
 }) {
   const t = useTranslations("board.card");
   const td = useTranslations("board.drag");
+  const readOnly = useReadOnlyHint();
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -156,7 +158,7 @@ export default function CardMenu({
         onClick={() => setOpen((o) => !o)}
         className="flex size-7 items-center justify-center rounded-lg text-gray-400 opacity-100 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-brand-500/30 focus-visible:outline-hidden aria-expanded:opacity-100 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-white/5 dark:hover:text-gray-200"
       >
-        <MoreDotIcon viewBox="0 0 24 24" className="size-4" aria-hidden />
+        <EllipsisVertical className="size-4" aria-hidden />
       </button>
       {open && (
         <div
@@ -201,9 +203,7 @@ export default function CardMenu({
             {t("moveTo")}
           </p>
           {!moveEnabled ? (
-            <p className="px-3 pb-2 text-theme-xs text-gray-500 dark:text-gray-400">
-              {td("statusOnly")}
-            </p>
+            <p className="px-3 pb-2 text-theme-xs text-gray-500 dark:text-gray-400">{readOnly ?? td("statusOnly")}</p>
           ) : (
             columns.map((col) => {
               const block = dropBlock(card, col, card.lane);
@@ -239,11 +239,7 @@ export default function CardMenu({
                   <span className="min-w-0 flex-1 truncate">{col.title}</span>
                   {current && (
                     <>
-                      <CheckLineIcon
-                        viewBox="0 0 16 16"
-                        className="size-4 text-brand-500"
-                        aria-hidden
-                      />
+                      <Check className="size-4 text-brand-500" aria-hidden />
                       <span className="sr-only">({t("current")})</span>
                     </>
                   )}

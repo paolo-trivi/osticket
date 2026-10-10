@@ -11,6 +11,9 @@ import { db } from "@/server/db";
 import { requireAdmin } from "../../guard";
 import { savePageAction } from "../actions";
 import { PageFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("pages");
 
 export default async function EditSitePage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;

@@ -12,6 +12,9 @@ import { listFilters } from "@/server/domain/adminsys/filter";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massFilterAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("filters");
 
 /** Filtri dei ticket (include/staff/filters.inc.php). */
 export default async function FiltersPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

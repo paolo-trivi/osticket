@@ -17,6 +17,7 @@ import { resetTokenValid } from "./auth-reset";
 import { loadClientAccount, lookupAccountByUsername, passwordVersion, type ClientAccountRow, type ClientIdentity } from "./identity";
 import { prepareUnlockMail } from "./mails";
 import { updateUserInfoForClient } from "./profile-info";
+import { canWrite, withWriteScope } from "../../system/write-mode";
 
 /**
  * Account dei clienti dal portale: registrazione (account.php) e profilo (profile.php →
@@ -24,19 +25,11 @@ import { updateUserInfoForClient } from "./profile-info";
  * password (pwreset.php do=sendmail) è in password-reset.ts.
  */
 
-export type AccountFieldError =
-  | "required"
-  | "mismatch"
-  | "current_required"
-  | "current_invalid"
-  | "invalid_token"
-  | "registered"
-  | PasswordError
-  | FieldErrorCode
-  | "in_use";
+export type AccountFieldError = "required" | "mismatch" | "current_required" | "current_invalid" | "invalid_token" | "registered" | PasswordError | FieldErrorCode | "in_use";
 
 interface AccountErrors {
-  err?: "incomplete" | "unable" | "disabled" | "profile" | "internal";
+  /** read_only: scritture non consentite dalla modalità (TAILTICKET_MODE) */
+  err?: "incomplete" | "unable" | "disabled" | "profile" | "internal" | "read_only";
   /** errori per campo: passwd1, passwd2, cpasswd, email, name, … o id del campo dinamico */
   fields?: Record<string, AccountFieldError>;
 }
@@ -134,22 +127,32 @@ type ProfileResult = AccountResult<{ pwv: string; passwordChanged: boolean }>;
  */
 export async function updateClientProfile(client: ClientIdentity, vars: ClientAccountVars, resetToken: string | null = null): Promise<ProfileResult> {
   if (client.guest) return { ok: false, err: "unable" };
+  if (!(await canWrite("operational"))) return { ok: false, err: "read_only" };
   const cfg = await coreConfig();
   await detectDbTimezone(db());
-  return db()
-    .transaction()
-    .execute(async (tx): Promise<ProfileResult> => {
-      const acct = await loadClientAccount(tx, client.id, true);
-      let passwd = acct?.passwd ?? null;
-      if (acct) {
-        const r = await clientAccountUpdate(tx, cfg, client.id, acct, vars, resetToken);
-        if (!r.ok) return { ok: false, err: "profile", fields: r.fields };
-        passwd = r.passwd;
-      }
-      const info = await updateUserInfoForClient(tx, cfg, client.id, vars);
-      if (!info.ok) return info;
-      return { ok: true, pwv: passwordVersion(passwd), passwordChanged: passwd !== (acct?.passwd ?? null) };
-    });
+  return withWriteScope(
+    "operational",
+    () =>
+      db()
+        .transaction()
+        .execute(async (tx): Promise<ProfileResult> => {
+          const acct = await loadClientAccount(tx, client.id, true);
+          let passwd = acct?.passwd ?? null;
+          if (acct) {
+            const r = await clientAccountUpdate(tx, cfg, client.id, acct, vars, resetToken);
+            if (!r.ok) return { ok: false, err: "profile", fields: r.fields };
+            passwd = r.passwd;
+          }
+          const info = await updateUserInfoForClient(tx, cfg, client.id, vars);
+          if (!info.ok) return info;
+          return {
+            ok: true,
+            pwv: passwordVersion(passwd),
+            passwordChanged: passwd !== (acct?.passwd ?? null),
+          };
+        }),
+    { op: "client.profile", actor: { type: "client", id: client.id } },
+  );
 }
 
 /**
@@ -162,26 +165,44 @@ export async function updateClientProfile(client: ClientIdentity, vars: ClientAc
 export async function registerClientAccount(vars: ClientAccountVars, guest: ClientIdentity | null = null): Promise<AccountResult<{ userId: number }>> {
   const cfg = await coreConfig();
   if (!["public", "auto"].includes(cfg.str("client_registration"))) return { ok: false, err: "disabled" };
+  if (!(await canWrite("operational"))) return { ok: false, err: "read_only" };
   await detectDbTimezone(db());
   const input: Record<string, unknown> = { ...vars };
   if (guest) input.email = guest.email;
   let send: (() => Promise<void>) | null = null;
-  const res = await db()
-    .transaction()
-    .execute(async (tx): Promise<AccountResult<{ userId: number }>> => {
-      const def = await loadFormDef(tx, cfg, { type: FormType.USER }, "client");
-      if (!def) return { ok: false, err: "internal" };
-      const timezone = cfg.str("default_timezone") || "UTC";
-      const inst = new FormInstance(def, input, 1, null, { timezone });
-      const errs = await inst.validate((f) => isVisibleTo(f, "client"), (f) => isRequiredFor(f, "client"), cfg);
-      const fields: Record<string, AccountFieldError> = {};
-      for (const [id, codes] of Object.entries(errs)) fields[def.fields.find((x) => x.id === Number(id))?.name || id] = codes[0];
-      if (Object.keys(fields).length) return { ok: false, err: "incomplete", fields };
-      const p1 = str(vars.passwd1);
-      if (!p1) return { ok: false, err: "unable", fields: { passwd1: "required" } };
-      if (str(vars.passwd2) !== p1) return { ok: false, err: "unable", fields: { passwd1: "mismatch" } };
-      const policy = checkPasswordPolicy(p1, null);
-      if (policy) return { ok: false, err: "unable", fields: { passwd1: policy } };
+  const res = await withWriteScope(
+    "operational",
+    () =>
+      db()
+        .transaction()
+        .execute(async (tx): Promise<AccountResult<{ userId: number }>> => {
+          const def = await loadFormDef(tx, cfg, { type: FormType.USER }, "client");
+          if (!def) return { ok: false, err: "internal" };
+          const timezone = cfg.str("default_timezone") || "UTC";
+          const inst = new FormInstance(def, input, 1, null, { timezone });
+          const errs = await inst.validate(
+            (f) => isVisibleTo(f, "client"),
+            (f) => isRequiredFor(f, "client"),
+            cfg,
+          );
+          const fields: Record<string, AccountFieldError> = {};
+          for (const [id, codes] of Object.entries(errs)) fields[def.fields.find((x) => x.id === Number(id))?.name || id] = codes[0];
+          if (Object.keys(fields).length) return { ok: false, err: "incomplete", fields };
+          const p1 = str(vars.passwd1);
+          if (!p1)
+            return {
+              ok: false,
+              err: "unable",
+              fields: { passwd1: "required" },
+            };
+          if (str(vars.passwd2) !== p1)
+            return {
+              ok: false,
+              err: "unable",
+              fields: { passwd1: "mismatch" },
+            };
+          const policy = checkPasswordPolicy(p1, null);
+          if (policy) return { ok: false, err: "unable", fields: { passwd1: policy } };
 
       const addr = str(inst.get("email"));
       if (addr && (await lookupAccountByUsername(tx, addr))) return { ok: false, err: "unable", fields: { email: "registered" } };
@@ -189,28 +210,41 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
       const nameV = inst.get("name");
       if (!nameV) return { ok: false, fields: { name: "required" } };
 
-      let userId: number;
-      const existing = await lookupUserByEmail(tx, addr);
-      if (existing) {
-        const r = await updateUserInfoForClient(tx, cfg, existing.id, input);
-        if (!r.ok) return { ok: false, err: "unable", fields: r.ok ? undefined : r.fields };
-        userId = existing.id;
-      } else if (guest) {
-        userId = guest.id;
-      } else {
-        // User::fromForm: validazione di tutti i campi ($thisstaff assente) ed email non in uso
-        const all = await inst.validate(() => true, (f) => isRequiredFor(f, "client"), cfg);
-        if (Object.keys(all).length) return { ok: false, err: "unable" };
-        const u = await userFromVars(tx, cfg, inst.cleanVars(), { dates: { cfg, timezone } });
-        if (!u) return { ok: false, err: "unable" };
-        userId = u.id;
-      }
-      const r = await clientAccountUpdate(tx, cfg, userId, null, vars, null);
-      if (!r.ok) return { ok: false, err: "profile", fields: r.fields };
-      // do=create: UserAccount::sendConfirmEmail
-      send = await prepareUnlockMail(tx, cfg, userId, "registration-client");
-      return { ok: true, userId };
-    });
+          let userId: number;
+          const existing = await lookupUserByEmail(tx, addr);
+          if (existing) {
+            const r = await updateUserInfoForClient(tx, cfg, existing.id, input);
+            if (!r.ok)
+              return {
+                ok: false,
+                err: "unable",
+                fields: r.ok ? undefined : r.fields,
+              };
+            userId = existing.id;
+          } else if (guest) {
+            userId = guest.id;
+          } else {
+            // User::fromForm: validazione di tutti i campi ($thisstaff assente) ed email non in uso
+            const all = await inst.validate(
+              () => true,
+              (f) => isRequiredFor(f, "client"),
+              cfg,
+            );
+            if (Object.keys(all).length) return { ok: false, err: "unable" };
+            const u = await userFromVars(tx, cfg, inst.cleanVars(), {
+              dates: { cfg, timezone },
+            });
+            if (!u) return { ok: false, err: "unable" };
+            userId = u.id;
+          }
+          const r = await clientAccountUpdate(tx, cfg, userId, null, vars, null);
+          if (!r.ok) return { ok: false, err: "profile", fields: r.fields };
+          // do=create: UserAccount::sendConfirmEmail
+          send = await prepareUnlockMail(tx, cfg, userId, "registration-client");
+          return { ok: true, userId };
+        }),
+    { op: "client.register" },
+  );
   if (res.ok && send) {
     try {
       await (send as () => Promise<void>)();

@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/common/DataTable";
 import { requireAdmin } from "../../guard";
 import { saveListAction } from "../actions";
 import { ListFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("lists");
 
 export default async function NewListPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

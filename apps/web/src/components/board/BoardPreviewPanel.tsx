@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { Link } from "@/i18n/navigation";
-import { CloseLineIcon, PadlockIcon } from "@/icons";
+import { Lock, X } from "lucide-react";
 import { ThreadEntryType } from "@/lib/osticket/object-types";
 import { dropBlock } from "@/server/domain/board/grouping";
 import type {
@@ -118,7 +118,7 @@ export default function BoardPreviewPanel({
               #{card.number}
               {card.lockedBy && (
                 <span className="font-sans inline-flex items-center gap-1 text-warning-600 dark:text-warning-400">
-                  <PadlockIcon className="size-3.5" aria-hidden />
+                  <Lock className="size-3.5" aria-hidden />
                   {tc("locked", { name: card.lockedBy })}
                 </span>
               )}
@@ -137,7 +137,7 @@ export default function BoardPreviewPanel({
             aria-label={t("close")}
             className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-3 focus-visible:ring-brand-500/30 focus-visible:outline-hidden dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
           >
-            <CloseLineIcon viewBox="0 0 17 16" className="size-5" aria-hidden />
+            <X className="size-5" aria-hidden />
           </button>
         </header>
 

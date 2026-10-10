@@ -9,7 +9,7 @@ import HtmlContent from "@/components/kb/HtmlContent";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
 import { idOrNotFound } from "@/lib/route-id";
-import { ChevronLeftIcon } from "@/icons";
+import { ChevronLeft } from "lucide-react";
 import { agentFileUrl } from "@/server/domain/kb/html";
 import { getCanned } from "@/server/domain/kb/canned";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
@@ -21,13 +21,7 @@ export async function generateMetadata() {
 }
 
 /** canned.php?id=N (cannedresponse.inc.php) in sola lettura. */
-export default async function CannedViewPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string; id: string }>;
-  searchParams: Promise<{ format?: string }>;
-}) {
+export default async function CannedViewPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ format?: string }> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
@@ -44,7 +38,7 @@ export default async function CannedViewPage({
   return (
     <div className="space-y-6">
       <Link href="/agent/canned" className="inline-flex items-center gap-1 text-theme-sm text-gray-500 hover:text-brand-500 dark:text-gray-400 dark:hover:text-brand-400">
-        <ChevronLeftIcon className="size-4 rtl:rotate-180" aria-hidden />
+        <ChevronLeft className="size-4 rtl:rotate-180" aria-hidden />
         {tk("back")}
       </Link>
       <div className="flex flex-wrap items-center gap-3">

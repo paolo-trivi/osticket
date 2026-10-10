@@ -24,6 +24,8 @@
 	request_body {
 		max_size {$TAILTICKET_MAX_BODY:40MB}
 	}
+	# diagnostica (/api/doctor): solo dall'interno del container con ./tailticket doctor, mai da fuori
+	respond /api/doctor* 404
 	reverse_proxy tailticket:3000 {
 		header_up X-Real-IP {client_ip}
 	}

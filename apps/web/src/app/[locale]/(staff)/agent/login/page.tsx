@@ -7,6 +7,10 @@ import { loadTheme } from "@/server/theme/theme";
 
 import LoginForm from "./LoginForm";
 
+export async function generateMetadata() {
+  return { title: (await getTranslations("auth"))("agentLoginTitle") };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function AgentLoginPage({

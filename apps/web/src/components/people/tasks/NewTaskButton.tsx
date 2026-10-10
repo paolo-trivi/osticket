@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 
 import { taskCreateAction } from "@/app/[locale]/(staff)/agent/(panel)/tasks/actions";
+import { useReadOnlyHint } from "@/components/common/WriteGate";
 import RichTextEditor from "@/components/editor/RichTextEditor";
 import Button from "@/components/ui/button/Button";
 
@@ -42,9 +43,11 @@ export default function NewTaskButton({
   const tc = useTranslations("composer");
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  const readOnly = useReadOnlyHint();
+  const descRequired = fields.find((f) => f.name === "description")?.required ?? true;
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
+      <Button size="sm" onClick={() => setOpen(true)} disabled={!!readOnly} title={readOnly}>
         {ticketId ? t("newForTicket", { number: ticketNumber ?? "" }) : t("new")}
       </Button>
       {open && (
@@ -53,9 +56,14 @@ export default function NewTaskButton({
             <div className="space-y-4">
               <TextField name="title" label={t("titleField")} required maxLength={50} error={s.fields?.title} />
               <div className="space-y-1.5">
-                <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-400">{t("description")}</span>
+                {/* asterisco secondo il campo del TaskForm (obbligatorio nell'installazione standard) */}
+                <span className="block text-theme-sm font-medium text-gray-700 dark:text-gray-400">
+                  {t("description")}
+                  {descRequired && <span className="ms-0.5 text-error-500">*</span>}
+                </span>
                 <RichTextEditor
                   name="description"
+                  label={t("description")}
                   minHeight={120}
                   labels={{
                     bold: tc("editor.bold"),

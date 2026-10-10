@@ -1,15 +1,18 @@
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import BackLink from "@/components/adminsys/BackLink";
 import AdminForm from "@/components/admin/AdminForm";
 import AdminNotice from "@/components/admin/AdminNotice";
 import { PageHeader } from "@/components/common/DataTable";
-import { Link } from "@/i18n/navigation";
 import { idOrNotFound } from "@/lib/route-id";
 
 import { requireAdmin } from "../../guard";
 import { saveSlaAction } from "../actions";
 import { slaSections } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("sla");
 
 export default async function EditPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;
@@ -22,14 +25,7 @@ export default async function EditPage({ params, searchParams }: { params: Promi
   const sp = await searchParams;
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("edit")}
-        actions={
-          <Link href="/admin/sla" className="text-sm font-medium text-brand-500 hover:text-brand-600">
-            ← {t("back")}
-          </Link>
-        }
-      />
+      <PageHeader title={t("edit")} actions={<BackLink href="/admin/sla" label={t("back")} />} />
       {sp.created && <AdminNotice ok="created" n="1" />}
       <AdminForm sections={sections} action={saveSlaAction.bind(null, objectId)} />
     </div>

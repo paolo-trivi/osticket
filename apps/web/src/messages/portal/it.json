@@ -56,6 +56,7 @@
       "openNew": "Apri un nuovo ticket"
     },
     "errors": {
+      "read_only": "Operazione non disponibile: il centro di assistenza è momentaneamente in sola consultazione. Riprova più tardi.",
       "required": "Inserisci email o nome utente",
       "invalid_userid": "Nome utente o email non validi",
       "invalid_email": "Inserisci un indirizzo email valido",
@@ -137,7 +138,8 @@
       "registerSubtitle": "Crea un account per seguire tutte le tue richieste.",
       "profileTitle": "Il mio profilo",
       "profileSubtitle": "Aggiorna i dati che abbiamo su di te.",
-      "pwchangeRequired": "Devi impostare una nuova password per continuare"
+      "pwchangeRequired": "Devi impostare una nuova password per continuare",
+      "profileSaved": "Profilo aggiornato"
     },
     "pwreset": {
       "title": "Password dimenticata",
@@ -178,6 +180,7 @@
       "register": "Registrati",
       "created": "Ticket creato",
       "posted": "Messaggio inviato",
+      "editSaved": "Modifiche al ticket salvate",
       "edit": "Modifica",
       "basic": "Informazioni sul ticket",
       "status": "Stato",

@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Link } from "@/i18n/navigation";
@@ -13,15 +14,7 @@ export interface DataColumn {
 }
 
 /** Tabella stile TailAdmin per le liste del pannello (server component). */
-export default function DataTable({
-  columns,
-  rows,
-  empty,
-}: {
-  columns: DataColumn[];
-  rows: { key: string | number; cells: Record<string, ReactNode> }[];
-  empty: string;
-}) {
+export default function DataTable({ columns, rows, empty }: { columns: DataColumn[]; rows: { key: string | number; cells: Record<string, ReactNode> }[]; empty: string }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
       <table className="min-w-full text-sm">
@@ -33,9 +26,9 @@ export default function DataTable({
                 className={cn("px-4 py-3 text-start text-theme-xs font-medium whitespace-nowrap text-gray-500 uppercase dark:text-gray-400", c.className)}
               >
                 {c.sortHref ? (
-                  <Link href={c.sortHref} className="hover:text-gray-800 dark:hover:text-white">
+                  <Link href={c.sortHref} className="inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-white">
                     {c.label}
-                    {c.sorted === "asc" ? " ▲" : c.sorted === "desc" ? " ▼" : ""}
+                    {c.sorted === "asc" ? <ArrowUp className="size-3.5" /> : c.sorted === "desc" ? <ArrowDown className="size-3.5" /> : null}
                   </Link>
                 ) : (
                   c.label
@@ -71,7 +64,8 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 className="text-xl font-semibold text-gray-800 dark:text-white/90">{title}</h2>
+        {/* titolo principale della pagina: h1 (stesso aspetto) */}
+        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
       </div>
       {actions}
@@ -81,7 +75,7 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
 
 export function SearchBox({ action, name = "q", value, placeholder, hidden }: { action: string; name?: string; value?: string; placeholder: string; hidden?: Record<string, string> }) {
   return (
-    <form action={action} className="flex gap-2">
+    <form action={action} role="search" className="flex w-full gap-2 sm:w-auto">
       {Object.entries(hidden ?? {}).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
@@ -90,16 +84,13 @@ export function SearchBox({ action, name = "q", value, placeholder, hidden }: { 
         name={name}
         defaultValue={value}
         placeholder={placeholder}
-        className="h-10 w-64 rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden dark:border-gray-800 dark:text-white/90"
+        aria-label={placeholder}
+        className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden sm:w-64 dark:border-gray-800 dark:text-white/90"
       />
     </form>
   );
 }
 
 export function Forbidden({ message }: { message: string }) {
-  return (
-    <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400">
-      {message}
-    </div>
-  );
+  return <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400">{message}</div>;
 }

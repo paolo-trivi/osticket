@@ -118,14 +118,24 @@ async function deleteThreadAttachments(tx: DbOrTx, threadId: number): Promise<nu
 
 /**
  * AttachmentFile::deleteOrphans: file di tipo 'T' senza allegati, creati da più di un giorno; per
- * ognuno DELETE file e i dati del backend (file_chunk per il backend "D" nel DB). Con un backend su
- * filesystem il PHP rimuove anche il file su disco: qui non viene fatto (Next non gestisce quei backend).
+ * ognuno DELETE file e i dati del backend ($bk->unlink(): file_chunk per il backend "D" nel DB).
+ *
+ * File con altri backend ("F" su filesystem, plugin): il PHP cancella la riga e poi il contenuto
+ * (FilesystemStorage::unlink rimuove `<uploadpath>/<k>/<chiave>`). TailTicket legge la cartella in sola
+ * lettura e non può cancellare il file su disco: cancellare solo la riga lascerebbe su disco un file
+ * che nessuno ripulirebbe più. La riga quindi resta: è ancora orfana e la cancellerà il PHP
+ * (Cron::CleanOrphanedFiles o la prossima eliminazione di un ticket dal pannello PHP) insieme al file.
+ * Con file tutti "D" il comportamento è identico al PHP.
  */
 async function deleteOrphanFiles(tx: DbOrTx): Promise<void> {
-  const { rows } = await sql<{ id: number; bk: string }>`SELECT F.id, F.bk FROM ${table("file")} F
+  const { rows } = await sql<{
+    id: number;
+    bk: string;
+  }>`SELECT F.id, F.bk FROM ${table("file")} F
     LEFT JOIN ${table("attachment")} A ON (A.file_id = F.id)
     WHERE A.object_id IS NULL AND F.ft = 'T' AND F.created < (NOW() - INTERVAL 1 DAY)`.execute(tx);
   for (const f of rows) {
+    if (f.bk && f.bk !== "D") continue;
     const del = await sql`DELETE FROM ${table("file")} WHERE id = ${f.id} LIMIT 1`.execute(tx);
     if (Number(del.numAffectedRows ?? 0) !== 1) break;
     if (f.bk === "D") await tx.deleteFrom("file_chunk").where("file_id", "=", f.id).execute();

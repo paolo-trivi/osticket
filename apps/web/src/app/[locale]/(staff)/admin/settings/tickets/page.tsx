@@ -2,6 +2,9 @@ import { setRequestLocale } from "next-intl/server";
 
 import { requireAdmin } from "../../guard";
 import SettingsView from "../_shared/SettingsView";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("ticketsSettings");
 
 /** Impostazioni › tickets (scp/settings.php?t=tickets). */
 export default async function TicketsSettingsPage({ params }: { params: Promise<{ locale: string }> }) {

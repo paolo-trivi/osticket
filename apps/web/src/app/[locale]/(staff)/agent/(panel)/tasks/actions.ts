@@ -4,6 +4,7 @@ import { getLocale } from "next-intl/server";
 import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
+import { withDone } from "@/components/people/PeopleDoneNotice";
 import type { PeopleActionState } from "@/components/people/types";
 import { TaskModel } from "@/lib/osticket/flags";
 import { formHtml, formIds, formNum, formStr } from "@/server/actions/form-data";
@@ -34,13 +35,14 @@ import type { WriteContext } from "@/server/domain/ticket/context";
 import { selectableDepts } from "@/server/domain/ticket/assignees";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
+import type { ReadOnlyResult } from "@/server/system/write-mode";
 
 /**
  * Server action dei task (scp/tasks.php, include/ajax.tasks.php). Sessione e permessi sono ricontrollati
  * qui come negli endpoint PHP (Task::checkStaffPerm con il permesso del ruolo nel reparto del task).
  */
 
-function fromResult(r: TaskResult): PeopleActionState {
+function fromResult(r: TaskResult | ReadOnlyResult): PeopleActionState {
   return r.ok ? { ok: true, nonce: nonce() } : { error: r.error, fields: r.fields, nonce: nonce() };
 }
 
@@ -158,9 +160,18 @@ export async function taskDueDateAction(_prev: PeopleActionState, form: FormData
 
 /** ajax.tasks.php:delete */
 export async function taskDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
-  const r = await withTask(form, TaskPerm.DELETE, async (ctx, task) => fromResult(await deleteTask(ctx, task, formHtml(form, "comments"))));
-  // La pagina del task non esiste più: redirect lato server (il refresh della vista darebbe 404)
-  if (r.ok) redirect({ href: "/agent/tasks", locale: await getLocale() });
+  let number = "";
+  const r = await withTask(form, TaskPerm.DELETE, async (ctx, task) => {
+    number = task.number;
+    return fromResult(await deleteTask(ctx, task, formHtml(form, "comments")));
+  });
+  // La pagina del task non esiste più: redirect lato server (il refresh della vista darebbe 404), con
+  // l'esito per la lista ("Task #N deleted successfully" di ajax.tasks.php)
+  if (r.ok)
+    redirect({
+      href: withDone("/agent/tasks", "task_deleted", number),
+      locale: await getLocale(),
+    });
   return r;
 }
 
@@ -195,7 +206,12 @@ export async function taskCreateAction(_prev: PeopleActionState, form: FormData)
   });
   if (!r.ok) return fromResult(r);
   revalidatePath("/agent/tasks");
-  return { ok: true, redirect: `/agent/tasks/${r.id}`, nonce: nonce() };
+  if (ticketId) revalidatePath(`/agent/tickets/${ticketId}`);
+  return {
+    ok: true,
+    redirect: withDone(`/agent/tasks/${r.id}`, "task_created", r.number),
+    nonce: nonce(),
+  };
 }
 
 /** ajax.tasks.php:massProcess */
@@ -238,6 +254,7 @@ export async function taskMassAction(_prev: PeopleActionState, form: FormData): 
     if (row && checkTaskPerm(row, agent)) visible.push(id);
   }
   const count = await runWrite({ agent, ip: await clientIp() }, (ctx) => massTaskAction(ctx, visible, op));
+  if (typeof count !== "number") return { error: count.error, nonce: nonce() };
   revalidatePath("/agent/tasks");
   if (!count) return { error: "none_processed", nonce: nonce() };
   return { ok: true, count, notice: count === ids.length ? "mass_done" : "mass_partial", nonce: nonce() };

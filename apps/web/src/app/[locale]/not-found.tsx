@@ -1,11 +1,17 @@
-"use client";
-
 import GridShape from "@/components/common/GridShape";
 import { Link } from "@/i18n/navigation";
+import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 import Image from "next/image";
 import { withBase } from "@/lib/base-path";
 
+/** Titolo della scheda: "Pagina non trovata · <nome>" (modello del layout). */
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("notFound"))("title") };
+}
+
+/** Pagina 404 (componente server: può esportare i metadata). */
 export default function NotFound() {
   const t = useTranslations("notFound");
   const tb = useTranslations("brand");

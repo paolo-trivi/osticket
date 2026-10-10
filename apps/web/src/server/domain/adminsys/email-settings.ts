@@ -3,6 +3,7 @@ import "server-only";
 import type { DbOrTx } from "../../db";
 import { isset, str, truthy, type PhpVars } from "../../php/values";
 import { ConfigWriter } from "../admin/config-write";
+import { settingsValues } from "../admin/settings";
 import { validate, type Errors, type FieldRule } from "../admin/validator";
 import { isEmail } from "../forms/validator";
 
@@ -61,8 +62,10 @@ export async function updateEmailsSettings(executor: DbOrTx, vars: PhpVars): Pro
   return { ok, errors };
 }
 
-/** Valori correnti per il form (Config::getConfigInfo). */
+/**
+ * Valori correnti per il form (Config::getConfigInfo): righe "core" più OsticketConfig::$defaults,
+ * così accept_unregistered_email, add_email_collabs e verify_email_addrs assenti dal DB risultano attive.
+ */
 export async function emailsSettingsValues(executor: DbOrTx): Promise<Record<string, string>> {
-  const rows = await executor.selectFrom("config").select(["key", "value"]).where("namespace", "=", "core").execute();
-  return Object.fromEntries(rows.map((r) => [r.key, r.value ?? ""]));
+  return settingsValues(executor);
 }

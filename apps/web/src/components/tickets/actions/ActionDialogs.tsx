@@ -15,10 +15,12 @@ import {
   type TicketActionState,
 } from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions-assign";
 import Button from "@/components/ui/button/Button";
+import { Modal } from "@/components/ui/modal";
 
 import ActionDialog, { ErrorBox } from "./ActionDialog";
 import { FieldCheck, FieldSelect, toOptions } from "./FormFields";
 import type { ActionKind, TicketActionsData } from "./types";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 interface Props {
   kind: ActionKind;
@@ -60,15 +62,14 @@ export default function ActionDialogs({ kind, data, onClose, onSuccess }: Props)
       const agents = kind === "assignAgent";
       // getAssignmentForm: preselezione e casella "mantieni referral" solo con un assegnatario del tipo scelto
       const current = !data.isAssigned ? "" : agents ? (data.assignedStaff ? `s${data.assignedStaff.id}` : "") : data.assignedTeam ? `t${data.assignedTeam.id}` : "";
+      const title = t(agents ? "assignAgentTitle" : "assignTeamTitle", {
+        number: data.number,
+        verb: data.isAssigned ? t("reassign") : t("assign"),
+      });
+      // nessun assegnatario possibile: niente form con una select vuota e "Assegna" inutilizzabile, solo la spiegazione
+      if (!(agents ? data.agents : data.teams).length) return <EmptyDialog title={title} message={t(agents ? "noAgents" : "noTeams")} onClose={onClose} />;
       return (
-        <ActionDialog
-          {...common}
-          title={t(agents ? "assignAgentTitle" : "assignTeamTitle", { number: data.number, verb: data.isAssigned ? t("reassign") : t("assign") })}
-          notice={notice}
-          action={assignAction}
-          submitLabel={t("assign")}
-          commentsPlaceholder={t("assignPlaceholder")}
-        >
+        <ActionDialog {...common} title={title} notice={notice} action={assignAction} submitLabel={t("assign")} commentsPlaceholder={t("assignPlaceholder")}>
           <FieldSelect
             name="assignee"
             label={t("assignee")}
@@ -120,6 +121,26 @@ export default function ActionDialogs({ kind, data, onClose, onSuccess }: Props)
   }
 }
 
+/** Modale senza azione possibile: titolo, spiegazione e "Chiudi". */
+function EmptyDialog({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
+  const t = useTranslations("ticketActions");
+  return (
+    <Modal isOpen onClose={onClose} className="m-4 max-w-[600px] p-6 lg:p-8">
+      <div className="space-y-5">
+        <h4 className="pe-12 text-title-sm font-semibold text-gray-800 dark:text-white/90">{title}</h4>
+        <p role="status" className="rounded-lg bg-warning-50 px-4 py-3 text-theme-sm text-warning-700 dark:bg-warning-500/15 dark:text-orange-400">
+          {message}
+        </p>
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={onClose}>
+            {t("close")}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /** Scheda "Referral" del modale refer.tmpl.php: elenco dei referral con rimozione (do=manage). */
 function ReferralsManager({ data, onSuccess }: { data: TicketActionsData; onSuccess: (state: TicketActionState) => void }) {
   const t = useTranslations("ticketActions");
@@ -132,8 +153,9 @@ function ReferralsManager({ data, onSuccess }: { data: TicketActionsData; onSucc
     }
   }, [state, onSuccess]);
   const label = { S: t("agent"), E: t("team"), D: t("department") };
+  const submit = submitKeepingValues(formAction);
   return (
-    <form action={formAction} className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
       <input type="hidden" name="ticketId" value={data.ticketId} />
       <p className="text-theme-sm font-medium text-gray-700 dark:text-gray-400">{t("currentReferrals", { count: data.referrals.length })}</p>
       <ErrorBox state={state} />
@@ -192,9 +214,15 @@ function ReferDialog({ data, onClose, onSuccess }: { data: TicketActionsData; on
           { value: "dept", label: t("department") },
         ]}
       />
-      {target === "agent" && <FieldSelect key="agent" name="agent" placeholder={t("selectAgent")} options={toOptions(data.referral.agents)} />}
-      {target === "team" && <FieldSelect key="team" name="team" placeholder={t("selectTeam")} options={toOptions(data.referral.teams)} />}
-      {target === "dept" && <FieldSelect key="dept" name="dept" placeholder={t("selectDept")} options={toOptions(data.referral.depts)} />}
+      {target === "agent" && (
+        <FieldSelect key="agent" name="agent" label={t("agent")} placeholder={t(data.referral.agents.length ? "selectAgent" : "noneAvailable")} options={toOptions(data.referral.agents)} />
+      )}
+      {target === "team" && (
+        <FieldSelect key="team" name="team" label={t("team")} placeholder={t(data.referral.teams.length ? "selectTeam" : "noneAvailable")} options={toOptions(data.referral.teams)} />
+      )}
+      {target === "dept" && (
+        <FieldSelect key="dept" name="dept" label={t("department")} placeholder={t(data.referral.depts.length ? "selectDept" : "noneAvailable")} options={toOptions(data.referral.depts)} />
+      )}
     </ActionDialog>
   );
 }

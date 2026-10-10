@@ -1,23 +1,32 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { WriteGate } from "@/components/common/WriteGate";
 import PortalThread from "@/components/portal/PortalThread";
 import ReplyForm from "@/components/portal/ReplyForm";
 import Alert from "@/components/ui/alert/Alert";
 import { Link } from "@/i18n/navigation";
 import { FormType } from "@/lib/osticket/object-types";
 import { parseId } from "@/lib/route-id";
+import { sessionClient } from "@/server/auth/client-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { loadClientTicketView } from "@/server/domain/client/ticket-view";
+import { clientCanAccess } from "@/server/domain/client/tickets";
 import { threadUploadRules } from "@/server/domain/file/upload";
 import { loadFormDef } from "@/server/domain/forms/load";
 import { formatDbDate } from "@/server/format/datetime";
 
 import { requireClient } from "../../guard";
 
-export async function generateMetadata() {
-  // titolo generico: niente dati del ticket (né l'id della URL) prima del controllo di accesso
-  return { title: (await getTranslations("portal.ticket"))("title") };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const title = (await getTranslations("portal.ticket"))("title");
+  // il numero va nel titolo solo se il visitatore può vedere il ticket (stesso controllo della vista)
+  const ticketId = parseId(id);
+  const client = ticketId ? await sessionClient() : null;
+  const row =
+    client && ticketId && (await clientCanAccess(client, ticketId)) ? await db().selectFrom("ticket").select("number").where("ticket_id", "=", ticketId).executeTakeFirst() : undefined;
+  return { title: row ? `#${row.number}` : title };
 }
 
 const EVENTS = ["created", "closed", "reopened", "edited", "collab", "merged"] as const;
@@ -26,7 +35,13 @@ const EVENTS = ["created", "closed", "reopened", "edited", "collab", "merged"] a
  * Vista del ticket per il cliente (view.inc.php): informazioni di base, campi visibili ai clienti,
  * thread senza note interne e risposta (se aperto o chiuso ma riapribile; non per i figli di un merge).
  */
-export default async function ClientTicketPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ posted?: string; created?: string }> }) {
+export default async function ClientTicketPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ posted?: string; created?: string; edited?: string }>;
+}) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   const sp = await searchParams;
@@ -56,7 +71,11 @@ export default async function ClientTicketPage({ params, searchParams }: { param
         <Alert variant="info" title={t("guestTitle")} message={t("guestText")} showLink linkHref="/account" linkText={t("register")} />
       )}
       {sp.created && <Alert variant="success" title={t("created")} message="" />}
-      {sp.posted && <Alert variant="success" title={t("posted")} message="" />}
+      {sp.edited && (
+        <div>
+          <Alert variant="success" title={t("editSaved")} message="" />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -64,9 +83,14 @@ export default async function ClientTicketPage({ params, searchParams }: { param
           <p className="text-theme-sm text-gray-500 dark:text-gray-400">#{view.number}</p>
         </div>
         {view.canEdit && (
-          <Link href={`/tickets/${view.id}/edit`} className="rounded-lg border border-gray-300 px-4 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">
-            {t("edit")}
-          </Link>
+          <WriteGate>
+            <Link
+              href={`/tickets/${view.id}/edit`}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              {t("edit")}
+            </Link>
+          </WriteGate>
         )}
       </div>
 
@@ -79,9 +103,18 @@ export default async function ClientTicketPage({ params, searchParams }: { param
         </dl>
         <dl className="space-y-2 rounded-2xl border border-gray-200 bg-white p-5 text-theme-sm dark:border-gray-800 dark:bg-white/3">
           <h2 className="mb-2 font-medium text-gray-800 dark:text-white/90">{t("user")}</h2>
-          <div className="flex justify-between gap-3"><dt className="text-gray-500 dark:text-gray-400">{t("name")}</dt><dd className="text-gray-800 dark:text-white/90">{view.ownerName}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-gray-500 dark:text-gray-400">{t("email")}</dt><dd className="text-gray-800 dark:text-white/90">{view.ownerEmail}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-gray-500 dark:text-gray-400">{t("phone")}</dt><dd className="text-gray-800 dark:text-white/90">{view.ownerPhone}</dd></div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-gray-500 dark:text-gray-400">{t("name")}</dt>
+            <dd className="text-gray-800 dark:text-white/90">{view.ownerName}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-gray-500 dark:text-gray-400">{t("email")}</dt>
+            <dd className="text-gray-800 dark:text-white/90">{view.ownerEmail}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-gray-500 dark:text-gray-400">{t("phone")}</dt>
+            <dd className="text-gray-800 dark:text-white/90">{view.ownerPhone || "—"}</dd>
+          </div>
         </dl>
       </div>
 
@@ -110,7 +143,11 @@ export default async function ClientTicketPage({ params, searchParams }: { param
       ) : view.closedNotReopenable ? (
         <Alert variant="warning" title={t("closedNotReopenable")} message="" />
       ) : null}
-      {view.canReply && <ReplyForm ticketId={view.id} reopen={view.reopenOnReply} attachments={!!message?.config.attachments} maxFileSize={rules?.size ?? 0} />}
+      {/* key: un messaggio inviato aggiunge una voce al thread e il form si rimonta vuoto; l'esito ?posted è
+          mostrato nel form stesso, dove porta il redirect a #reply */}
+      {view.canReply && (
+        <ReplyForm key={view.entries.length} posted={!!sp.posted} ticketId={view.id} reopen={view.reopenOnReply} attachments={!!message?.config.attachments} maxFileSize={rules?.size ?? 0} />
+      )}
     </div>
   );
 }

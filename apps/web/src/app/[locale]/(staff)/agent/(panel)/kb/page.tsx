@@ -5,10 +5,12 @@ import { PageHeader } from "@/components/common/DataTable";
 import CategoryCard from "@/components/kb/CategoryCard";
 import FaqList from "@/components/kb/FaqList";
 import KbSearchForm from "@/components/kb/KbSearchForm";
+import ManageInClassic from "@/components/kb/ManageInClassic";
 import SubcategoryList from "@/components/kb/SubcategoryList";
 import { redirect } from "@/i18n/navigation";
 import { listTopCategories } from "@/server/domain/kb/categories";
 import { kbSearchFilters, searchFaqs } from "@/server/domain/kb/search";
+import { GlobalPerm } from "@/server/domain/staff/staff";
 
 import { requireAgent } from "../../guard";
 
@@ -20,13 +22,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 const positiveInt = (v: string) => (/^\d+$/.test(v) ? Number(v) : 0);
 
 /** scp/kb.php: elenco delle categorie o ricerca FAQ (q, cid, topicId). */
-export default async function KbPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function KbPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
@@ -46,10 +42,12 @@ export default async function KbPage({
     searching ? Promise.resolve(null) : listTopCategories(),
   ]);
   const countLabel = (n: number) => tk("faqTotal", { n });
+  const phpUrl = process.env.OST_PHP_URL?.replace(/\/$/, "");
 
   return (
     <div className="space-y-6">
       <PageHeader title={t("title")} subtitle={searching ? undefined : tk("intro")} />
+      {agent.hasGlobalPerm(GlobalPerm.FAQ_MANAGE) && <ManageInClassic note={tk("manageNote")} linkLabel={tk("manageKb")} href={phpUrl ? `${phpUrl}/scp/kb.php` : undefined} />}
       <KbSearchForm
         q={q}
         categoryId={categoryId}

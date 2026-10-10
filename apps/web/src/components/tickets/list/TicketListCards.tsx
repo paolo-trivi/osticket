@@ -37,7 +37,7 @@ export default async function TicketListCards({ rows, columns, names, tz, locale
       {rows.map((r) => {
         const staff = names.get(r.staff_id) ?? "";
         const assignee = staff || r.team_name || "";
-        const cell = (c: QueueColumnDef) => <TicketCell column={c} row={r} tz={tz} locale={locale} assigneeName={assignee} staffName={staff} />;
+        const cell = (c: QueueColumnDef, empty?: string) => <TicketCell column={c} row={r} tz={tz} locale={locale} assigneeName={assignee} staffName={staff} empty={empty} />;
         return (
           <li key={r.ticket_id} className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
             <input type="checkbox" data-mass-tid value={r.ticket_id} aria-label={`#${r.number}`} className="mt-1 size-4 shrink-0 accent-brand-500" />
@@ -49,7 +49,7 @@ export default async function TicketListCards({ rows, columns, names, tz, locale
                   {rest.map((c) => (
                     <div key={c.id} className="min-w-0">
                       <dt className="truncate text-theme-xs text-gray-500 dark:text-gray-400">{label(c)}</dt>
-                      <dd className="min-w-0 break-words text-gray-700 dark:text-gray-300">{cell(c)}</dd>
+                      <dd className="min-w-0 break-words text-gray-700 dark:text-gray-300">{cell(c, "—")}</dd>
                     </div>
                   ))}
                 </dl>

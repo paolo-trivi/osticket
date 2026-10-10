@@ -9,6 +9,9 @@ import { emailsSettingsValues } from "@/server/domain/adminsys/email-settings";
 
 import { requireAdmin } from "../../guard";
 import { saveEmailsSettingsAction } from "./actions";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("emailSettings");
 
 /** Impostazioni email (include/staff/settings-emails.inc.php). */
 export default async function EmailSettingsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -28,7 +31,7 @@ export default async function EmailSettingsPage({ params }: { params: Promise<{ 
       .where("a.type", "=", "smtp")
       .execute(),
   ]);
-  const on = (k: string) => !!Number(cfg[k] ?? 0);
+  const on = (k: string) => !!cfg[k] && cfg[k] !== "0";
   return (
     <div className="space-y-6">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />

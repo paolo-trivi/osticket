@@ -3,7 +3,7 @@
 import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
-import { ChevronDownIcon } from "@/icons";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/utils";
 
 import { menuButtonClass } from "./menu-classes";
@@ -46,7 +46,7 @@ export default function MenuButton({
         className={cn("dropdown-toggle", menuButtonClass)}
       >
         {label}
-        <ChevronDownIcon aria-hidden="true" className={cn("size-4 transition-transform", open && "rotate-180")} />
+        <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", open && "rotate-180")} />
       </button>
       <Dropdown id={menuId} role="menu" triggerRef={triggerRef} isOpen={open} onClose={close} className={cn(width, "p-2")}>
         {children(choose)}

@@ -3,6 +3,7 @@
     "cancel": "Cancel",
     "working": "Please wait…",
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "generic": "The operation failed. Please try again.",
       "session_expired": "Session expired: please sign in again.",
       "not_found": "Unknown or inaccessible item.",
@@ -38,7 +39,11 @@
       "token": "Invalid reset token: sign out and try again.",
       "invalid_code": "Invalid code.",
       "code_missing": "No pending code: request a new one.",
-      "code_expired": "Code expired or too many attempts: request a new one."
+      "code_expired": "Code expired or too many attempts: request a new one.",
+      "org_required": "Select an organization.",
+      "lock_guest": "Only registered accounts can be locked.",
+      "unlock_guest": "Only registered accounts can be unlocked.",
+      "reset_guest": "Only registered accounts can receive a password reset."
     },
     "fieldErrors": {
       "required": "Required field",
@@ -65,6 +70,46 @@
       "phone_ext_missing": "Extension without a phone number",
       "files_max": "Too many files",
       "date_past": "The date must be in the future"
+    },
+    "dismiss": "Dismiss",
+    "done": {
+      "task_created": "Task #{number} created.",
+      "task_deleted": "Task #{number} deleted successfully.",
+      "task_claimed": "Task assigned to you.",
+      "task_assigned": "Task assigned to {name}.",
+      "task_transferred": "Task transferred to {dept} department.",
+      "task_closed": "Task closed.",
+      "task_reopened": "Task reopened.",
+      "task_edited": "Task updated.",
+      "task_due": "Task due date updated.",
+      "user_created": "Successfully added {name}.",
+      "user_updated": "Successfully updated this end user.",
+      "user_deleted": "End user deleted.",
+      "user_org": "End user's organization updated.",
+      "account_registered": "Account created successfully.",
+      "account_updated": "Account updated successfully.",
+      "confirm_sent": "Account activation email sent.",
+      "reset_sent": "Account password reset email sent.",
+      "locked": "Account locked.",
+      "unlocked": "Account unlocked.",
+      "imported": "Successfully imported {n, plural, one {# end user} other {# end users}}.",
+      "org_created": "Successfully added {name}.",
+      "org_deleted": "Organization deleted successfully.",
+      "org_updated": "Organization updated.",
+      "org_settings": "Organization settings updated.",
+      "org_user_added": "End user added to the organization.",
+      "org_users_removed": "Successfully removed {n, plural, one {# selected end user} other {# selected end users}}.",
+      "mass_done": "Successfully managed {n, plural, one {# selected item} other {# selected items}}.",
+      "mass_partial": "{n} of {total} selected items processed: not all selected items were updated."
+    },
+    "importErrors": {
+      "badData": "Bad data. Expected: {fields}",
+      "required": "Both `name` and `email` fields are required",
+      "empty": "Whoops. Perhaps you meant to send some CSV records",
+      "header": "{header}: Unable to map header to the object field",
+      "variable": "{header}: Field must have `variable` set to be imported",
+      "user": "Unable to import user: {data}",
+      "parse": "Unable to parse submitted csv"
     }
   },
   "peopleTasks": {
@@ -97,6 +142,9 @@
       "assign": "Assign",
       "assignAgent": "Assign to agent",
       "assignTeam": "Assign to team",
+      "reassign": "Reassign",
+      "reassignAgent": "Reassign to agent",
+      "reassignTeam": "Reassign to team",
       "transfer": "Transfer",
       "close": "Close",
       "reopen": "Reopen",
@@ -140,6 +188,27 @@
     "postNote": "Post note",
     "replyPosted": "Update posted.",
     "notePosted": "Internal note posted."
+  },
+  "peopleTaskEvents": {
+    "created": "Created by <b>{somebody}</b>",
+    "assignedStaff": "<b>{somebody}</b> assigned this to <b>{target}</b>",
+    "assignedTeam": "<b>{somebody}</b> assigned this to team <b>{target}</b>",
+    "claimed": "<b>{somebody}</b> claimed this",
+    "assigned": "Assignee changed by <b>{somebody}</b>",
+    "released": "<b>{somebody}</b> released task assignment",
+    "referred": "<b>{somebody}</b> referred this to <b>{target}</b>",
+    "closedStatus": "Closed by <b>{somebody}</b> with status of <b>{status}</b>",
+    "closed": "Closed by <b>{somebody}</b>",
+    "reopened": "Reopened by <b>{somebody}</b>",
+    "overdue": "Flagged as overdue by the system",
+    "transferred": "<b>{somebody}</b> transferred this to <b>{target}</b>",
+    "statusChanged": "<b>{somebody}</b> changed the status to <b>{status}</b>",
+    "edited": "Updated by <b>{somebody}</b>",
+    "collab": "<b>{somebody}</b> updated the collaborators",
+    "merged": "<b>{somebody}</b> merged tasks",
+    "linked": "<b>{somebody}</b> linked tasks",
+    "resent": "<b>{somebody}</b> resent a previous response",
+    "deleted": "Deleted by <b>{somebody}</b>"
   },
   "peopleDir": {
     "newUser": "New user",
@@ -335,6 +404,7 @@
     "login": "Sign in",
     "backToLogin": "Back to sign in",
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "invalid_code": "Invalid code",
       "reset_disabled": "Password resets are disabled.",
       "reset_unavailable": "Unable to reset password. Contact your administrator.",

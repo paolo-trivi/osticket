@@ -4,6 +4,7 @@ import { getLocale } from "next-intl/server";
 import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
+import { withDone } from "@/components/people/PeopleDoneNotice";
 import type { PeopleActionState } from "@/components/people/types";
 import { formFlag, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { nonce, peopleState } from "@/server/actions/result";
@@ -40,7 +41,13 @@ export async function orgCreateAction(_prev: PeopleActionState, form: FormData):
   const input = await fieldsOf(form, "O");
   return run(async (ctx) => {
     const r = await createOrg(ctx, input);
-    return r.ok ? { ok: true, redirect: `/agent/orgs/${r.id}`, nonce: nonce() } : peopleState(r);
+    return r.ok
+      ? {
+          ok: true,
+          redirect: withDone(`/agent/orgs/${r.id}`, "org_created"),
+          nonce: nonce(),
+        }
+      : peopleState(r);
   });
 }
 
@@ -76,7 +83,11 @@ export async function orgProfileAction(_prev: PeopleActionState, form: FormData)
 export async function orgDeleteAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   const id = orgId(form);
   const r = await run(async (ctx) => peopleState(await deleteOrg(ctx, id)));
-  if (r.ok) redirect({ href: "/agent/orgs", locale: await getLocale() });
+  if (r.ok)
+    redirect({
+      href: withDone("/agent/orgs", "org_deleted"),
+      locale: await getLocale(),
+    });
   return r;
 }
 

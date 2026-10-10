@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "@/server/db";
 import { postNote, postReply } from "@/server/domain/ticket/post";
 import { loadAgent } from "@/server/domain/staff/staff";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
@@ -15,10 +15,10 @@ beforeAll(prepareSnapshot);
 beforeEach(resetWorkingDatabases);
 afterAll(closeDb);
 
-async function asAgent<T>(staffId: number, fn: Parameters<typeof runWrite<T>>[1]): Promise<T> {
+async function asAgent<T>(staffId: number, fn: Parameters<typeof runWriteOrThrow<T>>[1]): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
 describe("nota interna e risposta: PHP vs TypeScript", () => {
@@ -128,7 +128,9 @@ describe("nota interna e risposta: PHP vs TypeScript", () => {
 
 /** status_id di un ticket in uno dei due DB di lavoro */
 async function statusIn(dbName: string, ticketId: number): Promise<number | undefined> {
-  const { rows } = await sql<{ s: number }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
+  const { rows } = await sql<{
+    s: number;
+  }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
   return rows[0]?.s;
 }
 

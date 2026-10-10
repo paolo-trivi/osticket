@@ -1,6 +1,8 @@
-# Modalità "attach": solo TailTicket + proxy, collegati a un osTicket 1.18 già esistente.
+# Modalità "attach": solo TailTicket + proxy, collegati a un osTicket 1.18 già in produzione.
 #   COMPOSE_FILE=compose.attach.yaml (./tailticket init --attach lo imposta)
-# Il DB esistente si indica con TAILTICKET_DB_* oppure montando il suo ost-config.php (OST_CONFIG_FILE).
+# Il DB esistente si indica montando il suo ost-config.php (OST_CONFIG_FILE, consigliato: una sola fonte)
+# oppure con le variabili OST_DB_*. TailTicket parte in sola lettura (TAILTICKET_MODE=readonly) finché
+# ./tailticket mode non verifica doctor e backup (deploy/README.md, "Collegare un osTicket esistente").
 name: tailticket
 
 services:
@@ -11,23 +13,53 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # gruppo con cui leggere ost-config.php e gli allegati quando non sono leggibili da tutti ("app" = nessuno in più)
+    group_add:
+      - "${TAILTICKET_FILES_GID:-app}"
     environment:
-      OST_CONFIG_PATH: ${OST_CONFIG_PATH_IN_CONTAINER:-}
-      OST_DB_HOST: ${TAILTICKET_DB_HOST:-}
-      OST_DB_PORT: ${TAILTICKET_DB_PORT:-}
-      OST_DB_NAME: ${TAILTICKET_DB_NAME:-}
-      OST_DB_USER: ${TAILTICKET_DB_USER:-}
-      OST_DB_PASS: ${TAILTICKET_DB_PASSWORD:-}
-      OST_TABLE_PREFIX: ${TAILTICKET_TABLE_PREFIX:-}
-      OST_SECRET_SALT: ${TAILTICKET_SECRET_SALT:-}
-      OST_DB_TIMEZONE: ${TAILTICKET_DB_TIMEZONE:-}
+      OST_CONFIG_PATH: ${OST_CONFIG_FILE:+${OST_CONFIG_PATH_IN_CONTAINER:-/etc/osticket/ost-config.php}}
+      # Connessione e identità del DB: chiave senza valore = passata al container SOLO se presente in .env
+      # (altrimenti la variabile non esiste). Con ost-config.php montato restano tutte assenti: il file è la
+      # fonte e una variabile con un valore diverso blocca l'avvio. Senza file (o in modalità "copia", quando
+      # il container usa un indirizzo o un utente MySQL propri) sono la configurazione del DB.
+      OST_DB_HOST:
+      OST_DB_PORT:
+      OST_DB_NAME:
+      OST_DB_USER:
+      OST_DB_PASS:
+      OST_TABLE_PREFIX:
+      OST_SECRET_SALT:
+      OST_DB_TIMEZONE:
+      # readonly | operational | full: in attach il default è la sola lettura (./tailticket mode)
+      TAILTICKET_MODE: ${TAILTICKET_MODE:-readonly}
+      # /api/doctor (./tailticket doctor, dall'interno del container; il proxy non la espone)
+      TAILTICKET_DOCTOR_TOKEN: ${TAILTICKET_DOCTOR_TOKEN:-}
+      # allegati su disco del plugin storage-fs, montati in sola lettura (i nuovi allegati vanno nel DB)
+      OST_ATTACHMENTS_DIR:
+      # registro delle scritture (una riga JSON per operazione, senza dati personali)
+      TAILTICKET_JOURNAL_DIR: /var/lib/tailticket/journal
       APP_SESSION_SECRET: ${TAILTICKET_SESSION_SECRET:?impostare TAILTICKET_SESSION_SECRET (./tailticket init --attach)}
       OST_PHP_URL: ${TAILTICKET_CLASSIC_URL:-}
+      # relay solo se osTicket non ha account SMTP (usa mail() di PHP); vuoto = account SMTP di osTicket
       OST_SMTP_URL: ${TAILTICKET_SMTP_URL:-}
       # proxy fidati davanti alla app (Caddy di questo file: 1); l'IP del client arriva in X-Real-IP
       TAILTICKET_TRUSTED_PROXY_HOPS: ${TAILTICKET_TRUSTED_PROXY_HOPS:-1}
     volumes:
-      - ${OST_CONFIG_FILE:-/dev/null}:/etc/osticket/ost-config.php:ro
+      # sorgenti mai create da Docker (create_host_path: false): un percorso sbagliato è un errore, non una
+      # cartella nuova sul server di produzione
+      - type: bind
+        source: ${OST_CONFIG_FILE:-/dev/null}
+        target: ${OST_CONFIG_PATH_IN_CONTAINER:-/etc/osticket/ost-config.php}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OST_ATTACHMENTS_HOST_DIR:-/dev/null}
+        target: ${OST_ATTACHMENTS_DIR:-/run/tailticket/no-attachments}
+        read_only: true
+        bind:
+          create_host_path: false
+      - journal:/var/lib/tailticket/journal
 
   proxy:
     image: caddy:2.10.2
@@ -49,3 +81,4 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+  journal:

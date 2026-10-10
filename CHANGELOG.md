@@ -4,6 +4,112 @@ Formato ispirato a [Keep a Changelog](https://keepachangelog.com/it/1.1.0/). Ver
 
 ## [Non rilasciato]
 
+Correzioni dal collaudo visivo su un'installazione pulita (portale, pannello agenti, area admin, scansione del codice).
+
+### Corretto
+- **Redirect dietro il reverse proxy**: i route handler puntavano all'host interno del container (`http://0.0.0.0:3000`). Si rompevano il link di accesso al ticket via email, la conferma dell'account cliente, la conferma del reset e i loghi predefiniti. Ora usano una `Location` relativa.
+- **Impostazioni email**: su un'installazione pulita "Accetta email da utenti non registrati", "Aggiungi i destinatari in copia come collaboratori" e "Verifica record MX" apparivano spente. Salvare la pagina le spegneva davvero e le email dei nuovi utenti venivano rifiutate. Ora valgono i default del PHP (`class.config.php`), verificati da un test.
+- **Form che non perdono i dati**: dopo un errore di validazione i valori restano, mentre con `<form action>` React 19 azzerava il form a fine azione. Riguarda:
+  - tutti i form admin e di sistema;
+  - "Modifica ticket", composer di ticket e task, dialog delle azioni e di massa, collaboratori, referral;
+  - profilo agente, 2FA e recupero password;
+  - portale: risposta con allegati, registrazione e profilo, modifica ticket, reset password.
+
+  Una sola implementazione: `src/lib/submit-keeping-values.ts`. Anche gli allegati già caricati in "Nuovo ticket" e "Apri ticket" restano.
+- **Invio nei campi di ricerca**: in "Cerca utente", "Collaboratori (Cc)", "Gestisci collaboratori" e "Unisci" premere Invio inviava l'intero form (es. ticket creato senza Cc). Ora sceglie il suggerimento evidenziato, con navigazione da tastiera (combobox ARIA). In "Unisci" si aggiunge un ticket cercandolo per numero, come nel PHP.
+- **Thread ed eventi**:
+  - l'evento di chiusura e il cambio di stato mostrano il nome dello stato;
+  - i riferimenti salvati come `[id, nome]` (es. assegnatario) non restano più vuoti;
+  - tradotti "unlinked" e l'origine ("via Telefono");
+  - collaboratori, proprietario, argomento, SLA, scadenza e campi modificati descritti come nel PHP;
+  - la vista task mostra i suoi eventi.
+- **Esiti mostrati dopo ogni azione**:
+  - ticket: assegnazione, trasferimento, chiusura (anche da risposta), eliminazione, creazione;
+  - task, utenti e organizzazioni: creazione, modifica, importazione, blocco, reset, eliminazione;
+  - profilo e modifica ticket del portale.
+
+  Gli avvisi non si impilano più, e gli esiti in query string dell'area admin non si sommano ai nuovi. Il banner di esito o errore dei form lunghi viene portato in vista.
+- **Nuovo ticket da agente**:
+  - "Assegna a" propone gli stessi agenti e team del PHP; prima un team senza membri faceva fallire l'assegnazione senza avviso;
+  - in "Utente esistente" senza scelta compare "Seleziona un utente";
+  - `?uid=` preseleziona l'utente, ed è collegato dalla pagina utente.
+- **Scadenza**: creazione, modifica e modifica del singolo campo usano tutte il fuso dell'agente. Il PHP mostra il fuso dell'agente ma rilegge in UTC, spostando l'ora a ogni salvataggio (doc 17).
+- **SLA**:
+  - in "Modifica ticket" lo SLA disattivato del ticket resta tra le opzioni e non viene rimosso al salvataggio;
+  - nell'admin un periodo di tolleranza non intero dà un errore invece di un falso "salvato".
+- **Area admin**:
+  - "Versione di osTicket" presa dalla firma dello schema se manca `bootstrap.php`;
+  - conteggio della lista di sistema "Ticket Status";
+  - opzioni allineate al PHP (argomenti e padre solo attivi, stati e SLA con "(disattivato)");
+  - in "Sistema" i formati avanzati compaiono solo con "Avanzato" e le lingue hanno il nome per esteso;
+  - la descrizione delle voci d'orario indica il giorno;
+  - tolta la nota tecnica sul campo "visibile" degli agenti.
+- **Task**: i contatori di `/agent/tasks?ticket=N` contano solo i task del ticket; con un assegnatario il pulsante dice "Riassegna".
+- **Dashboard**: il grafico include i giorni senza eventi e mostra i marcatori, i colori della legenda non si ripetono e i nomi degli eventi sono tradotti.
+- **Menu e navigazione**: i menu a tendina restano nell'area del contenuto (finivano sotto la sidebar).
+- **Sidebar**: si apre ed evidenzia il gruppo che contiene la pagina, compresi dettaglio ticket, coda predefinita e ricerca. Resta attiva solo la voce più specifica. Niente più flash grigio né animazione a ogni caricamento in tema scuro.
+- **Portale**: "Stato del ticket" risulta attivo.
+- **Date**: nel fuso dell'agente e con un formato coerente fra liste e viste (agenti, ruoli, orari, SLA, ban list, code, utenti, task, voce del thread).
+- **Pagina 404**: gli URL inesistenti mostrano la pagina localizzata invece di quella predefinita di Next.
+- **Board**: due cambi ravvicinati di colonne e swimlane vengono applicati entrambi; all'apertura parte dalla prima colonna e i filtri vanno a capo.
+- **Testi e traduzioni**:
+  - plurali di utenti, organizzazioni e riepilogo agenti;
+  - descrizioni dei permessi tradotte;
+  - intestazioni "Date Closed"/"Closed By" e nome della coda nell'export;
+  - messaggi specifici al posto di "Nessun elemento elaborato";
+  - testi d'esito uniformi nell'area admin.
+
+### Accessibilità e interfaccia
+- **Icone da un solo kit**: tutte le icone vengono da [Lucide](https://lucide.dev) (`lucide-react`, licenza ISC), al posto degli SVG del template, delle emoji (allegati, lucchetto, collegamenti, cartelle) e dei caratteri usati come icone (frecce di ordinamento e di ritorno, ×, barra dell'editor). Restano immagini solo le bandiere delle lingue; un test impedisce il ritorno delle emoji.
+- **Titoli della scheda**: per tutte le pagine dell'area admin, per le pagine di dettaglio e accesso agenti, per la 404 e per il ticket del portale (con il numero, solo se visibile).
+- **Etichette dei campi**: collegate con `htmlFor`, con suggerimento ed errore in `aria-describedby` e `aria-invalid`. Gruppi di radio e checkbox con `fieldset`/`legend`; editor, firma, ricerca e titolo della nota con un nome accessibile.
+- **Annunci e intestazioni**: banner con `role=alert`/`status`; `h1` nelle pagine; `aria-current`/`aria-expanded` nella navigazione.
+- **Componenti interattivi**: schede del composer con `role=tab`; menu mobile del portale chiudibile con Esc.
+- **Editor**: il pulsante "Collegamento" usa un riquadro della UI invece di `window.prompt`.
+- **Azioni di massa**: quelle di task, utenti, organizzazioni e area admin sono inattive senza selezione. Nell'admin il conteggio è visibile e la conferma usa un dialog della UI invece di `alert()`/`confirm()`.
+- **Liste su mobile**: utenti, organizzazioni e task diventano card; nelle card dei ticket i campi vuoti mostrano "—".
+- **Tema scuro**: checkbox, radio e controlli nativi scuri (`color-scheme`); pulsanti disabilitati leggibili.
+- **Layout**:
+  - il campo portato in vista non finisce sotto l'header fisso;
+  - testata del ticket stabile;
+  - avvisi degli avvisi automatici (Ticket/Task) raggruppati per avviso;
+  - pagina "Password dimenticata" centrata.
+- **Rimandi al pannello classico** dove la funzione è solo lì: KB e risposte predefinite, configurazione dei campi dei Moduli, riordino delle liste, Plugin, lista di sistema.
+
+### Collegamento a un osTicket in produzione (modalità attach)
+Obiettivo: TailTicket non deve mai rompere un osTicket esistente.
+
+- **Gate unico delle scritture** a livello di driver: ogni query che modifica dati passa da un solo controllo, comprese area admin, login, lock, upload, syslog e tema.
+  - Tre modalità con `TAILTICKET_MODE`: `readonly`, `operational` (area admin in sola lettura) e `full`.
+  - Senza la variabile vale `full`, ma si scende comunque in sola lettura se lo schema non è verificato o se un controllo critico fallisce (prefisso, SECRET_SALT, fuso).
+  - In sola lettura il login funziona senza scrivere; le operazioni rispondono `read_only` e l'interfaccia mostra un banner e nasconde o disattiva le azioni.
+- **Doctor** (`./tailticket doctor`, `/api/doctor` protetto da token, sezione nella pagina di sistema). Controlla:
+  - schema, prefisso e fuso;
+  - SECRET_SALT, sui Message-ID ricevuti e sulle credenziali cifrate dal PHP;
+  - privilegi dell'utente DB (niente DDL) e invio email: verifica SMTP senza inviare; blocca se non c'è un relay;
+  - allegati su filesystem, plugin e backend LDAP (avvisi), autocron;
+  - fonte dei dati di connessione.
+- **`/api/health`** pubblico, usato anche dall'healthcheck Docker.
+- **Registro delle scritture** (`TAILTICKET_JOURNAL_DIR`): tabelle e verbi per operazione, mai valori.
+- **Configurazione da una sola fonte**:
+  - con `ost-config.php` montato, DB, prefisso e SECRET_SALT vengono dal file e un valore diverso blocca l'avvio;
+  - host, porta, utente e password possono differire, per un utente MySQL dedicato con soli privilegi DML.
+- **Allegati su filesystem** (plugin storage-fs): letti da un mount in sola lettura (`OST_ATTACHMENTS_DIR`). Le email non partono più con allegati vuoti e i file su disco non diventano orfani.
+- **I form non riscrivono più valori del PHP che non conoscono**, che ora sono mostrati e preservati:
+  - storage degli allegati, backend LDAP degli agenti, credenziali OAuth2;
+  - lingue secondarie, avatar e policy dei plugin, 2FA di un plugin.
+- **Deploy**:
+  - `init --attach --config ost-config.php [--attachments …]`;
+  - `up`/`update` con avvio protetto: parte in sola lettura, esegue il doctor e scrive solo senza blocchi;
+  - `mode` per passare in scrittura, solo con doctor verde, backup recente e conferma;
+  - `readonly` come interruttore d'emergenza;
+  - `backup` del DB di produzione in sola lettura;
+  - `rehearse`: prova generale su una copia del DB, con la posta catturata da Mailpit.
+
+### Deploy
+- L'admin creato da `./tailticket up` deve cambiare la password al primo accesso, sia in TailTicket sia nel pannello classico. La password iniziale sta in chiaro in `.env` e viene stampata a schermo; prima il cambio non veniva imposto.
+- Il link con token delle email agli agenti (`/classic/scp/pwreset.php?token=…`, benvenuto e reset password) apre la pagina di TailTicket. Il modulo "password dimenticata" del pannello classico resta invariato.
+
 ## [1.0.0] — 2026-10-10
 
 Prima release stabile di TailTicket: nuova interfaccia per osTicket 1.18.4 sullo stesso database, senza DDL, con il pannello PHP classico che continua a funzionare accanto.

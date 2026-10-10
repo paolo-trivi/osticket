@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { convert as htmlToText } from "html-to-text";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 import { coreConfig, loadConfigNamespace } from "../config/config";
 import { decrypt } from "../crypto/crypto";
@@ -47,7 +48,12 @@ export interface OutgoingMail {
   /** destinatario per il tag del Message-ID */
   recipient: { userId: number; utype: RecipientClass };
   /** thread entry di riferimento (opzione 'thread' del PHP) */
-  thread?: { entryId: number; threadId: number; inReplyTo?: string | null; references?: string | null };
+  thread?: {
+    entryId: number;
+    threadId: number;
+    inReplyTo?: string | null;
+    references?: string | null;
+  };
   notice?: boolean;
   autoreply?: boolean;
   bulk?: boolean;
@@ -77,19 +83,31 @@ export function htmlToPlain(html: string): string {
   });
 }
 
+type LocalDelivery = { kind: "smtp-url"; url: string } | { kind: "sendmail"; command: string[] };
+
+/** Trasporto locale usato quando nessun account SMTP riesce (sola lettura: anche per il doctor). */
+export function localDelivery(): LocalDelivery {
+  const smtpUrl = process.env.OST_SMTP_URL;
+  if (smtpUrl) return { kind: "smtp-url", url: smtpUrl };
+  return {
+    kind: "sendmail",
+    command: (process.env.OST_SENDMAIL_PATH ?? "/usr/sbin/sendmail -t -i").trim().split(/\s+/),
+  };
+}
+
 /**
  * Invio come mail() di PHP: messaggio MIME completo su stdin del comando sendmail_path
  * (OST_SENDMAIL_PATH, default "/usr/sbin/sendmail -t -i"); in alternativa OST_SMTP_URL.
  */
 async function deliverLocal(message: Mail.Options, envelopeFrom: string): Promise<void> {
-  const smtpUrl = process.env.OST_SMTP_URL;
-  if (smtpUrl) {
-    await nodemailer.createTransport(smtpUrl).sendMail(message);
+  const local = localDelivery();
+  if (local.kind === "smtp-url") {
+    await nodemailer.createTransport(local.url).sendMail(message);
     return;
   }
   const built = await nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "unix" }).sendMail(message);
   const raw = built.message as Buffer;
-  const cmd = (process.env.OST_SENDMAIL_PATH ?? "/usr/sbin/sendmail -t -i").trim().split(/\s+/);
+  const cmd = local.command;
   await new Promise<void>((resolve, reject) => {
     // -f: mittente della busta (Return-Path), come il trasporto Sendmail di osTicket
     const args = envelopeFrom ? [...cmd.slice(1), "-f", envelopeFrom] : cmd.slice(1);
@@ -155,6 +173,64 @@ async function smtpCredentials(acc: SmtpAccount, executor: DbOrTx): Promise<{ us
   const pass = decrypt(conf.str("passwd"), installConfig().secretSalt, createHash("md5").update(user + ns, "utf8").digest("hex"));
   if (!user || pass === false) return false;
   return { user, pass };
+}
+
+/**
+ * Smtp::getConnectionConfig: cifratura da host/porta (connectionOf); senza credenziali il PHP si
+ * collega in chiaro (nessun ssl), con credenziali ssl = implicita, tls = STARTTLS.
+ */
+function smtpTransportOptions(acc: SmtpAccount, creds: { user: string; pass: string } | null): SMTPTransport.Options {
+  const conn = connectionOf(acc.host, acc.port, "SMTP");
+  const ssl = creds ? conn.ssl : null;
+  return {
+    host: conn.host,
+    port: conn.port,
+    secure: ssl === "ssl",
+    requireTLS: ssl === "tls",
+    ignoreTLS: ssl === null,
+    auth: creds ? { user: creds.user, pass: creds.pass } : undefined,
+  };
+}
+
+/** Account SMTP che sendMail proverebbe, in ordine, con le opzioni del trasporto o il motivo per cui fallirebbe. */
+export interface SmtpRoute {
+  accountId: number;
+  address: string;
+  host: string;
+  port: number;
+  authBk: string;
+  /** opzioni di nodemailer (contengono la password: mai da mostrare) */
+  transport: SMTPTransport.Options | null;
+  problem: string | null;
+}
+
+/** Percorso d'invio per un'email di sistema, senza inviare nulla (diagnostica). */
+export async function smtpRoutesFor(email: SystemEmail | null, executor: DbOrTx = db()): Promise<SmtpRoute[]> {
+  const out: SmtpRoute[] = [];
+  for (const acc of await smtpAccountsFor(email, executor)) {
+    const base = {
+      accountId: acc.id,
+      address: acc.address,
+      host: acc.host,
+      port: acc.port,
+      authBk: acc.auth_bk,
+    };
+    const creds = await smtpCredentials(acc, executor);
+    out.push(
+      creds === false
+        ? {
+            ...base,
+            transport: null,
+            problem: `credenziali non disponibili (${acc.auth_bk})`,
+          }
+        : {
+            ...base,
+            transport: smtpTransportOptions(acc, creds),
+            problem: null,
+          },
+    );
+  }
+  return out;
 }
 
 export async function sendMail(m: OutgoingMail, executor: DbOrTx = db()): Promise<string | false> {
@@ -236,18 +312,7 @@ export async function sendMail(m: OutgoingMail, executor: DbOrTx = db()): Promis
     try {
       const creds = await smtpCredentials(acc, executor);
       if (creds === false) throw new Error(`Credentials: ${acc.auth_bk}: credenziali non disponibili`);
-      // Smtp::getConnectionConfig: cifratura da host/porta (connectionOf); senza credenziali
-      // il PHP si collega in chiaro (nessun ssl), con credenziali ssl = implicita, tls = STARTTLS
-      const conn = connectionOf(acc.host, acc.port, "SMTP");
-      const ssl = creds ? conn.ssl : null;
-      const transport = nodemailer.createTransport({
-        host: conn.host,
-        port: conn.port,
-        secure: ssl === "ssl",
-        requireTLS: ssl === "tls",
-        ignoreTLS: ssl === null,
-        auth: creds ? { user: creds.user, pass: creds.pass } : undefined,
-      });
+      const transport = nodemailer.createTransport(smtpTransportOptions(acc, creds));
       const msg: Mail.Options = { ...message };
       // Senza spoofing il mittente effettivo è l'account SMTP (Sender), il From resta quello richiesto
       if (!acc.allow_spoofing && acc.address.toLowerCase() !== fromAddress.toLowerCase()) {

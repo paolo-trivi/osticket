@@ -52,6 +52,7 @@ export async function deleteEntriesAction(scheduleId: number, form: FormData): P
   const { locale } = await requireAdminAction();
   const ids = selectedIds(parsePhpForm(form));
   const num = await adminWrite((tx) => deleteScheduleEntries(tx, scheduleId, ids));
+  if (typeof num !== "number") massRedirect(`/admin/schedules/${scheduleId}`, locale, num, "delete");
   massRedirect(`/admin/schedules/${scheduleId}`, locale, { ok: num > 0, num, error: num ? undefined : "select" }, "delete");
 }
 

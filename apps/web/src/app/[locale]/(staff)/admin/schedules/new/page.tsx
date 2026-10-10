@@ -1,12 +1,15 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import BackLink from "@/components/adminsys/BackLink";
 import AdminForm from "@/components/admin/AdminForm";
 import { PageHeader } from "@/components/common/DataTable";
-import { Link } from "@/i18n/navigation";
 import { scheduleOptions, timezoneOptions } from "@/server/domain/admin/lookups";
 
 import { requireAdmin } from "../../guard";
 import { addScheduleAction } from "../actions";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("schedules");
 
 /** Nuovo orario o copia di uno esistente (ajax.schedule.php add/clone). */
 export default async function NewSchedulePage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -18,14 +21,7 @@ export default async function NewSchedulePage({ params, searchParams }: { params
   const schedules = await scheduleOptions();
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("new")}
-        actions={
-          <Link href="/admin/schedules" className="text-sm font-medium text-brand-500 hover:text-brand-600">
-            ← {t("back")}
-          </Link>
-        }
-      />
+      <PageHeader title={t("new")} actions={<BackLink href="/admin/schedules" label={t("back")} />} />
       <AdminForm
         action={addScheduleAction}
         submitLabel={t("create")}

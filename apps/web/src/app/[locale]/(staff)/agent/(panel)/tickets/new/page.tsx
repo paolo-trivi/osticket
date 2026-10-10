@@ -1,6 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { Forbidden, PageHeader } from "@/components/common/DataTable";
+import { ReadOnlyNotice, WriteGate } from "@/components/common/WriteGate";
 import NewTicketForm from "@/components/tickets/create/NewTicketForm";
 import type { NewTicketOptions } from "@/components/tickets/create/types";
 import { Link } from "@/i18n/navigation";
@@ -8,7 +9,8 @@ import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { threadUploadRules } from "@/server/domain/file/upload";
 import { TicketPerm } from "@/server/domain/staff/staff";
-import { baseForms, openTicketOptions } from "@/server/domain/ticket/create-ui";
+import { parseId } from "@/lib/route-id";
+import { baseForms, openTicketOptions, usersByIds } from "@/server/domain/ticket/create-ui";
 
 import { requireAgent } from "../../../guard";
 
@@ -18,8 +20,9 @@ export async function generateMetadata() {
 }
 
 /** Apertura di un nuovo ticket da agente (scp/tickets.php?a=open); permesso ticket.create. */
-export default async function NewTicketPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function NewTicketPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ uid?: string }> }) {
   const { locale } = await params;
+  const { uid } = await searchParams;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const t = await getTranslations("createTicket");
@@ -33,7 +36,10 @@ export default async function NewTicketPage({ params }: { params: Promise<{ loca
   }
 
   const cfg = await coreConfig();
-  const [opts, forms] = await Promise.all([openTicketOptions(db(), cfg, agent), baseForms(db(), cfg, "staff")]);
+  // ?uid=<id>: utente preselezionato come tickets.php?a=open&uid= (User::lookup). Nessun permesso oltre a
+  // ticket.create, come il PHP e come la ricerca utenti dello stesso form; id non validi o inesistenti ignorati
+  const userId = parseId(uid);
+  const [opts, forms, picked] = await Promise.all([openTicketOptions(db(), cfg, agent), baseForms(db(), cfg, "staff"), userId ? usersByIds(db(), [userId]) : Promise.resolve([])]);
   const rules = threadUploadRules(cfg);
   const options: NewTicketOptions = { ...opts, ticketForm: forms.ticket, userForm: forms.user, maxFileSize: rules?.size ?? 0 };
 
@@ -48,7 +54,10 @@ export default async function NewTicketPage({ params }: { params: Promise<{ loca
           </Link>
         }
       />
-      <NewTicketForm options={options} uploadUrl="/api/agent/upload" />
+      {/* sola lettura: avviso al posto del form */}
+      <WriteGate fallback={<ReadOnlyNotice />}>
+        <NewTicketForm options={options} uploadUrl="/api/agent/upload" defaultUser={picked[0] ?? null} />
+      </WriteGate>
     </div>
   );
 }

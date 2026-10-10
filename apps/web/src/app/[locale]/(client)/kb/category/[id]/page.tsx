@@ -1,3 +1,4 @@
+import { Folder, Paperclip } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
@@ -48,8 +49,8 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
           <ul className="space-y-1">
             {c.subcategories.map((s) => (
               <li key={s.id}>
-                <Link href={`/kb/category/${s.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
-                  📁 {s.name} ({s.count})
+                <Link href={`/kb/category/${s.id}`} className="inline-flex items-center gap-1.5 text-brand-600 hover:underline dark:text-brand-400">
+                  <Folder className="size-4" /> {s.name} ({s.count})
                 </Link>
               </li>
             ))}
@@ -64,7 +65,7 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ loc
                   <Link href={`/kb/faq/${f.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
                     {f.question}
                   </Link>
-                  {f.attachments ? <span className="ms-1 text-gray-400">📎</span> : null}
+                  {f.attachments ? <Paperclip className="ms-1 inline size-3.5 align-[-2px] text-gray-400" /> : null}
                 </li>
               ))}
             </ol>

@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { CheckboxField, Hidden, RadioField, Section, SelectField, TextAreaField, TextField } from "@/components/adminsys/fields";
 import Callout from "@/components/common/Callout";
+import { withCurrentOption } from "@/lib/admin/current-value";
 import { db } from "@/server/db";
 import { deptOptions, priorityOptions, topicOptions } from "@/server/domain/admin/lookups";
 
@@ -22,11 +23,14 @@ export async function EmailFields({ info, isNew }: { info: Record<string, string
     { value: "none", label: t("noAuth") },
     { value: "basic", label: t("basicAuth") },
   ];
-  const oauth = (v?: string) => (v && v.startsWith("oauth") ? [{ value: v, label: t("oauthConfigured") }] : []);
+  // autenticazione attuale non gestita (OAuth2, plugin): resta tra le opzioni e selezionata, così il
+  // salvataggio non la sostituisce con la prima opzione (vedi accountUnchanged in email-account.ts)
+  const withAuth = (known: { value: string; label: string }[], v?: string) =>
+    withCurrentOption(known, v, (code) => (code.startsWith("oauth") ? t("oauthConfigured") : t("pluginAuth", { code })));
   return (
     <>
       <Hidden name="do" value={isNew ? "create" : "update"} />
-      <Section title={t("sections.account")} desc={t("accountDesc")}>
+      <Section title={t("sections.account")} desc={isNew ? undefined : t("accountDesc")}>
         <TextField name="email" label={t("email")} value={info.email} type="email" required />
         <TextField name="name" label={t("name")} value={info.name} required />
         <SelectField name="dept_id" label={t("dept")} value={info.dept_id ?? "0"} options={[sysDefault, ...depts.filter((d) => d.ispublic || d.value === info.dept_id)]} />
@@ -56,7 +60,7 @@ export async function EmailFields({ info, isNew }: { info: Record<string, string
             <TextField name="mailbox_host" label={t("host")} value={info.mailbox_host} />
             <TextField name="mailbox_port" label={t("port")} value={info.mailbox_port === "0" ? "" : info.mailbox_port} type="number" />
             <TextField name="mailbox_folder" label={t("folder")} value={info.mailbox_folder} placeholder="INBOX" />
-            <SelectField name="mailbox_auth_bk" label={t("auth")} value={info.mailbox_auth_bk ?? ""} options={[...authTypes, ...oauth(info.mailbox_auth_bk)]} hint={t("authHint")} />
+            <SelectField name="mailbox_auth_bk" label={t("auth")} value={info.mailbox_auth_bk ?? ""} options={withAuth(authTypes, info.mailbox_auth_bk)} hint={t("authHint")} />
             <TextField name="mailbox_fetchfreq" label={t("fetchFreq")} value={info.mailbox_fetchfreq ?? "5"} type="number" />
             <TextField name="mailbox_fetchmax" label={t("fetchMax")} value={info.mailbox_fetchmax ?? "30"} type="number" />
             <SelectField
@@ -82,7 +86,7 @@ export async function EmailFields({ info, isNew }: { info: Record<string, string
                 { value: "0", label: t("disabled") },
               ]}
             />
-            <SelectField name="smtp_auth_bk" label={t("auth")} value={info.smtp_auth_bk || "mailbox"} options={[...smtpAuth, ...oauth(info.smtp_auth_bk)]} hint={t("authHint")} />
+            <SelectField name="smtp_auth_bk" label={t("auth")} value={info.smtp_auth_bk || "mailbox"} options={withAuth(smtpAuth, info.smtp_auth_bk)} hint={t("authHint")} />
             <TextField name="smtp_host" label={t("host")} value={info.smtp_host} />
             <TextField name="smtp_port" label={t("port")} value={info.smtp_port === "0" ? "" : info.smtp_port} type="number" />
             <CheckboxField name="smtp_allow_spoofing" label={t("allowSpoofing")} checked={info.smtp_allow_spoofing === "1"} />

@@ -9,17 +9,28 @@ import Input from "@/components/form/input/InputField";
 import Alert from "@/components/ui/alert/Alert";
 
 import { pwresetLoginAction, pwresetRequestAction, type ResetState } from "@/app/[locale]/(client)/actions";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 /** pwreset.php: richiesta del link (pwreset.request.php) o accesso con il token (pwreset.login.php). */
 export default function ResetForms({ token }: { token?: string }) {
   const t = useTranslations("portal.pwreset");
   const te = useTranslations("portal.errors");
   const [state, action, pending] = useActionState<ResetState, FormData>(token ? pwresetLoginAction : pwresetRequestAction, {});
-  if (state.sent) return <Alert variant="success" title={t("sent")} message={t("sentText")} />;
+  const submit = submitKeepingValues(action);
+  if (state.sent)
+    return (
+      <div>
+        <Alert variant="success" title={t("sent")} message={t("sentText")} />
+      </div>
+    );
   return (
-    <form action={action} className="max-w-md space-y-5 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
+    <form onSubmit={submit} className="max-w-md space-y-5 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
       <p className="text-sm text-gray-500 dark:text-gray-400">{token ? t("loginText") : t("requestText")}</p>
-      {state.error && <Alert variant="error" title={te.has(state.error) ? te(state.error) : state.error} message="" />}
+      {state.error && (
+        <div>
+          <Alert variant="error" title={te.has(state.error) ? te(state.error) : state.error} message="" />
+        </div>
+      )}
       {token && <input type="hidden" name="token" value={token} />}
       <div>
         <Label htmlFor="userid">{t("userid")}</Label>

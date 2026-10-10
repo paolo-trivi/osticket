@@ -34,6 +34,13 @@ vi.mock("@/server/domain/client/identity", () => ({
   passwordVersion: () => "",
 }));
 
+// modalità di scrittura: scritture consentite, salvo nel test della sola lettura
+const writes = { allowed: true };
+vi.mock("@/server/system/write-mode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/server/system/write-mode")>()),
+  canWrite: async () => writes.allowed,
+}));
+
 const { currentAgent, sessionAgent } = await import("@/server/auth/staff-auth");
 const { currentClient, sessionClient, passwordChangePending } = await import("@/server/auth/client-auth");
 
@@ -47,5 +54,16 @@ describe("cambio password obbligatorio nelle sessioni", () => {
     expect(await sessionClient()).toMatchObject({ id: 7 });
     expect(await currentClient()).toBeNull();
     expect(await passwordChangePending()).toBe(true);
+  });
+
+  it("sola lettura: il cambio password non è imposto (il form non potrebbe salvare)", async () => {
+    writes.allowed = false;
+    try {
+      expect(await currentAgent()).toMatchObject({ id: 7 });
+      expect(await currentClient()).toMatchObject({ id: 7 });
+      expect(await passwordChangePending()).toBe(false);
+    } finally {
+      writes.allowed = true;
+    }
   });
 });

@@ -8,6 +8,9 @@ import { emailOptions } from "@/server/domain/admin/lookups";
 
 import { requireAdmin } from "../../guard";
 import { sendTestEmailAction } from "../actions";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("diagnostic");
 
 /** Diagnostica: email di prova (scp/emailtest.php). */
 export default async function EmailDiagnosticPage({ params }: { params: Promise<{ locale: string }> }) {

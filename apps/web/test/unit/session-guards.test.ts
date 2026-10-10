@@ -27,7 +27,11 @@ vi.mock("@/i18n/navigation", () => ({
   },
 }));
 
-const state: { agent: { mustChangePassword: boolean; isAdmin?: boolean } | null; client: object | null; clientMust: boolean } = {
+const state: {
+  agent: { mustChangePassword: boolean; isAdmin?: boolean } | null;
+  client: object | null;
+  clientMust: boolean;
+} = {
   agent: null,
   client: null,
   clientMust: false,
@@ -35,11 +39,13 @@ const state: { agent: { mustChangePassword: boolean; isAdmin?: boolean } | null;
 vi.mock("@/server/auth/staff-auth", () => ({
   sessionAgent: async () => state.agent,
   currentAgent: async () => (state.agent && !state.agent.mustChangePassword ? state.agent : null),
+  passwordChangeEnforced: async (a: { mustChangePassword: boolean }) => a.mustChangePassword,
 }));
 vi.mock("@/server/auth/client-auth", () => ({
   sessionClient: async () => state.client,
   currentClient: async () => (state.client && !state.clientMust ? state.client : null),
   clientMustChangePassword: () => state.clientMust,
+  clientPasswordChangeEnforced: async () => state.clientMust,
 }));
 
 const { clearSession, clientIp, MAX_SESSION_HOURS, readSession, writeSession } = await import("@/server/auth/session");

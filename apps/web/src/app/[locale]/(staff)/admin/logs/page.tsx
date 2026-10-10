@@ -14,6 +14,9 @@ import { cn } from "@/utils";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { deleteLogsAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("logs");
 
 /** Log di sistema (include/staff/syslogs.inc.php). */
 export default async function LogsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

@@ -6,6 +6,10 @@ import { redirect } from "@/i18n/navigation";
 import { pendingMfaSession } from "@/server/auth/staff-recovery";
 import { loadTheme } from "@/server/theme/theme";
 
+export async function generateMetadata() {
+  return { title: (await getTranslations("auth"))("agentLoginTitle") };
+}
+
 export const dynamic = "force-dynamic";
 
 /** Secondo passo del login con 2FA via email (scp/login.php con sessione 2FA pendente). */

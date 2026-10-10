@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/utils";
@@ -127,11 +128,11 @@ export default function Repeater({
                   <button
                     type="button"
                     onClick={() => setExtra((x) => x.filter((y) => y.key !== row.key))}
-                    className="rounded px-2 py-1 text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                    className="rounded p-1.5 text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
                     aria-label={removeLabel}
                     title={removeLabel}
                   >
-                    ×
+                    <X className="size-4" />
                   </button>
                 </td>
               </tr>

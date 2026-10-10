@@ -11,6 +11,9 @@ import { listDetail } from "@/server/domain/adminsys/list";
 import { requireAdmin } from "../../../../guard";
 import { saveListItemAction } from "../../../actions";
 import { ItemFields, propertyLabels } from "../../../items";
+import { adminMetadata } from "../../../../metadata";
+
+export const generateMetadata = adminMetadata("lists");
 
 export default async function ListItemPage({ params }: { params: Promise<{ locale: string; id: string; itemId: string }> }) {
   const { locale, id, itemId } = await params;

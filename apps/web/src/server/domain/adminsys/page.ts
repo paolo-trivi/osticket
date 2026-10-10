@@ -66,7 +66,7 @@ export async function savePage(executor: DbOrTx, pageId: number | null, vars: Ph
     const other = await executor.selectFrom("content").select("id").where("name", "=", name).orderBy("name").executeTakeFirst();
     if (other && !phpLooseEquals(other.id, isNew ? null : page.num("id"))) errors.name = "name_exists";
   }
-  if (!truthy(vars.body)) errors.body = "body_required";
+  if (!truthy(vars.body)) errors.body = "page_body_required";
   if (Object.keys(errors).length) return { ok: false, errors };
 
   page.set("type", str(vars.type));

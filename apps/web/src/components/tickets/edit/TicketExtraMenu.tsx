@@ -10,6 +10,8 @@ import { menuButtonClass, menuItemClass } from "@/components/common/menu-classes
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { useRouter } from "@/i18n/navigation";
 
+import { useTicketNotice } from "../view/use-ticket-notice";
+
 import CollaboratorsDialog from "./dialogs/CollaboratorsDialog";
 import ConfirmDialog from "./dialogs/ConfirmDialog";
 import DeleteDialog from "./dialogs/DeleteDialog";
@@ -30,7 +32,8 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
   const t = useTranslations("ticketEdit");
   const router = useRouter();
   const [kind, setKind] = useState<ExtraKind | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // un solo esito visibile nella testata: il nuovo sostituisce quelli delle altre barre
+  const [notice, setNotice] = useTicketNotice<string>();
   const close = useCallback(() => setKind(null), []);
   const { can } = data;
 
@@ -39,13 +42,14 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
       const k = kind;
       setKind(null);
       if (k === "delete" || state.gone) {
-        router.push("/agent/tickets");
+        // il ticket non esiste più: la lista mostra l'esito con il numero (TicketDoneNotice)
+        router.push(`/agent/tickets?done=delete&number=${encodeURIComponent(data.number)}`);
         return;
       }
       setNotice(k ? t(`done.${k}`, { email: state.email ?? data.ownerEmail }) : null);
       router.refresh();
     },
-    [kind, router, t, data.ownerEmail],
+    [kind, router, t, data.ownerEmail, data.number, setNotice],
   );
   const refresh = useCallback(() => router.refresh(), [router]);
 
@@ -56,10 +60,7 @@ export default function TicketExtraMenu({ data }: { data: TicketExtraData }) {
   );
   const children = data.related.tickets.filter((x) => !x.parent);
   const isParent = data.related.tickets.some((x) => x.parent && x.id === data.ticketId);
-  const mergeList = [
-    { number: data.number, subject: "" },
-    ...(isParent ? children.map((c) => ({ number: c.number, subject: c.subject })) : []),
-  ];
+  const mergeList = [{ number: data.number, subject: data.subject }, ...(isParent ? children.map((c) => ({ number: c.number, subject: c.subject })) : [])];
   const hasMenu = can.edit || can.collaborators || can.merge || can.link || can.overdue || can.ban || can.delete || can.editEntries;
 
   return (

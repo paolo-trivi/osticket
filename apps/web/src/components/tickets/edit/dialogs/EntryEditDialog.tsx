@@ -30,7 +30,7 @@ export default function EntryEditDialog({ data, onClose, onSuccess }: { data: Ti
           <Field label={t("entryTitleField")}>
             <TextInput name="title" defaultValue={entry.title} />
           </Field>
-          <Editor name="body" defaultValue={entry.body} minHeight={200} />
+          <Editor name="body" label={t("entryBody")} defaultValue={entry.body} minHeight={200} />
         </div>
       )}
     </EditDialog>

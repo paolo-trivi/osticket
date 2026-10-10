@@ -43,7 +43,8 @@ export default function ThemeEditor({ initial, helpdeskTitle, hasStaffLogo, hasC
   const [pending, startTransition] = useTransition();
   const [hexDraft, setHexDraft] = useState(initial.primary_color);
 
-  const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
+  // anche un codice esadecimale in digitazione (non ancora valido) è una modifica da poter annullare
+  const dirty = JSON.stringify(settings) !== JSON.stringify(saved) || hexDraft.toLowerCase() !== settings.primary_color;
   const { preview } = branding;
 
   // Anteprima dal vivo; all'uscita dalla pagina si torna al tema salvato
@@ -77,11 +78,14 @@ export default function ThemeEditor({ initial, helpdeskTitle, hasStaffLogo, hasC
   };
   const editHex = (value: string) => {
     setHexDraft(value);
+    // l'esito del salvataggio precedente non vale più per le modifiche in corso
+    setState({ status: "idle" });
     if (isHexColor(value)) set("primary_color", value.toLowerCase());
   };
   const restore = (next: ThemeSettings) => {
     setSettings(next);
     setHexDraft(next.primary_color);
+    setState({ status: "idle" });
   };
 
   const save = () =>
@@ -116,7 +120,7 @@ export default function ThemeEditor({ initial, helpdeskTitle, hasStaffLogo, hasC
             state={state}
             dirty={dirty}
             pending={pending}
-            canSave={isHexColor(settings.primary_color)}
+            canSave={isHexColor(settings.primary_color) && isHexColor(hexDraft)}
             onSave={save}
             onDiscard={() => restore(saved)}
             onReset={() => restore({ ...DEFAULT_THEME })}

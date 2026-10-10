@@ -1,15 +1,17 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef } from "react";
 
 import { profileUpdateAction } from "@/app/[locale]/(staff)/agent/(panel)/profile/actions";
 import ComponentCard from "@/components/common/ComponentCard";
+import { ReadOnlyNote, useReadOnlyHint } from "@/components/common/WriteGate";
 import Button from "@/components/ui/button/Button";
 import { useRouter } from "@/i18n/navigation";
 
 import { CheckField, FormAlert, SelectField, TextAreaField, TextField } from "../FormControls";
 import type { Choice, PeopleActionState } from "../types";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 interface ProfileFormData {
   firstname: string;
@@ -51,9 +53,18 @@ export default function ProfileForm({ data }: { data: ProfileFormData }) {
   const tu = useTranslations("peopleUi");
   const router = useRouter();
   const [state, action, pending] = useActionState<PeopleActionState, FormData>(profileUpdateAction, {});
+  const banner = useRef<HTMLDivElement>(null);
+  // sola lettura: salvataggio disattivato, con un avviso in testa
+  const readOnly = useReadOnlyHint();
   useEffect(() => {
     if (state.ok) router.refresh();
+    // esito in cima e pulsante in fondo: dopo ogni invio il messaggio viene portato in vista
+    if (state.ok || state.error) {
+      banner.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      banner.current?.focus({ preventScroll: true });
+    }
   }, [state, router]);
+  const submit = submitKeepingValues(action);
   const f = state.fields ?? {};
   const pageSizes = Array.from({ length: 10 }, (_, i) => (i + 1) * 5).map((n) => ({ id: n, name: t("records", { n }) }));
   const refresh: Choice[] = [];
@@ -64,9 +75,12 @@ export default function ProfileForm({ data }: { data: ProfileFormData }) {
   const error = state.error ? (tu.has(`errors.${state.error}`) ? tu(`errors.${state.error}`) : tu("errors.generic")) : "";
 
   return (
-    <form action={action} className="space-y-6">
-      {error && <FormAlert kind="error">{error}</FormAlert>}
-      {state.ok && <FormAlert kind="success">{t("saved")}</FormAlert>}
+    <form onSubmit={submit} className="space-y-6">
+      <div ref={banner} tabIndex={-1} role={error ? "alert" : "status"} className="scroll-mt-24 outline-none empty:hidden">
+        {error && <FormAlert kind="error">{error}</FormAlert>}
+        {!error && state.ok && <FormAlert kind="success">{t("saved")}</FormAlert>}
+      </div>
+      <ReadOnlyNote />
       <ComponentCard title={t("account")}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField name="firstname" label={t("firstname")} defaultValue={data.firstname} required maxLength={64} error={f.firstname} />
@@ -82,7 +96,7 @@ export default function ProfileForm({ data }: { data: ProfileFormData }) {
           <SelectField
             name="default_2fa"
             label={t("default2fa")}
-            defaultValue={data.twofaVerified ? data.default_2fa : ""}
+            defaultValue={data.default_2fa && data.default_2fa !== "2fa-email" ? data.default_2fa : data.twofaVerified ? data.default_2fa : ""}
             options={[...(data.twofaRequired ? [] : [{ id: "", name: t("disabled2fa") }]), ...(data.twofaVerified ? [{ id: "2fa-email", name: t("email2fa") }] : [])]}
           />
         </div>
@@ -177,11 +191,11 @@ export default function ProfileForm({ data }: { data: ProfileFormData }) {
       </ComponentCard>
 
       <ComponentCard title={t("signature")}>
-        <TextAreaField name="signature" defaultValue={data.signature} rows={4} hint={t("signatureHint")} />
+        <TextAreaField name="signature" label={<span className="sr-only">{t("signature")}</span>} defaultValue={data.signature} rows={4} hint={t("signatureHint")} />
       </ComponentCard>
 
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={pending}>
+        <Button type="submit" size="sm" disabled={pending || !!readOnly} title={readOnly}>
           {pending ? tu("working") : t("save")}
         </Button>
       </div>

@@ -1,9 +1,10 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import DataTable, { PageHeader, type DataColumn } from "@/components/common/DataTable";
+import ManageInClassic from "@/components/kb/ManageInClassic";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
-import { PaperclipIcon } from "@/icons";
+import { Paperclip } from "lucide-react";
 import { CANNED_SORTS, listCanned, type CannedSort } from "@/server/domain/kb/canned";
 import { GlobalPerm } from "@/server/domain/staff/staff";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
@@ -14,13 +15,7 @@ export async function generateMetadata() {
   return { title: (await getTranslations("canned"))("title") };
 }
 
-export default async function CannedPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string }>;
-  searchParams: Promise<{ sort?: string; order?: string }>;
-}) {
+export default async function CannedPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ sort?: string; order?: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
@@ -32,6 +27,7 @@ export default async function CannedPage({
   const manage = agent.hasPermInAnyRole(GlobalPerm.CANNED_MANAGE);
   const rows = await listCanned(agent, { all: manage, sort, order });
   const tz = await agentTimeZone(agent);
+  const phpUrl = process.env.OST_PHP_URL?.replace(/\/$/, "");
 
   // cannedresponses.inc.php: ordinamento per colonna, clic ripetuto inverte il verso
   const column = (key: CannedSort, label: string): DataColumn => ({
@@ -44,6 +40,7 @@ export default async function CannedPage({
   return (
     <div className="space-y-5">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
+      {manage && <ManageInClassic note={tk("manageNote")} linkLabel={tk("manageCanned")} href={phpUrl ? `${phpUrl}/scp/canned.php` : undefined} />}
       <DataTable
         empty={t("empty")}
         columns={[column("title", t("name")), column("dept", t("department")), column("status", t("status")), column("updated", t("updated"))]}
@@ -57,7 +54,7 @@ export default async function CannedPage({
                 </Link>
                 {c.files > 0 && (
                   <span className="inline-flex items-center text-gray-400 dark:text-gray-500" title={tk("attachmentCount", { n: c.files })}>
-                    <PaperclipIcon className="size-4" aria-hidden />
+                    <Paperclip className="size-4" aria-hidden />
                     <span className="sr-only">{tk("attachmentCount", { n: c.files })}</span>
                   </span>
                 )}

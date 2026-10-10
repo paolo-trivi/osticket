@@ -3,6 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DataTable, { PageHeader, SearchBox } from "@/components/common/DataTable";
 import LinkPager from "@/components/common/LinkPager";
 import { NewRecordButton, OrgMassBar, RowSelect } from "@/components/people/directory/DirectoryButtons";
+import PeopleCards from "@/components/people/PeopleCards";
+import PeopleDoneNotice from "@/components/people/PeopleDoneNotice";
 import { Link } from "@/i18n/navigation";
 import { listOrgs } from "@/server/domain/directory/directory";
 import { newFormFields } from "@/server/domain/directory/ui";
@@ -21,7 +23,13 @@ export default async function OrgsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ q?: string; p?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    p?: string;
+    sort?: string;
+    dir?: string;
+    done?: string;
+  }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -55,31 +63,50 @@ export default async function OrgsPage({
           </div>
         }
       />
+      <PeopleDoneNotice done={sp.done} />
       <OrgMassBar canDelete={agent.hasGlobalPerm(GlobalPerm.ORG_DELETE)} />
-      <DataTable
+      <PeopleCards
         empty={t("empty")}
-        columns={[
-          { key: "sel", label: "" },
-          { key: "name", label: t("name"), ...sortCol("name") },
-          { key: "users", label: t("users"), ...sortCol("users") },
-          { key: "created", label: t("created"), ...sortCol("created") },
-          { key: "updated", label: t("updated"), ...sortCol("updated") },
-        ]}
-        rows={rows.map((o) => ({
+        cards={rows.map((o) => ({
           key: o.id,
-          cells: {
-            sel: <RowSelect id={o.id} group="org" />,
-            name: (
-              <Link href={`/agent/orgs/${o.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-                {o.name}
-              </Link>
-            ),
-            users: o.users,
-            created: formatDbDate(o.created, tz, locale, "date"),
-            updated: formatDbDate(o.updated, tz, locale, "date"),
-          },
+          select: <RowSelect id={o.id} group="org" />,
+          title: (
+            <Link href={`/agent/orgs/${o.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+              {o.name}
+            </Link>
+          ),
+          meta: [
+            { label: t("users"), value: o.users },
+            { label: t("updated"), value: formatDbDate(o.updated, tz, locale) },
+          ],
         }))}
       />
+      <div className="hidden md:block">
+        <DataTable
+          empty={t("empty")}
+          columns={[
+            { key: "sel", label: "" },
+            { key: "name", label: t("name"), ...sortCol("name") },
+            { key: "users", label: t("users"), ...sortCol("users") },
+            { key: "created", label: t("created"), ...sortCol("created") },
+            { key: "updated", label: t("updated"), ...sortCol("updated") },
+          ]}
+          rows={rows.map((o) => ({
+            key: o.id,
+            cells: {
+              sel: <RowSelect id={o.id} group="org" />,
+              name: (
+                <Link href={`/agent/orgs/${o.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+                  {o.name}
+                </Link>
+              ),
+              users: o.users,
+              created: formatDbDate(o.created, tz, locale),
+              updated: formatDbDate(o.updated, tz, locale),
+            },
+          }))}
+        />
+      </div>
       <LinkPager page={page} totalPages={Math.max(1, Math.ceil(total / pageSize))} href={(p) => href({ p })} labels={{ prev: t("prev"), next: t("next") }} />
     </div>
   );

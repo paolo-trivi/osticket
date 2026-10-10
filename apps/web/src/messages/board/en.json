@@ -91,6 +91,7 @@
       "keyboardHelp": "Use the card menu (Move to…) to move it with the keyboard"
     },
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "title": "Could not move ticket {number}",
       "not_found": "Ticket not found or no longer accessible.",
       "forbidden": "You are not allowed to set this status.",

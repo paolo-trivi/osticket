@@ -9,6 +9,9 @@ import { templateOptions } from "@/server/domain/admin/lookups";
 import { requireAdmin } from "../../guard";
 import { addTemplateGroupAction } from "../actions";
 import { TemplateGroupFields } from "../fields";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 export default async function NewTemplateSetPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

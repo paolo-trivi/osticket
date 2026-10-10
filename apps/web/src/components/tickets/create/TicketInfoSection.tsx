@@ -5,7 +5,6 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import ComponentCard from "@/components/common/ComponentCard";
-import { localToIsoWithOffset } from "@/components/forms/dynamic/DatetimeFieldInput";
 import FieldShell from "@/components/forms/dynamic/FieldShell";
 import { errorInputCls, inputCls, selectCls } from "@/components/forms/dynamic/styles";
 import { cn } from "@/utils";
@@ -15,7 +14,13 @@ import { first, type NewTicketOptions, type SubmittedValues } from "./types";
 interface Props {
   options: NewTicketOptions;
   values?: SubmittedValues;
-  errors: { topicId?: string; source?: string; duedate?: string; assignId?: string; deptId?: string };
+  errors: {
+    topicId?: string;
+    source?: string;
+    duedate?: string;
+    assignId?: string;
+    deptId?: string;
+  };
   onTopicChange: (topicId: number) => void;
 }
 
@@ -70,15 +75,15 @@ export default function TicketInfoSection({ options, values, errors, onTopicChan
             <option value="">{t("slaDefault")}</option>
             {options.slas.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.name}
+                {o.active === false ? `${o.name} ${t("slaDisabled")}` : o.name}
               </option>
             ))}
           </select>
         </FieldShell>
         <FieldShell htmlFor="duedate" label={t("duedate")} hint={t("duedateHint")} errors={errors.duedate ? [errors.duedate] : undefined}>
           <input id="duedate" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className={cn(inputCls, errors.duedate && errorInputCls)} />
-          {/* ISO con offset del browser: interpretato correttamente sia dal PHP sia da Next */}
-          <input type="hidden" name="duedate" value={localToIsoWithOffset(due)} />
+          {/* ora nel fuso dell'agente, convertita dal server come in "Modifica ticket" */}
+          <input type="hidden" name="duedate" value={due} />
         </FieldShell>
         <FieldShell htmlFor="assignId" label={t("assign")} errors={errors.assignId ? [errors.assignId] : undefined}>
           <select id="assignId" name="assignId" defaultValue={first(values, "assignId")} className={selectCls}>

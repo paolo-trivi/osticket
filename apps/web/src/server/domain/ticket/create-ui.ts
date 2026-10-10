@@ -3,7 +3,7 @@ import "server-only";
 import { sql } from "kysely";
 
 import { fieldKey, type DynamicFieldKind, type DynamicFieldView, type DynamicFormView } from "@/lib/forms/dynamic-field";
-import { Dept, SLA, Team, Topic } from "@/lib/osticket/flags";
+import { Dept, SLA, Topic } from "@/lib/osticket/flags";
 import { FormType } from "@/lib/osticket/object-types";
 
 import type { ConfigNamespace } from "../../config/config";
@@ -14,6 +14,8 @@ import { str, type PhpVal } from "../../php/values";
 import { isEditableTo, isRequiredFor, isVisibleTo, plainLabel, type FieldDef, type FormAudience } from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
 import type { Agent } from "../staff/staff";
+import { assignableAgents } from "../task/model";
+import { activeTeams } from "./assignees";
 
 /**
  * Dati per i form di apertura dei ticket (pannello agenti e portale clienti): descrizione dei campi
@@ -112,7 +114,7 @@ export async function topicFormsView(executor: DbOrTx, cfg: ConfigNamespace, top
 interface OpenTicketOptions {
   topics: { id: number; name: string }[];
   depts: { id: number; name: string }[];
-  slas: { id: number; name: string }[];
+  slas: { id: number; name: string; active: boolean }[];
   agents: { id: number; name: string }[];
   teams: { id: number; name: string }[];
   statuses: { id: number; name: string; state: string }[];
@@ -149,22 +151,19 @@ export async function openTicketOptions(executor: DbOrTx, cfg: ConfigNamespace, 
     .map((d) => ({ id: d.id, name: d.pid && deptName.get(d.pid) ? `${deptName.get(d.pid)} / ${d.name}` : d.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const slas = (await executor.selectFrom("sla").select(["id", "name", "flags"]).orderBy("name").execute())
-    .filter((s) => s.flags & SLA.ACTIVE)
-    .map((s) => ({ id: s.id, name: s.name }));
+  // SLA::getSLAs() di ticket-open/ticket-edit.inc.php: tutti, anche i disattivati (indicati come tali)
+  const slas = (await executor.selectFrom("sla").select(["id", "name", "flags"]).orderBy("name").execute()).map((s) => ({
+    id: s.id,
+    name: s.name,
+    active: !!(s.flags & SLA.ACTIVE),
+  }));
 
-  const nameOrder = ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format"));
-  const agents = (
-    await executor.selectFrom("staff").select(["staff_id", "firstname", "lastname"]).where("isactive", "=", 1).execute()
-  )
-    .map((s) => ({ id: s.staff_id, name: nameOrder ? `${s.lastname ?? ""}, ${s.firstname ?? ""}` : `${s.firstname ?? ""} ${s.lastname ?? ""}`.trim() }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const teams = (await executor.selectFrom("team").select(["team_id", "name", "flags"]).orderBy("name").execute())
-    .filter((t) => t.flags & Team.ENABLED)
-    .map((t) => ({ id: t.team_id, name: t.name }));
-  const statuses = (await executor.selectFrom("ticket_status").select(["id", "name", "state", "sort"]).where("state", "in", ["open", "closed"]).orderBy("sort").orderBy("name").execute()).map(
-    (s) => ({ id: s.id, name: s.name, state: s.state ?? "" }),
-  );
+  // "Assign To": Staff::getStaffMembers(available, staff) e Team::getActiveTeams() (team con membri attivi):
+  // un team senza membri non è assegnabile (Ticket::assign lo rifiuterebbe) e il PHP non lo propone
+  const [agents, teams] = await Promise.all([assignableAgents(executor, null, agent, cfg), activeTeams(executor)]);
+  const statuses = (
+    await executor.selectFrom("ticket_status").select(["id", "name", "state", "sort"]).where("state", "in", ["open", "closed"]).orderBy("sort").orderBy("name").execute()
+  ).map((s) => ({ id: s.id, name: s.name, state: s.state ?? "" }));
   const sig = await executor.selectFrom("staff").select("signature").where("staff_id", "=", agent.id).executeTakeFirst();
   return { topics, depts, slas, agents, teams, statuses, hasMySignature: !!(sig?.signature ?? "").trim() };
 }
@@ -180,7 +179,11 @@ export async function searchUsers(executor: DbOrTx, q: string, limit = 10): Prom
   const term = q.trim();
   if (term.length < 2) return [];
   const like = `%${likeEscape(term)}%`;
-  const { rows } = await sql<{ id: number; name: string; address: string | null }>`
+  const { rows } = await sql<{
+    id: number;
+    name: string;
+    address: string | null;
+  }>`
     SELECT U.id, U.name, E.address FROM ${table("user")} U
     LEFT JOIN ${table("user_email")} E ON (E.id = U.default_email_id)
     WHERE U.name LIKE ${like} OR E.address LIKE ${like}

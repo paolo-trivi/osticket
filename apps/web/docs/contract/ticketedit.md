@@ -175,3 +175,6 @@ Il PHP prepara il file in background e lo invia per email se non scaricato: qui 
 - `addMissingFields` avviene al salvataggio invece che all'apertura del form (stesso risultato finale).
 - Ban list mancante: il PHP crea il filtro "SYSTEM BAN LIST"; qui l'operazione risponde `no_banlist`.
 - Testi "Yes/No" e intestazioni del CSV in inglese come il PHP con lingua di sistema `en_US`.
+- Scadenza da "Modifica" e da "Modifica un campo": la UI converte l'ora scelta dal fuso dell'agente in ISO con offset,
+  come all'apertura del ticket. Il widget del PHP mostra la scadenza nel fuso dell'agente ma `Ticket::update` la rilegge
+  in UTC, quindi ogni salvataggio spostava l'ora; `updateTicket` resta invariato (stringa senza offset = UTC).

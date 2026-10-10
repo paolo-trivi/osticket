@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isKnownOrCurrent } from "@/lib/admin/current-value";
+
 import type { DbOrTx } from "../../db";
 import { str, type PhpVars } from "../../php/values";
 import type { ConfigWriter } from "./config-write";
@@ -8,8 +10,14 @@ import { validate, type Errors, type FieldRule } from "./validator";
 
 /** Impostazioni di agenti e utenti: OsticketConfig::updateAgentsSettings / updateUsersSettings. */
 
-/** Sorgenti avatar registrate (AvatarSource::register): local, gravatar. */
+/**
+ * Sorgenti avatar registrate nel core (AvatarSource::register): local, gravatar. Una sorgente di un
+ * plugin è registrata solo nel PHP: il valore attuale resta ammesso se non viene cambiato.
+ */
 const AVATAR_SOURCES = ["local", "gravatar"];
+
+/** AvatarSource::lookup($source) oppure valore attuale invariato */
+const validAvatar = (value: string, current: string | null | undefined) => AVATAR_SOURCES.includes(value.split(".")[0]) || isKnownOrCurrent(value, [], current);
 
 /** OsticketConfig::updateAgentsSettings */
 export async function updateAgentsSettings(executor: DbOrTx, cfg: ConfigWriter, vars: PhpVars, errors: Errors): Promise<boolean> {
@@ -17,8 +25,7 @@ export async function updateAgentsSettings(executor: DbOrTx, cfg: ConfigWriter, 
     staff_session_timeout: { type: "int", required: true, error: "required" },
     pw_reset_window: { type: "int", required: true, min: 1, error: "invalid" },
   };
-  const [avatar] = str(vars.agent_avatar).split(".");
-  if (!AVATAR_SOURCES.includes(avatar)) errors.agent_avatar = "invalid";
+  if (!validAvatar(str(vars.agent_avatar), cfg.get("agent_avatar"))) errors.agent_avatar = "invalid";
   if (!validate(f, vars, errors) || Object.keys(errors).length) return false;
   return cfg.updateAll(executor, {
     agent_passwd_policy: v(vars.agent_passwd_policy),
@@ -41,8 +48,7 @@ export async function updateUsersSettings(executor: DbOrTx, cfg: ConfigWriter, v
   const f: Record<string, FieldRule> = {
     client_session_timeout: { type: "int", required: true, error: "required" },
   };
-  const [avatar] = str(vars.client_avatar).split(".");
-  if (!AVATAR_SOURCES.includes(avatar)) errors.client_avatar = "invalid";
+  if (!validAvatar(str(vars.client_avatar), cfg.get("client_avatar"))) errors.client_avatar = "invalid";
   if (!validate(f, vars, errors) || Object.keys(errors).length) return false;
   return cfg.updateAll(executor, {
     client_passwd_policy: v(vars.client_passwd_policy),

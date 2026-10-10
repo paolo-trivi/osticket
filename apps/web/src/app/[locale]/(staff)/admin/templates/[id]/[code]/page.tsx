@@ -14,9 +14,18 @@ import { initialTemplate, loadGroup, TEMPLATE_NAMES } from "@/server/domain/admi
 
 import { requireAdmin } from "../../../guard";
 import { saveTemplateAction } from "../../actions";
+import { adminMetadata } from "../../../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 /** Modifica (updatetpl) o definizione (implement) di un messaggio del set (include/staff/tpl.inc.php). */
-export default async function TemplateMessagePage({ params, searchParams }: { params: Promise<{ locale: string; id: string; code: string }>; searchParams: Promise<Record<string, string>> }) {
+export default async function TemplateMessagePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string; code: string }>;
+  searchParams: Promise<Record<string, string>>;
+}) {
   const { locale, id, code: rawCode } = await params;
   setRequestLocale(locale);
   await requireAdmin(locale);

@@ -20,6 +20,7 @@ export default function AppearanceCard({ settings, set, onPreviewMode }: Appeara
     <ComponentCard title={t("appearance")}>
       <Field label={t("modeDefault")}>
         <Segmented
+          label={t("modeDefault")}
           value={settings.mode_default}
           onChange={(v) => {
             set("mode_default", v);
@@ -43,6 +44,7 @@ export default function AppearanceCard({ settings, set, onPreviewMode }: Appeara
       </label>
       <Field label={t("sidebar")}>
         <Segmented
+          label={t("sidebar")}
           value={settings.sidebar_style}
           onChange={(v) => set("sidebar_style", v)}
           options={[
@@ -54,6 +56,7 @@ export default function AppearanceCard({ settings, set, onPreviewMode }: Appeara
       </Field>
       <Field label={t("font")}>
         <Segmented
+          label={t("font")}
           value={settings.font}
           onChange={(v) => set("font", v)}
           options={[
@@ -65,6 +68,7 @@ export default function AppearanceCard({ settings, set, onPreviewMode }: Appeara
       </Field>
       <Field label={t("radius")}>
         <Segmented
+          label={t("radius")}
           value={settings.radius}
           onChange={(v) => set("radius", v)}
           options={(["none", "sm", "md", "lg", "xl"] as const).map((r) => ({ value: r, label: t(`radii.${r}`) }))}
@@ -72,6 +76,7 @@ export default function AppearanceCard({ settings, set, onPreviewMode }: Appeara
       </Field>
       <Field label={t("density")}>
         <Segmented
+          label={t("density")}
           value={settings.density}
           onChange={(v) => set("density", v)}
           options={[

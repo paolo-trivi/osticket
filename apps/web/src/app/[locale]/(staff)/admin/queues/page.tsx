@@ -13,6 +13,9 @@ import { listQueues } from "@/server/domain/adminsys/queue";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massQueueAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("queues");
 
 /** Code dei ticket (scp/queues.php, elenco di settings.php?t=tickets#queues). */
 export default async function QueuesPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -61,7 +64,7 @@ export default async function QueuesPage({ params, searchParams }: { params: Pro
             { key: "title", label: t("name") },
             { key: "status", label: t("status") },
             { key: "columns", label: t("columns") },
-            { key: "updated", label: c("updated") },
+            { key: "created", label: c("created") },
           ]}
           rows={queues
             .map((q) => ({ q, name: fullName(q.id) }))
@@ -82,7 +85,8 @@ export default async function QueuesPage({ params, searchParams }: { params: Pro
                   </Badge>
                 ),
                 columns: q.flags & CustomQueue.INHERIT_COLUMNS ? t("inherited") : q.columns,
-                updated: date(q.updated),
+                // queues-ticket.inc.php mostra Format::date($q->created): `updated` resta a zero per le code dell'installer
+                created: date(q.created, "date"),
               },
             }))}
         />

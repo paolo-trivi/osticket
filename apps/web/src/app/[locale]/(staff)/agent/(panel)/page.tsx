@@ -88,8 +88,15 @@ export default async function AgentDashboardPage({
 
       <ComponentCard title={t("activity")} desc={t("activityDesc")}>
         <StatsFilter start={range.startDay} period={period} periods={PERIOD_CHOICES} group={group} rangeText={rangeText} />
-        {plot.days.length ? (
-          <EventsChart days={plot.days} series={plot.series.map((s) => ({ ...s, name: t.has(`eventNames.${s.name}`) ? t(`eventNames.${s.name}`) : s.name }))} />
+        {plot.series.length ? (
+          <EventsChart
+            days={plot.days}
+            series={plot.series.map((s) => ({
+              ...s,
+              key: s.name,
+              name: t.has(`eventNames.${s.name}`) ? t(`eventNames.${s.name}`) : s.name,
+            }))}
+          />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">{t("noData")}</p>
         )}

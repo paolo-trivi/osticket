@@ -12,6 +12,9 @@ import { listEmails } from "@/server/domain/adminsys/email";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massEmailAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("emailAccounts");
 
 /** Account email (include/staff/emails.inc.php). */
 export default async function EmailsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

@@ -13,6 +13,10 @@ import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../../guard";
 
+export async function generateMetadata() {
+  return { title: (await getTranslations("kb"))("title") };
+}
+
 /** kb.php?cid=N (faq-category.inc.php) in sola lettura. */
 export default async function KbCategoryPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;

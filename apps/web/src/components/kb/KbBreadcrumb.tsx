@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 
 import { Link } from "@/i18n/navigation";
-import { ChevronLeftIcon } from "@/icons";
+import { ChevronLeft } from "lucide-react";
 
 interface BreadcrumbItem {
   label: string;
@@ -18,7 +18,7 @@ export default function KbBreadcrumb({ items, label }: { items: readonly Breadcr
           <Fragment key={`${i}-${item.label}`}>
             {i > 0 && (
               <li aria-hidden className="text-gray-400 dark:text-gray-500">
-                <ChevronLeftIcon className="size-4 rotate-180 rtl:rotate-0" />
+                <ChevronLeft className="size-4 rotate-180 rtl:rotate-0" />
               </li>
             )}
             <li className="min-w-0 break-words">

@@ -8,7 +8,7 @@ import { referTicket, removeReferrals } from "@/server/domain/ticket/referral";
 import type { WriteContext } from "@/server/domain/ticket/context";
 import { changeTicketStatus, markTicketAnswered } from "@/server/domain/ticket/ticket-state";
 import { transferTicket } from "@/server/domain/ticket/transfer";
-import { runWrite } from "@/server/domain/write";
+import { runWriteOrThrow } from "@/server/domain/write";
 
 import { compareWorkingDatabases, execBoth, PHP_DB, prepareSnapshot, resetWorkingDatabases, runPhp, TS_DB, type TableDiff } from "./lib/harness";
 import { mailsOf } from "./lib/mailpit";
@@ -27,7 +27,7 @@ afterAll(closeDb);
 async function asAgent<T>(staffId: number, fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
   const agent = await loadAgent(staffId, db());
   if (!agent) throw new Error("agente mancante");
-  return runWrite({ agent, ip: IP }, fn);
+  return runWriteOrThrow({ agent, ip: IP }, fn);
 }
 
 type Result = { ok?: boolean; error?: string | number };
@@ -89,12 +89,24 @@ describe("assegnazione e presa in carico", () => {
   });
 
   it("assegna a un team con avvisi ai membri del team", async () => {
-    await execBoth(
-      "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key`='assigned_alert_team_members'",
-      "UPDATE {p}team_member SET flags=1 WHERE team_id=1",
+    await execBoth("UPDATE {p}config SET value='1' WHERE namespace='core' AND `key`='assigned_alert_team_members'", "UPDATE {p}team_member SET flags=1 WHERE team_id=1");
+    const args = {
+      agent: 2,
+      ticket: 1,
+      assignee: "t1",
+      comments: "<p>Al primo livello.</p>",
+    };
+    const r = await both(
+      "actions.assign",
+      args,
+      (ctx) =>
+        assignTicket(ctx, {
+          ticketId: 1,
+          assignee: "t1",
+          comments: args.comments,
+        }),
+      2,
     );
-    const args = { agent: 2, ticket: 1, assignee: "t1", comments: "<p>Al primo livello.</p>" };
-    const r = await both("actions.assign", args, (ctx) => assignTicket(ctx, { ticketId: 1, assignee: "t1", comments: args.comments }), 2);
     expect(r.ts).toEqual({ ok: true });
   });
 
@@ -320,12 +332,24 @@ describe("cambio stato e risposto", () => {
 
 describe("avvisi, permessi da manager e casi limite", () => {
   it("assegna a un team: avviso al solo capo team (assigned_alert_team_lead)", async () => {
-    await execBoth(
-      "UPDATE {p}config SET value='1' WHERE namespace='core' AND `key`='assigned_alert_team_lead'",
-      "UPDATE {p}team SET lead_id=3 WHERE team_id=1",
+    await execBoth("UPDATE {p}config SET value='1' WHERE namespace='core' AND `key`='assigned_alert_team_lead'", "UPDATE {p}team SET lead_id=3 WHERE team_id=1");
+    const args = {
+      agent: 2,
+      ticket: 1,
+      assignee: "t1",
+      comments: "<p>Al capo team.</p>",
+    };
+    const r = await both(
+      "actions.assign",
+      args,
+      (ctx) =>
+        assignTicket(ctx, {
+          ticketId: 1,
+          assignee: "t1",
+          comments: args.comments,
+        }),
+      1,
     );
-    const args = { agent: 2, ticket: 1, assignee: "t1", comments: "<p>Al capo team.</p>" };
-    const r = await both("actions.assign", args, (ctx) => assignTicket(ctx, { ticketId: 1, assignee: "t1", comments: args.comments }), 1);
     expect(r.ts).toEqual({ ok: true });
   });
 
@@ -439,7 +463,9 @@ describe("avvisi, permessi da manager e casi limite", () => {
 
 /** status_id di un ticket in uno dei due DB di lavoro */
 async function statusIn(dbName: string, ticketId: number): Promise<number | undefined> {
-  const { rows } = await sql<{ s: number }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
+  const { rows } = await sql<{
+    s: number;
+  }>`SELECT status_id AS s FROM ${sql.raw(`\`${dbName}\`.ost_ticket`)} WHERE ticket_id = ${ticketId}`.execute(db());
   return rows[0]?.s;
 }
 

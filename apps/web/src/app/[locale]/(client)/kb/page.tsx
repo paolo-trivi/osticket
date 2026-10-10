@@ -1,3 +1,4 @@
+import { Folder } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
@@ -53,13 +54,20 @@ export default async function KbPage({ params, searchParams }: { params: Promise
                     {c.name} {c.count ? `(${c.count})` : ""}
                   </Link>
                 </h2>
-                {c.description && <div className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400" dangerouslySetInnerHTML={{ __html: safeHtml(c.description) }} />}
+                {c.description && (
+                  <div
+                    className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400"
+                    dangerouslySetInnerHTML={{
+                      __html: safeHtml(c.description),
+                    }}
+                  />
+                )}
                 {c.subcategories.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {c.subcategories.map((s) => (
                       <li key={s.id}>
-                        <Link href={`/kb/category/${s.id}`} className="text-theme-sm text-brand-600 hover:underline dark:text-brand-400">
-                          📁 {s.name} ({s.count})
+                        <Link href={`/kb/category/${s.id}`} className="inline-flex items-center gap-1.5 text-theme-sm text-brand-600 hover:underline dark:text-brand-400">
+                          <Folder className="size-4" /> {s.name} ({s.count})
                         </Link>
                       </li>
                     ))}

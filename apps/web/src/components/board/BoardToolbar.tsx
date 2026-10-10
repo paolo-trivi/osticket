@@ -3,16 +3,8 @@
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { ChevronDownIcon, CloseLineIcon, MagnifierIcon } from "@/icons";
-import {
-  BOARD_GROUPS,
-  BOARD_LANES,
-  DEFAULT_BOARD_PARAMS,
-  hasActiveFilters,
-  type BoardGroupBy,
-  type BoardLaneBy,
-  type BoardParams,
-} from "@/server/domain/board/params";
+import { ChevronDown, Search, X } from "lucide-react";
+import { BOARD_GROUPS, BOARD_LANES, DEFAULT_BOARD_PARAMS, hasActiveFilters, type BoardGroupBy, type BoardLaneBy, type BoardParams } from "@/server/domain/board/params";
 import type { BoardSourceOption } from "@/server/domain/board/types";
 import { cn } from "@/utils";
 
@@ -22,19 +14,7 @@ export interface PriorityChoice {
   color: string | null;
 }
 
-function ToolbarSelect({
-  label,
-  value,
-  onChange,
-  children,
-  className,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
+function ToolbarSelect({ label, value, onChange, children, className }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string }) {
   return (
     <label className={cn("flex min-w-0 flex-col gap-1", className)}>
       <span className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
@@ -48,25 +28,13 @@ function ToolbarSelect({
         >
           {children}
         </select>
-        <ChevronDownIcon
-          viewBox="0 0 20 20"
-          className="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
-          aria-hidden
-        />
+        <ChevronDown className="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" aria-hidden />
       </span>
     </label>
   );
 }
 
-function Chip({
-  pressed,
-  onClick,
-  children,
-}: {
-  pressed: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function Chip({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -94,7 +62,8 @@ export default function BoardToolbar({
   params: BoardParams;
   sources: BoardSourceOption[];
   priorities: PriorityChoice[];
-  onChange: (next: BoardParams) => void;
+  /** campi cambiati (la board li applica sopra le scelte correnti, comprese quelle in attesa) */
+  onChange: (patch: Partial<BoardParams>) => void;
 }) {
   const t = useTranslations("board");
   const [q, setQ] = useState(params.q);
@@ -104,8 +73,7 @@ export default function BoardToolbar({
     setLastQ(params.q);
     setQ(params.q);
   }
-  const set = (patch: Partial<BoardParams>) =>
-    onChange({ ...params, ...patch });
+  const set = (patch: Partial<BoardParams>) => onChange(patch);
   const togglePrio = (id: number) =>
     set({
       prio: params.prio.includes(id)
@@ -151,10 +119,7 @@ export default function BoardToolbar({
             {t("toolbar.search")}
           </label>
           <span className="relative">
-            <MagnifierIcon
-              className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400"
-              aria-hidden
-            />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
             <input
               id="board-search"
               type="search"
@@ -174,11 +139,7 @@ export default function BoardToolbar({
                 aria-label={t("toolbar.clear")}
                 className="absolute end-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-200"
               >
-                <CloseLineIcon
-                  viewBox="0 0 17 16"
-                  className="size-4"
-                  aria-hidden
-                />
+                <X className="size-4" aria-hidden />
               </button>
             )}
           </span>
@@ -209,15 +170,8 @@ export default function BoardToolbar({
         </ToolbarSelect>
       </div>
 
-      <div
-        className="no-scrollbar relative -mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
-        role="group"
-        aria-label={t("toolbar.filters")}
-      >
-        <Chip
-          pressed={params.mine}
-          onClick={() => set({ mine: !params.mine, unassigned: false })}
-        >
+      <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={t("toolbar.filters")}>
+        <Chip pressed={params.mine} onClick={() => set({ mine: !params.mine, unassigned: false })}>
           {t("toolbar.mine")}
         </Chip>
         <Chip
@@ -254,11 +208,7 @@ export default function BoardToolbar({
         {params.older && (
           <Chip pressed onClick={() => set({ older: false })}>
             {t("column.showRecentOnly")}
-            <CloseLineIcon
-              viewBox="0 0 17 16"
-              className="size-3.5"
-              aria-hidden
-            />
+            <X className="size-3.5" aria-hidden />
           </Chip>
         )}
         {hasActiveFilters(params) && (
@@ -266,12 +216,13 @@ export default function BoardToolbar({
             type="button"
             onClick={() => {
               setQ("");
+              // solo i filtri: sorgente, colonne, swimlane e "chiusi precedenti" restano
               onChange({
-                ...DEFAULT_BOARD_PARAMS,
-                source: params.source,
-                group: params.group,
-                lane: params.lane,
-                older: params.older,
+                mine: DEFAULT_BOARD_PARAMS.mine,
+                unassigned: DEFAULT_BOARD_PARAMS.unassigned,
+                overdue: DEFAULT_BOARD_PARAMS.overdue,
+                prio: DEFAULT_BOARD_PARAMS.prio,
+                q: DEFAULT_BOARD_PARAMS.q,
               });
             }}
             className="ms-1 shrink-0 text-theme-sm font-medium whitespace-nowrap text-brand-600 hover:underline dark:text-brand-400"

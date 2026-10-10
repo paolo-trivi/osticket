@@ -16,6 +16,7 @@ import { postNote, postReply } from "@/server/domain/ticket/post";
 import { statusState } from "@/server/domain/ticket/record";
 import { checkStaffPerm, loadTicket, roleOn } from "@/server/domain/ticket/ticket";
 import { runWrite } from "@/server/domain/write";
+import { canWrite, isReadOnlyError, withWriteScope } from "@/server/system/write-mode";
 
 export interface PostState {
   ok?: boolean;
@@ -106,15 +107,35 @@ export interface LockState {
   lockedBy?: string;
 }
 
-/** Equivalente di ajax.php/lock/ticket/<id> (acquisizione o rinnovo). */
+/**
+ * Equivalente di ajax.php/lock/ticket/<id> (acquisizione o rinnovo). Scrittura "operational": in sola
+ * lettura nessun lock ({ id: 0 }, la composizione resta disponibile e l'invio risponde read_only).
+ */
 export async function lockAction(ticketId: number, lockId?: number): Promise<LockState> {
   const loaded = await loadForWrite(ticketId);
   if ("error" in loaded) return { id: 0 };
+  if (!(await canWrite("operational"))) return { id: 0 };
   const cfg = await coreConfig();
-  const res = await db()
-    .transaction()
-    .execute((tx) => (lockId ? renewTicketLock(tx, cfg, ticketId, lockId, loaded.agent.id) : acquireTicketLock(tx, cfg, ticketId, loaded.agent.id)));
-  if (res.ok) return { id: res.lock.lock_id, code: res.lock.code ?? "", time: res.lock.time };
+  const lockTx = () =>
+    db()
+      .transaction()
+      .execute((tx) => (lockId ? renewTicketLock(tx, cfg, ticketId, lockId, loaded.agent.id) : acquireTicketLock(tx, cfg, ticketId, loaded.agent.id)));
+  let res: Awaited<ReturnType<typeof lockTx>>;
+  try {
+    res = await withWriteScope("operational", lockTx, {
+      op: "ticket.lock",
+      actor: { type: "agent", id: loaded.agent.id },
+    });
+  } catch (err) {
+    if (isReadOnlyError(err)) return { id: 0 };
+    throw err;
+  }
+  if (res.ok)
+    return {
+      id: res.lock.lock_id,
+      code: res.lock.code ?? "",
+      time: res.lock.time,
+    };
   if (res.lockedBy) {
     const s = await db().selectFrom("staff").select(["firstname", "lastname"]).where("staff_id", "=", res.lockedBy).executeTakeFirst();
     return { id: 0, lockedBy: s ? `${s.firstname} ${s.lastname}` : "?" };
@@ -124,8 +145,17 @@ export async function lockAction(ticketId: number, lockId?: number): Promise<Loc
 
 export async function releaseLockAction(ticketId: number): Promise<void> {
   const agent = await currentAgent();
-  if (!agent) return;
-  await db().transaction().execute((tx) => releaseTicketLock(tx, ticketId, agent.id));
+  if (!agent || !(await canWrite("operational"))) return;
+  const release = () =>
+    db()
+      .transaction()
+      .execute((tx) => releaseTicketLock(tx, ticketId, agent.id));
+  await withWriteScope("operational", release, {
+    op: "ticket.unlock",
+    actor: { type: "agent", id: agent.id },
+  }).catch((err: unknown) => {
+    if (!isReadOnlyError(err)) throw err;
+  });
 }
 
 /** Testo di una risposta predefinita con le variabili del ticket sostituite (ajax canned). */

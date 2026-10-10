@@ -8,19 +8,23 @@ import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { htmlDecode } from "@/server/format/html";
 
+import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massSlaAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("sla");
 
 /** Elenco piani SLA (include/staff/slaplans.inc.php). */
 export default async function SlaPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  await requireAdmin(locale);
+  const date = await dateFormatter(await requireAdmin(locale), locale);
   const t = await getTranslations("admSla");
   const u = await getTranslations("admUi");
   const sp = await searchParams;
   const defaultId = (await coreConfig()).int("default_sla_id");
-  const rows = await db().selectFrom("sla").select(["id", "name", "flags", "grace_period", "updated"]).orderBy("name").execute();
+  const rows = await db().selectFrom("sla").select(["id", "name", "flags", "grace_period", "created", "updated"]).orderBy("name").execute();
   return (
     <AdminList
       title={t("title")}
@@ -39,6 +43,7 @@ export default async function SlaPage({ params, searchParams }: { params: Promis
         { key: "name", label: t("name") },
         { key: "status", label: t("status") },
         { key: "grace", label: t("gracePeriod") },
+        { key: "created", label: u("createdCol") },
         { key: "updated", label: t("updated") },
       ]}
       rows={rows.map((r) => ({
@@ -57,7 +62,8 @@ export default async function SlaPage({ params, searchParams }: { params: Promis
             </Badge>
           ),
           grace: `${r.grace_period} h`,
-          updated: String(r.updated ?? ""),
+          created: date(r.created, "date"),
+          updated: date(r.updated),
         },
       }))}
     />

@@ -11,6 +11,9 @@ import { db } from "@/server/db";
 import { requireAdmin } from "../../guard";
 import { saveApiKeyAction } from "../actions";
 import { ApiKeyFields } from "../form";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("apikeys");
 
 export default async function EditApiKeyPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;

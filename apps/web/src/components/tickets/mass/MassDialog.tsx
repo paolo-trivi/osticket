@@ -6,6 +6,7 @@ import { useActionState, useEffect, useRef, type ReactNode } from "react";
 import type { MassActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/actions-mass";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 type MassAction = (prev: MassActionState, form: FormData) => Promise<MassActionState>;
 
@@ -42,10 +43,11 @@ export default function MassDialog({
       onSuccess(state);
     }
   }, [state, onSuccess]);
+  const submit = submitKeepingValues(formAction);
   const err = state.error ? (t.has(`mass.errors.${state.error}`) ? t(`mass.errors.${state.error}`) : t.has(`errors.${state.error}`) ? t(`errors.${state.error}`) : t("errors.generic")) : "";
   return (
     <Modal isOpen onClose={onClose} className={`m-4 ${wide ? "max-w-[760px]" : "max-w-[600px]"} p-6 lg:p-8`}>
-      <form action={formAction} className="max-h-[80vh] space-y-5 overflow-y-auto pe-1 custom-scrollbar">
+      <form onSubmit={submit} className="custom-scrollbar max-h-[80vh] space-y-5 overflow-y-auto pe-1">
         <h4 className="pe-12 text-title-sm font-semibold text-gray-800 dark:text-white/90">{title}</h4>
         {ids.map((id) => (
           <input key={id} type="hidden" name="tids" value={id} />

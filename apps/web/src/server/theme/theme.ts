@@ -4,6 +4,7 @@ import { cache } from "react";
 import { coreConfig, loadConfigNamespace } from "../config/config";
 import { NOW, db } from "../db";
 import { stripFourByteChars } from "../format/html";
+import { withWriteScope } from "../system/write-mode";
 import { DEFAULT_THEME, ThemeSchema, type ThemeSettings } from "@/lib/theme/schema";
 
 export { DEFAULT_THEME,  themeCss,  } from "@/lib/theme/schema";
@@ -52,9 +53,19 @@ export const loadTheme = cache(async (): Promise<ResolvedTheme> => {
   };
 });
 
-/** Salva il tema: stessa semantica di Config::set() PHP (update se esiste, altrimenti insert). */
-export async function saveTheme(input: ThemeSettings): Promise<void> {
+/**
+ * Salva il tema: stessa semantica di Config::set() PHP (update se esiste, altrimenti insert).
+ * Scrittura "admin" (write-mode.ts): se non consentita, ReadOnlyModeError.
+ */
+export async function saveTheme(input: ThemeSettings, actorId?: number): Promise<void> {
   const settings = ThemeSchema.parse(input);
+  await withWriteScope("admin", () => saveThemeTx(settings), {
+    op: "admin.theme",
+    actor: actorId ? { type: "agent", id: actorId } : undefined,
+  });
+}
+
+async function saveThemeTx(settings: ThemeSettings): Promise<void> {
   await db()
     .transaction()
     .execute(async (tx) => {

@@ -4,6 +4,9 @@ import { loadTheme } from "@/server/theme/theme";
 
 import { requireAdmin } from "../guard";
 import ThemeEditor from "./ThemeEditor";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("theme");
 
 export default async function AdminThemePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

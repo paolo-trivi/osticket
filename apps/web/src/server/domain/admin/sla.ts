@@ -32,6 +32,8 @@ export async function saveSla(executor: DbOrTx, slaId: number | null, input: Php
   if (!truthy(vars.grace_period)) errors.grace_period = "required";
   else if (!isNumeric(vars.grace_period)) errors.grace_period = "numeric";
   else if (Number(str(vars.grace_period)) > 8760) errors.grace_period = "max";
+  // sla.grace_period è INT: il PHP accetta is_numeric e MySQL arrotonda in silenzio; qui si chiede un intero
+  else if (!Number.isInteger(Number(str(vars.grace_period)))) errors.grace_period = "integer";
   if (!truthy(vars.name)) errors.name = "required";
   else {
     const row = await executor.selectFrom("sla").select("id").where("name", "=", str(vars.name)).executeTakeFirst();

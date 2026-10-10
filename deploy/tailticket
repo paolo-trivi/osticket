@@ -2,23 +2,41 @@
 # TailTicket — gestione dello stack Docker in un comando.
 #   ./tailticket up            primo avvio: crea .env con segreti casuali, costruisce, installa, attende la salute
 #   ./tailticket help          tutti i comandi
+# Compatibile con bash 3.2 (macOS).
 set -euo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")"
 ENV_FILE=.env
+# stato locale dello script (marcatore dell'ultimo backup, .env della prova generale): escluso da git
+STATE_DIR=.state
+REHEARSAL_PROJECT=tailticket-rehearsal
+REHEARSAL_ENV="$STATE_DIR/rehearsal.env"
+# opzioni aggiuntive di docker compose (-p/-f della prova generale); vuote per lo stack configurato in .env
+DC_OPTS=()
+# la modalità la decide .env: una TAILTICKET_MODE esportata nella shell scavalcherebbe .env in compose
+unset TAILTICKET_MODE
 
-c_ok=$'\e[32m'; c_warn=$'\e[33m'; c_err=$'\e[31m'; c_dim=$'\e[2m'; c_off=$'\e[0m'
-[[ -t 1 ]] || { c_ok=""; c_warn=""; c_err=""; c_dim=""; c_off=""; }
-say()  { echo "${c_ok}▸${c_off} $*"; }
+c_ok=$'\e[32m'; c_warn=$'\e[33m'; c_err=$'\e[31m'; c_dim=$'\e[2m'; c_bold=$'\e[1m'; c_off=$'\e[0m'
+[[ -t 1 ]] || { c_ok=""; c_warn=""; c_err=""; c_dim=""; c_bold=""; c_off=""; }
+say()  { echo "${c_ok}>${c_off} $*"; }
 warn() { echo "${c_warn}!${c_off} $*" >&2; }
-die()  { echo "${c_err}✗${c_off} $*" >&2; exit 1; }
+die()  { echo "${c_err}x${c_off} $*" >&2; exit 1; }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "manca '$1': installalo e riprova"; }
 need docker
+need perl
 docker compose version >/dev/null 2>&1 || die "serve Docker Compose v2 (docker compose)"
 
-dc() { docker compose --env-file "$ENV_FILE" "$@"; }
-envget() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+dc() { docker compose --env-file "$ENV_FILE" ${DC_OPTS[@]+"${DC_OPTS[@]}"} "$@"; }
+# valore di una chiave di .env come la legge compose: senza apici esterni; tra virgolette doppie valgono
+# gli escape \\ \" \$ (gli unici che scrive dotenv_quote)
+envget() {
+  local v
+  v="$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  if [[ ${#v} -ge 2 && "$v" == \'*\' ]]; then v="${v:1:${#v}-2}"
+  elif [[ ${#v} -ge 2 && "$v" == \"*\" ]]; then v="$(V="${v:1:${#v}-2}" perl -e '($x = $ENV{V}) =~ s/\\([\\"\$])/$1/g; print $x')"; fi
+  printf '%s' "$v"
+}
 envset() {
   local k="$1" v="$2"
   if grep -qE "^#? ?$k=" "$ENV_FILE"; then
@@ -28,7 +46,93 @@ envset() {
     echo "$k=$v" >>"$ENV_FILE"
   fi
 }
+# valore scritto in .env così che compose lo legga alla lettera: così com'è se semplice, tra apici singoli
+# se contiene $, spazi, # ecc., tra virgolette doppie con escape se contiene anche un apice singolo
+dotenv_quote() {
+  local v="$1" plain='^[A-Za-z0-9_./:@%+,=-]*$'
+  [[ "$v" != *$'\n'* ]] || return 1
+  if [[ "$v" =~ $plain ]]; then printf '%s' "$v"
+  elif [[ "$v" != *"'"* ]]; then printf "'%s'" "$v"
+  else V="$v" perl -e '($x = $ENV{V}) =~ s/([\\"\$])/\\$1/g; print "\"$x\""'; fi
+}
+envset_user() { local q; q="$(dotenv_quote "$2")" || die "$1: valore su più righe, non rappresentabile in .env"; envset "$1" "$q"; }
+envset_or_change_me() { if [[ -n "$2" ]]; then envset_user "$1" "$2"; else envset "$1" CHANGE_ME; fi; }
+# commenta una chiave non più usata (resta leggibile in .env)
+envcomment() { K="$1" N="$2" perl -i -pe 's/^(\Q$ENV{K}\E=)/# ($ENV{N}) $1/' "$ENV_FILE"; }
+envrename() { K="$1" N="$2" perl -i -pe 's/^\Q$ENV{K}\E=/$ENV{N}=/' "$ENV_FILE"; }
 rand() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1" || true; }
+
+# define('CHIAVE', 'valore') o define("CHIAVE", "valore") di un ost-config.php, con le stesse regole
+# della app (parseOstConfigPhp in apps/web/src/server/env.ts)
+phpdefine() {
+  K="$2" perl -ne '
+    if (/^\s*define\(\s*([\x27"])\Q$ENV{K}\E\1\s*,\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)")\s*\)\s*;/) {
+      if (defined $2) { ($v = $2) =~ s/\\([\x27\\])/$1/g } else { ($v = $3) =~ s/\\(["\\\$])/$1/g }
+      print $v; exit
+    }' "$1" 2>/dev/null || true
+}
+# chiavi di .env (modalità "copia") e define di ost-config.php corrispondenti
+CONFIG_KEYS="OST_DB_NAME:DBNAME OST_DB_USER:DBUSER OST_DB_PASS:DBPASS OST_TABLE_PREFIX:TABLE_PREFIX OST_SECRET_SALT:SECRET_SALT"
+# completa in .env le chiavi mancanti con i valori di ost-config.php (utente e password solo se non dedicati)
+attach_fill_from_config() {
+  local pair k d
+  for pair in $CONFIG_KEYS; do
+    k="${pair%%:*}"; d="${pair#*:}"
+    if [[ -z "$(envget "$k")" ]]; then envset_user "$k" "$(phpdefine "$1" "$d")"; fi
+  done
+}
+# in modalità "copia": DB, prefisso e SECRET_SALT di .env devono essere ancora quelli di ost-config.php
+attach_check_copy() {
+  local src; src="$(envget OST_CONFIG_COPIED_FROM)"
+  [[ -n "$src" ]] || return 0
+  if [[ ! -r "$src" ]]; then warn "non riesco a leggere $src (OST_CONFIG_COPIED_FROM): DB, prefisso e SECRET_SALT non riconfrontati"; return 0; fi
+  local pair k d diff=""
+  for pair in OST_DB_NAME:DBNAME OST_TABLE_PREFIX:TABLE_PREFIX OST_SECRET_SALT:SECRET_SALT; do
+    k="${pair%%:*}"; d="${pair#*:}"
+    if [[ "$(envget "$k")" != "$(phpdefine "$src" "$d")" ]]; then diff="$diff $k($d)"; fi
+  done
+  [[ -z "$diff" ]] || die "$ENV_FILE non corrisponde più a $src:$diff. Aggiorna $ENV_FILE (i valori non sono stampati)"
+}
+# con ost-config.php montato l'identità (DB, prefisso, SECRET_SALT) di .env deve coincidere con il file, se no la
+# app non parte: lo si dice prima. Host, porta, utente e password possono differire (utente MySQL dedicato, DB
+# raggiunto dal container a un indirizzo diverso da DBHOST): la app li usa e il doctor li segnala
+attach_check_mounted() {
+  local cfg; cfg="$(envget OST_CONFIG_FILE)"
+  [[ -n "$cfg" && -r "$cfg" ]] || return 0
+  local pair k d v f diff=""
+  for pair in OST_DB_NAME:DBNAME OST_TABLE_PREFIX:TABLE_PREFIX OST_SECRET_SALT:SECRET_SALT; do
+    k="${pair%%:*}"; d="${pair#*:}"; v="$(envget "$k")"; f="$(phpdefine "$cfg" "$d")"
+    if [[ -n "$v" && -n "$f" && "$v" != "$f" ]]; then diff="$diff $k($d)"; fi
+  done
+  [[ -z "$diff" ]] || die "con ost-config.php montato (OST_CONFIG_FILE) queste variabili sono diverse dal file e TailTicket non partirebbe:$diff. Toglile da $ENV_FILE (i valori non sono stampati)"
+}
+
+tty_in() { [[ -t 0 ]]; }
+ask() { # ask <variabile> <domanda> [suggerimento mostrato, accettato con Invio]
+  local __v; read -r -p "  $2${3:+ [$3]}: " __v || true
+  [[ -z "$__v" ]] && __v="${3:-}"
+  printf -v "$1" '%s' "$__v"
+}
+ask_secret() { local __v; read -r -s -p "  $2: " __v || true; echo; printf -v "$1" '%s' "$__v"; }
+# conferma che richiede di scrivere esattamente una parola (nome del DB, "admin")
+confirm_word() {
+  local ans
+  tty_in || die "serve una conferma interattiva (da terminale), oppure --yes per l'automazione"
+  read -r -p "  $2: " ans || true
+  [[ "$ans" == "$1" ]] || die "conferma non corrispondente: nessuna modifica"
+}
+confirm_yes() {
+  local ans
+  tty_in || die "serve una conferma interattiva (da terminale), oppure --yes"
+  read -r -p "  $1 [s/N]: " ans || true
+  case "$ans" in s|S|si|SI|sì|Sì|y|Y|yes) return 0 ;; *) die "annullato: nessuna modifica" ;; esac
+}
+file_gid() { stat -c %g "$1" 2>/dev/null || stat -f %g "$1"; }
+others_can_read() { # il file (o la cartella) è leggibile da un utente qualsiasi?
+  local m; m="$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1")"
+  if [[ -d "$1" ]]; then (( (8#$m & 5) == 5 )); else (( (8#$m & 4) == 4 )); fi
+}
+abspath() { (cd "$(dirname "$1")" && printf '%s/%s' "$(pwd)" "$(basename "$1")"); }
 
 usage() {
   cat <<EOF
@@ -36,17 +140,37 @@ TailTicket — stack Docker (MariaDB + osTicket classico + TailTicket + Caddy)
 
 Uso: ./tailticket <comando> [opzioni]
 
-  init [--domain D] [--https auto|internal|off] [--attach] [--mail|--no-mail] [--force]
+  init [--domain D] [--https auto|internal|off] [--mail|--no-mail] [--force]
                       crea .env con segreti casuali (dominio predefinito: localhost);
                       Mailpit (email di prova) attivo solo con localhost, salvo --mail
-  up                  avvia lo stack (esegue init se manca .env), attende la salute, stampa URL e credenziali
+  init --attach [--config /percorso/ost-config.php] [--attachments CARTELLA] [--db-host H[:P]]
+                [--db-user UTENTE] [--classic-url URL] [--smtp URL] [--domain D] [--https …] [--force]
+                      collega TailTicket a un osTicket 1.18 esistente, in sola lettura (TAILTICKET_MODE=readonly);
+                      con --config DB e SECRET_SALT vengono da ost-config.php, montato in sola lettura (copiati in
+                      .env e riconfrontati a ogni avvio se servono --db-host/--db-user o DBHOST è localhost)
+  up                  avvia lo stack (esegue init se manca .env), attende la salute, stampa URL e credenziali;
+                      in modalità attach parte in sola lettura, esegue il doctor e scrive solo se non ci sono blocchi
   down                ferma lo stack (i dati restano nei volumi)
   status              stato dei servizi
   logs [servizio]     log (tailticket, osticket, cron, db, proxy)
-  backup [cartella]   archivio con dump del DB, file e .env (default: ./backups)
+  doctor              controlli del collegamento a osTicket (schema, prefisso, SECRET_SALT, fuso, permessi, email,
+                      allegati, plugin, cron); esce con codice 1 se la scrittura è bloccata
+  mode [readonly|operational|full] [--yes] [--confirm-admin]
+                      senza argomento mostra la modalità configurata ed effettiva; con argomento la imposta e
+                      ricrea solo TailTicket. In attach, per scrivere: doctor senza blocchi, backup recente e
+                      conferma con il nome del database (--yes per l'automazione; full vuole anche --confirm-admin)
+  readonly            interruttore d'emergenza: TailTicket subito in sola lettura, senza conferme
+  backup [cartella]   archivio con dump del DB, file e .env (default: ./backups); in attach dump del DB di
+                      produzione in sola lettura (gli allegati su disco restano del server di produzione)
   restore <archivio> [--with-env]
-                      ripristina DB e file da un backup (con --with-env anche .env)
+                      ripristina DB e file da un backup (con --with-env anche .env); non in modalità attach
   update [--no-git]   backup, aggiornamento del codice (git pull) e delle immagini, riavvio
+                      (in attach: avvio protetto con il doctor, come up)
+  rehearse --dump <file.sql[.gz]|backup.tar.gz> [--attachments CARTELLA] [--port P] [--mode M] [--upgrade] [--yes]
+                      prova generale: stack completo separato ($REHEARSAL_PROJECT) con una copia del DB di
+                      produzione; la posta in uscita finisce tutta in Mailpit, le caselle in entrata sono spente
+  rehearse status|logs [servizio]|doctor|down
+                      stato, log, doctor della prova; down la ferma e ne cancella i dati
   help                questo aiuto
 EOF
 }
@@ -54,6 +178,7 @@ EOF
 # --- init -----------------------------------------------------------------------------------------
 cmd_init() {
   local domain="localhost" https="" attach=0 mail="" force=0
+  local cfg="" attachments="" db_host="" db_user="" classic_url="" smtp="" smtp_set=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --domain) domain="${2:?--domain richiede un valore}"; shift 2 ;;
@@ -62,29 +187,62 @@ cmd_init() {
       --no-mail) mail=0; shift ;;
       --mail) mail=1; shift ;;
       --force) force=1; shift ;;
+      --config) cfg="${2:?--config richiede il percorso di ost-config.php}"; shift 2 ;;
+      --attachments) attachments="${2:?--attachments richiede una cartella}"; shift 2 ;;
+      --db-host) db_host="${2:?--db-host richiede host[:porta]}"; shift 2 ;;
+      --db-user) db_user="${2:?--db-user richiede un utente}"; shift 2 ;;
+      --classic-url) classic_url="${2:?--classic-url richiede un URL}"; shift 2 ;;
+      --smtp) smtp="${2-}"; smtp_set=1; shift 2 ;;
       *) die "opzione sconosciuta: $1" ;;
     esac
   done
+  if [[ $attach -eq 0 ]]; then
+    [[ -z "$cfg$attachments$db_host$db_user$classic_url" && $smtp_set -eq 0 ]] \
+      || die "--config, --attachments, --db-host, --db-user, --classic-url e --smtp valgono solo con --attach"
+  fi
   if [[ -f "$ENV_FILE" && $force -eq 0 ]]; then
     warn "$ENV_FILE esiste già: lo lascio com'è (usa --force per rigenerarlo; i segreti cambierebbero!)"
     return 0
   fi
-  cp .env.example "$ENV_FILE"
-  chmod 600 "$ENV_FILE"
 
   local local_host=0
   [[ "$domain" == "localhost" || "$domain" == "127.0.0.1" ]] && local_host=1
+  [[ -z "$https" ]] && { [[ $local_host -eq 1 ]] && https=off || https=auto; }
+  case "$https" in auto|internal|off) ;; *) die "--https deve essere auto, internal oppure off" ;; esac
+
+  if [[ $attach -eq 1 ]]; then
+    [[ -z "$mail" || "$mail" == 0 ]] || die "--mail non vale in modalità attach: Mailpit non c'è (per le prove: ./tailticket rehearse)"
+    init_attach "$domain" "$https" "$cfg" "$attachments" "$db_host" "$db_user" "$classic_url" "$smtp"
+    return 0
+  fi
+
+  cp .env.example "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
   # Mailpit cattura TUTTE le email (reset password, codici 2FA, link di accesso) e ha un'interfaccia
   # senza password: di default solo per le prove in locale, mai con un dominio pubblico
   [[ -z "$mail" ]] && mail=$local_host
   if [[ $mail -eq 1 && $local_host -eq 0 ]]; then
     warn "--mail con un dominio pubblico: le email NON vengono consegnate ma restano in Mailpit (solo per prove)"
   fi
-  [[ -z "$https" ]] && { [[ $local_host -eq 1 ]] && https=off || https=auto; }
-  case "$https" in auto|internal|off) ;; *) die "--https deve essere auto, internal oppure off" ;; esac
+  set_site "$domain" "$https"
 
-  local http_port; http_port="$(envget TAILTICKET_HTTP_PORT)"; http_port="${http_port:-80}"
-  local url
+  envset TAILTICKET_SECRET_SALT "$(rand 32)"
+  envset TAILTICKET_SESSION_SECRET "$(rand 48)"
+  envset TAILTICKET_DOCTOR_TOKEN "$(rand 48)"
+  envset TAILTICKET_DB_PASSWORD "$(rand 32)"
+  envset TAILTICKET_DB_ROOT_PASSWORD "$(rand 32)"
+  envset TAILTICKET_ADMIN_PASSWORD "Tt-$(rand 17)"
+
+  if [[ $mail -eq 0 ]]; then
+    envset COMPOSE_PROFILES ""
+    envset TAILTICKET_SMTP_URL ""
+  fi
+  say "creato $ENV_FILE (dominio $domain, HTTPS $https, URL $(envget TAILTICKET_URL))"
+}
+
+set_site() {
+  local domain="$1" https="$2" http_port url
+  http_port="$(envget TAILTICKET_HTTP_PORT)"; http_port="${http_port:-80}"
   if [[ "$https" == off ]]; then
     url="http://$domain"; [[ "$http_port" != 80 ]] && url="$url:$http_port"
     envset TAILTICKET_SITE ":80"
@@ -95,39 +253,191 @@ cmd_init() {
   envset TAILTICKET_DOMAIN "$domain"
   envset TAILTICKET_HTTPS "$https"
   envset TAILTICKET_URL "$url"
+}
 
-  envset TAILTICKET_SECRET_SALT "$(rand 32)"
-  envset TAILTICKET_SESSION_SECRET "$(rand 48)"
-  envset TAILTICKET_DB_PASSWORD "$(rand 32)"
-  envset TAILTICKET_DB_ROOT_PASSWORD "$(rand 32)"
-  envset TAILTICKET_ADMIN_PASSWORD "Tt-$(rand 17)"
+# .env della modalità attach: solo le chiavi che servono, nessun valore predefinito del DB. Con --config
+# la fonte del DB e del SECRET_SALT è una sola (ost-config.php montato in sola lettura): in .env non
+# finiscono, salvo l'indirizzo con cui il container raggiunge il DB e l'eventuale utente dedicato.
+init_attach() {
+  local domain="$1" https="$2" cfg="$3" attachments="$4" db_host="$5" db_user="$6" classic_url="$7" smtp="$8"
+  local files_gid=""
 
-  if [[ $mail -eq 0 ]]; then
-    envset COMPOSE_PROFILES ""
-    envset TAILTICKET_SMTP_URL ""
+  if [[ -n "$cfg" ]]; then
+    [[ -f "$cfg" ]] || die "--config: $cfg non esiste"
+    [[ -r "$cfg" ]] || die "--config: non riesco a leggere $cfg (esegui con un utente del suo gruppo, es. www-data)"
+    cfg="$(abspath "$cfg")"
+    local k missing=""
+    for k in DBHOST DBNAME DBUSER SECRET_SALT; do [[ -n "$(phpdefine "$cfg" "$k")" ]] || missing="$missing $k"; done
+    [[ -z "$missing" ]] || die "$cfg non contiene:$missing (serve l'ost-config.php di un osTicket installato)"
+    grep -qE "^\s*define\(\s*'TABLE_PREFIX'" "$cfg" || die "$cfg non contiene TABLE_PREFIX"
+    if ! others_can_read "$cfg"; then
+      files_gid="$(file_gid "$cfg")"
+      warn "$cfg non è leggibile da tutti: il container lo leggerà con il gruppo $files_gid (TAILTICKET_FILES_GID)"
+    fi
+  fi
+  if [[ -n "$attachments" ]]; then
+    [[ -d "$attachments" ]] || die "--attachments: $attachments non è una cartella"
+    attachments="$(abspath "$attachments")"
+    if ! others_can_read "$attachments"; then
+      local g; g="$(file_gid "$attachments")"
+      if [[ -n "$files_gid" && "$files_gid" != "$g" ]]; then
+        warn "$attachments ha il gruppo $g, ost-config.php il gruppo $files_gid: il container ne usa uno solo (TAILTICKET_FILES_GID=$files_gid)"
+      else
+        files_gid="$g"
+        warn "$attachments non è leggibile da tutti: il container lo leggerà con il gruppo $g (TAILTICKET_FILES_GID)"
+      fi
+    fi
   fi
 
-  if [[ $attach -eq 1 ]]; then
-    envset COMPOSE_FILE "compose.attach.yaml"
-    envset COMPOSE_PROFILES ""
-    envset TAILTICKET_SECRET_SALT "CHANGE_ME"
-    cat >>"$ENV_FILE" <<'EOF'
+  # .env scritto in un file temporaneo e spostato solo alla fine: un errore a metà non lascia un .env parziale
+  local final="$ENV_FILE"
+  local ENV_FILE="$final.nuovo"
+  trap 'rm -f .env.nuovo' EXIT
+  (umask 077; : >"$ENV_FILE")
+  chmod 600 "$ENV_FILE"
+  cat >"$ENV_FILE" <<EOF
+# TailTicket in modalità attach: collegato a un osTicket 1.18 già in produzione (./tailticket init --attach).
+# Tutte le chiavi con il loro significato: .env.example; guida: README.md, "Collegare un osTicket esistente".
+TAILTICKET_ENV_VERSION=2
+COMPOSE_FILE=compose.attach.yaml
+COMPOSE_PROFILES=
 
-# --- Modalità attach: osTicket esistente ----------------------------------------------------------
-# Indicare il DB dell'osTicket esistente (raggiungibile dal container: host.docker.internal = questa macchina)
-# e il SUO SECRET_SALT (da include/ost-config.php), oppure montare direttamente il suo ost-config.php:
-#   OST_CONFIG_FILE=/var/www/osticket/include/ost-config.php
-#   OST_CONFIG_PATH_IN_CONTAINER=/etc/osticket/ost-config.php
-TAILTICKET_DB_HOST=host.docker.internal
-TAILTICKET_DB_PORT=3306
-TAILTICKET_DB_TIMEZONE=Europe/Rome
+# --- Indirizzo pubblico ---------------------------------------------------------------------------
+TAILTICKET_DOMAIN=
+TAILTICKET_URL=
+TAILTICKET_HTTPS=
+TAILTICKET_SITE=
+TAILTICKET_HTTP_PORT=80
+TAILTICKET_HTTPS_PORT=443
 # URL del pannello osTicket esistente (pulsante "Apri nel pannello classico")
-TAILTICKET_CLASSIC_URL=https://helpdesk.example.com
+# TAILTICKET_CLASSIC_URL=https://helpdesk.example.com
+# CIDR di CDN o bilanciatori davanti a Caddy (SECURITY.md)
+# TAILTICKET_TRUSTED_PROXIES=203.0.113.0/24
+
+# --- Segreti di TailTicket ------------------------------------------------------------------------
+TAILTICKET_SESSION_SECRET=
+# token di /api/doctor (./tailticket doctor)
+TAILTICKET_DOCTOR_TOKEN=
+
+# --- Modalità di scrittura --------------------------------------------------------------------------
+# readonly (default in attach) | operational (ticket, task, utenti, portale; admin in sola lettura) | full
+# Si cambia con ./tailticket mode, che prima verifica doctor e backup.
+TAILTICKET_MODE=readonly
+# età massima in ore dell'ultimo ./tailticket backup per passare a operational o full
+# TAILTICKET_BACKUP_MAX_AGE_HOURS=24
+
+# --- osTicket esistente ---------------------------------------------------------------------------
 EOF
-    say "creato $ENV_FILE in modalità attach: completa DB e SECRET_SALT dell'osTicket esistente, poi ./tailticket up"
-    return 0
+  set_site "$domain" "$https"
+  envset TAILTICKET_SESSION_SECRET "$(rand 48)"
+  envset TAILTICKET_DOCTOR_TOKEN "$(rand 48)"
+  [[ -n "$classic_url" ]] && envset TAILTICKET_CLASSIC_URL "$classic_url"
+
+  local host="" port=""
+  if [[ -n "$db_host" ]]; then host="${db_host%%:*}"; [[ "$db_host" == *:* ]] && port="${db_host#*:}"; fi
+
+  if [[ -n "$cfg" ]]; then
+    local chost cport dbhost; dbhost="$(phpdefine "$cfg" DBHOST)"
+    chost="${dbhost%%:*}"; cport=""; [[ "$dbhost" == *:* ]] && cport="${dbhost#*:}"
+    local copy=0 re_local='^(localhost|127\.0\.0\.1|::1)?$' re_num='^[0-9]+$'
+    if [[ -z "$host" ]]; then
+      if [[ "$chost" =~ $re_local || ( -n "$cport" && ! "$cport" =~ $re_num ) ]]; then
+        # nel container "localhost" è il container stesso e un socket non c'è: il DB della macchina è host.docker.internal
+        host=host.docker.internal
+        if [[ "$cport" =~ ^[0-9]+$ ]]; then port="$cport"; else port=3306; fi
+        warn "DBHOST di ost-config.php è '$dbhost': dal container il DB si raggiunge come host.docker.internal:$port"
+        warn "MySQL deve accettare connessioni TCP dalla rete Docker (bind-address) e l'utente deve valere per quell'indirizzo"
+      fi
+    fi
+    [[ -n "$host" || -n "$db_user" ]] && copy=1
+    if [[ $copy -eq 0 ]]; then
+      cat >>"$ENV_FILE" <<'EOF'
+# ost-config.php dell'osTicket, montato in sola lettura: è l'unica fonte di DB, credenziali, prefisso e
+# SECRET_SALT. Nessuna OST_DB_* qui: una variabile con un valore diverso dal file blocca l'avvio.
+EOF
+      envset_user OST_CONFIG_FILE "$cfg"
+      envset OST_CONFIG_PATH_IN_CONTAINER /etc/osticket/ost-config.php
+    else
+      # indirizzo o utente diversi da quelli del file: montato, il file andrebbe in conflitto (la app non
+      # parte). I valori si copiano in .env e ./tailticket li riconfronta con il file a ogni avvio.
+      cat >>"$ENV_FILE" <<'EOF'
+# Valori copiati da ost-config.php (OST_CONFIG_COPIED_FROM), perché il container deve usare un indirizzo
+# o un utente MySQL diversi da quelli del file: ./tailticket controlla a ogni avvio che DB, prefisso e
+# SECRET_SALT coincidano ancora con il file.
+EOF
+      envset_user OST_CONFIG_COPIED_FROM "$cfg"
+      envset_user OST_DB_HOST "${host:-$chost}"
+      [[ -z "$port" && "$cport" =~ ^[0-9]+$ ]] && port="$cport"
+      envset OST_DB_PORT "${port:-3306}"
+      if [[ -n "$db_user" ]]; then
+        tty_in || die "--db-user: la password si chiede da terminale"
+        local pw; ask_secret pw "password di $db_user"
+        [[ -n "$pw" ]] || die "password vuota"
+        echo "# utente MySQL dedicato a TailTicket (GRANT SELECT, INSERT, UPDATE, DELETE: README.md)" >>"$ENV_FILE"
+        envset_user OST_DB_USER "$db_user"
+        envset_user OST_DB_PASS "$pw"
+      fi
+      attach_fill_from_config "$cfg"
+      warn "ost-config.php non è montato ma copiato in $ENV_FILE: se cambia, aggiorna anche $ENV_FILE (./tailticket lo segnala)"
+    fi
+  else
+    cat >>"$ENV_FILE" <<'EOF'
+# Database dell'osTicket esistente (consigliato invece: ./tailticket init --attach --force --config …/ost-config.php).
+# I valori devono essere quelli di include/ost-config.php: nessun valore predefinito.
+EOF
+    local name="" user="" pw="" prefix="" salt=""
+    if tty_in; then
+      echo "Database dell'osTicket esistente (i valori di include/ost-config.php):"
+      [[ -n "$host" ]] || ask host "host del DB visto dal container (questa macchina: host.docker.internal)" host.docker.internal
+      [[ -n "$port" ]] || ask port "porta" 3306
+      ask name "nome del database (DBNAME)"
+      if [[ -n "$db_user" ]]; then user="$db_user"; else ask user "utente (DBUSER, o un utente dedicato a TailTicket)"; fi
+      ask_secret pw "password"
+      ask prefix "prefisso delle tabelle (TABLE_PREFIX, di solito ost_)"
+      ask_secret salt "SECRET_SALT (da ost-config.php)"
+    fi
+    # valore indicato, altrimenti CHANGE_ME: ./tailticket up si rifiuta di partire finché resta
+    envset_or_change_me OST_DB_HOST "$host"
+    envset_or_change_me OST_DB_PORT "$port"
+    envset_or_change_me OST_DB_NAME "$name"
+    envset_or_change_me OST_DB_USER "$user"
+    envset_or_change_me OST_DB_PASS "$pw"
+    envset_or_change_me OST_TABLE_PREFIX "$prefix"
+    envset_or_change_me OST_SECRET_SALT "$salt"
   fi
-  say "creato $ENV_FILE (dominio $domain, HTTPS $https, URL $url)"
+  cat >>"$ENV_FILE" <<'EOF'
+# fuso orario del server MySQL; vuoto = ricavato dall'offset del DB (il doctor lo confronta)
+# OST_DB_TIMEZONE=Europe/Rome
+
+# --- Allegati su disco (plugin storage-fs di osTicket), montati in sola lettura ----------------------
+EOF
+  if [[ -n "$attachments" ]]; then
+    envset_user OST_ATTACHMENTS_HOST_DIR "$attachments"
+    envset OST_ATTACHMENTS_DIR /var/lib/osticket-attachments
+  else
+    printf '%s\n' "# OST_ATTACHMENTS_HOST_DIR=/var/www/osticket-files" "# OST_ATTACHMENTS_DIR=/var/lib/osticket-attachments" >>"$ENV_FILE"
+  fi
+  if [[ -n "$files_gid" ]]; then
+    [[ "$files_gid" == 0 ]] && warn "il gruppo 0 (root) dà al container più accesso del necessario: meglio rendere i file leggibili da un gruppo dedicato"
+    echo "# gruppo con cui il container legge ost-config.php e gli allegati" >>"$ENV_FILE"
+    envset TAILTICKET_FILES_GID "$files_gid"
+  fi
+  cat >>"$ENV_FILE" <<'EOF'
+
+# --- Email in uscita ------------------------------------------------------------------------------
+# TailTicket usa gli account SMTP configurati in osTicket; questo relay serve solo se osTicket usa mail()
+# di PHP (nessun account SMTP): smtp://utente:password@host:587 o smtps://…:465. Niente Mailpit in attach.
+EOF
+  if [[ -n "$smtp" ]]; then envset_user TAILTICKET_SMTP_URL "$smtp"; else envset TAILTICKET_SMTP_URL ""; fi
+
+  mv "$ENV_FILE" "$final"; trap - EXIT
+  ENV_FILE="$final"
+  if grep -qE '^[A-Z_]+=CHANGE_ME$' "$ENV_FILE"; then
+    say "creato $final in modalità attach (sola lettura): completa i valori CHANGE_ME, poi ./tailticket up"
+  else
+    say "creato $final in modalità attach, in sola lettura (TAILTICKET_MODE=readonly)"
+  fi
+  echo "  percorso consigliato: ./tailticket up → doctor → rehearse --dump … → backup → mode operational"
 }
 
 check_env() {
@@ -135,9 +445,89 @@ check_env() {
   if grep -qE '^[A-Z_]+=CHANGE_ME$' "$ENV_FILE"; then
     die "in $ENV_FILE restano valori CHANGE_ME: $(grep -E '^[A-Z_]+=CHANGE_ME$' "$ENV_FILE" | cut -d= -f1 | tr '\n' ' ')"
   fi
+  if attach_mode; then
+    # una sorgente di bind mount inesistente verrebbe creata da Docker come cartella: mai sul server di produzione
+    local f; f="$(envget OST_CONFIG_FILE)"
+    [[ -z "$f" || -f "$f" ]] || die "OST_CONFIG_FILE=$f non esiste (o non è un file)"
+    f="$(envget OST_ATTACHMENTS_HOST_DIR)"
+    [[ -z "$f" || -d "$f" ]] || die "OST_ATTACHMENTS_HOST_DIR=$f non è una cartella"
+    if [[ -n "$f" && -z "$(envget OST_ATTACHMENTS_DIR)" ]]; then die "OST_ATTACHMENTS_HOST_DIR senza OST_ATTACHMENTS_DIR (percorso nel container)"; fi
+    attach_check_mounted
+    attach_check_copy
+  fi
+  return 0
 }
 
 attach_mode() { [[ "$(envget COMPOSE_FILE)" == "compose.attach.yaml" ]]; }
+
+ensure_doctor_token() {
+  local t; t="$(envget TAILTICKET_DOCTOR_TOKEN)"
+  if [[ ${#t} -lt 32 || "$t" == CHANGE_ME ]]; then
+    envset TAILTICKET_DOCTOR_TOKEN "$(rand 48)"
+    say "generato TAILTICKET_DOCTOR_TOKEN in $ENV_FILE"
+  fi
+}
+
+# .env di una modalità attach creato prima di TAILTICKET_ENV_VERSION=2: le chiavi TAILTICKET_DB_* (con i
+# valori predefiniti che scavalcavano ost-config.php) diventano le OST_* lette dalla app, solo se servono.
+attach_migrate_env() {
+  attach_mode || return 0
+  [[ -n "$(envget TAILTICKET_ENV_VERSION)" ]] && return 0
+  mkdir -p "$STATE_DIR"
+  local bak; bak="$STATE_DIR/env.prima-della-migrazione-$(date +%Y%m%d-%H%M%S)"
+  (umask 077; cp "$ENV_FILE" "$bak")
+  say "aggiorno $ENV_FILE alla nuova modalità attach (copia dell'originale: $bak)"
+  local cfg; cfg="$(envget OST_CONFIG_FILE)"
+  [[ -n "$cfg" && ! -r "$cfg" ]] && die "non riesco a leggere $cfg (OST_CONFIG_FILE) per la migrazione di $ENV_FILE"
+  local dbhost=""; [[ -n "$cfg" ]] && dbhost="$(phpdefine "$cfg" DBHOST)"
+  local pair old new def v fv
+  for pair in TAILTICKET_DB_HOST:OST_DB_HOST:@HOST TAILTICKET_DB_PORT:OST_DB_PORT:@PORT TAILTICKET_DB_NAME:OST_DB_NAME:DBNAME \
+              TAILTICKET_DB_USER:OST_DB_USER:DBUSER TAILTICKET_DB_PASSWORD:OST_DB_PASS:DBPASS \
+              TAILTICKET_TABLE_PREFIX:OST_TABLE_PREFIX:TABLE_PREFIX TAILTICKET_SECRET_SALT:OST_SECRET_SALT:SECRET_SALT \
+              TAILTICKET_DB_TIMEZONE:OST_DB_TIMEZONE:; do
+    IFS=: read -r old new def <<<"$pair"
+    grep -qE "^$old=" "$ENV_FILE" || continue
+    v="$(envget "$old")"
+    if [[ -z "$v" || -n "$(envget "$new")" ]]; then envcomment "$old" "non più usata in modalità attach"; continue; fi
+    if [[ -n "$cfg" && -n "$def" ]]; then
+      case "$def" in
+        @HOST) fv="${dbhost%%:*}" ;;
+        @PORT) fv=""; [[ "$dbhost" == *:* ]] && fv="${dbhost#*:}"; [[ "$fv" =~ ^[0-9]+$ ]] || fv=3306 ;;
+        *) fv="$(phpdefine "$cfg" "$def")" ;;
+      esac
+      # OST_DB_HOST senza porta farebbe usare 3306 alla app: con l'host spostato la porta resta esplicita
+      if [[ "$v" == "$fv" ]] && ! [[ "$new" == OST_DB_PORT && -n "$(envget OST_DB_HOST)" ]]; then
+        envcomment "$old" "uguale a ost-config.php, non più usata"; continue
+      fi
+      case "$new" in
+        OST_DB_HOST|OST_DB_PORT|OST_DB_USER|OST_DB_PASS) ;;
+        *) warn "$old è diverso da $def di ost-config.php: diventa $new e TailTicket non parte finché il conflitto resta" ;;
+      esac
+    fi
+    envrename "$old" "$new"
+    say "  $old → $new"
+  done
+  # con ost-config.php montato la app rifiuta qualsiasi OST_DB_* diversa dal file: con un indirizzo o un
+  # utente propri del container i valori si copiano in .env e il file non si monta più (modalità "copia")
+  if [[ -n "$cfg" && -n "$(envget OST_DB_HOST)$(envget OST_DB_PORT)$(envget OST_DB_USER)$(envget OST_DB_PASS)" ]]; then
+    attach_fill_from_config "$cfg"
+    envrename OST_CONFIG_FILE OST_CONFIG_COPIED_FROM
+    envcomment OST_CONFIG_PATH_IN_CONTAINER "non più usata: valori copiati da ost-config.php"
+    warn "indirizzo o utente del DB diversi da ost-config.php: valori copiati in $ENV_FILE (OST_CONFIG_COPIED_FROM), il file non è più montato"
+  fi
+  if [[ "$(envget TAILTICKET_SMTP_URL)" == *mailpit* ]]; then
+    envset TAILTICKET_SMTP_URL ""; warn "TAILTICKET_SMTP_URL puntava a Mailpit, che in attach non c'è: svuotata"
+  fi
+  [[ "$(envget COMPOSE_PROFILES)" == *mail* ]] && envset COMPOSE_PROFILES ""
+  if [[ -z "$(envget TAILTICKET_MODE)" ]]; then
+    envset TAILTICKET_MODE readonly
+    warn "in modalità attach TailTicket ora parte in SOLA LETTURA (TAILTICKET_MODE=readonly)."
+    warn "Per tornare a scrivere: ./tailticket backup, poi ./tailticket mode operational (verifica doctor e backup)"
+  fi
+  envset TAILTICKET_ENV_VERSION 2
+}
+
+prepare_env() { check_env; attach_migrate_env; ensure_doctor_token; check_env; }
 
 wait_healthy() {
   local svc="$1" timeout="${2:-900}" t=0 st
@@ -162,16 +552,231 @@ summary() {
     echo "  Pannello classico      $url/classic/scp/"
     echo "  Admin iniziale         $(envget TAILTICKET_ADMIN_USER) / $(envget TAILTICKET_ADMIN_PASSWORD)  ${c_dim}(cambiala al primo accesso)${c_off}"
     [[ "$(envget COMPOSE_PROFILES)" == *mail* ]] && echo "  Email di prova         http://127.0.0.1:$(envget TAILTICKET_MAILPIT_PORT)  ${c_dim}(Mailpit)${c_off}"
+  else
+    local m; m="$(container_env TAILTICKET_MODE || true)"
+    echo "  Modalità               ${m:-?}  ${c_dim}(./tailticket mode per i dettagli, ./tailticket readonly per l'emergenza)${c_off}"
   fi
+  return 0
+}
+
+# --- doctor, modalità -----------------------------------------------------------------------------
+# Eseguito con node dentro il container tailticket (la porta 3000 non è pubblicata; il proxy blocca
+# /api/doctor): stampa la tabella di ?format=text ed esce con 0 = nessun blocco, 1 = blocchi, 2 = non disponibile.
+DOCTOR_JS=$(cat <<'JS'
+const base = "http://127.0.0.1:3000" + (process.env.NEXT_BASE_PATH || "");
+const token = process.env.TAILTICKET_DOCTOR_TOKEN || "";
+const fail = (m) => { console.error("doctor: " + m); process.exit(2); };
+(async () => {
+  if (token.length < 24) fail("TAILTICKET_DOCTOR_TOKEN non è impostato nel container (./tailticket up lo genera e ricrea il container)");
+  const headers = { "X-Doctor-Token": token };
+  let r, j;
+  try { r = await fetch(base + "/api/doctor", { headers: { ...headers, Accept: "application/json" } }); }
+  catch (e) { fail("TailTicket non risponde: " + e.message); }
+  if (r.status === 404) fail("/api/doctor non disponibile (versione di TailTicket senza doctor, o token rifiutato)");
+  try { j = await r.json(); } catch { fail("risposta non valida (HTTP " + r.status + ")"); }
+  const checks = Array.isArray(j.checks) ? j.checks : [];
+  const blocks = j.summary && typeof j.summary.block === "number" ? j.summary.block : checks.filter((c) => c.level === "block").length;
+  let text = "";
+  try { const t = await fetch(base + "/api/doctor?format=text", { headers }); if (t.ok) text = await t.text(); } catch {}
+  if (!text) text = checks.map((c) => `${String(c.level || "?").toUpperCase().padEnd(6)} ${c.title || c.id || ""}: ${c.detail || ""}${c.hint ? "\n       > " + c.hint : ""}`).join("\n");
+  process.stdout.write(text.endsWith("\n") ? text : text + "\n");
+  process.exit(blocks > 0 || j.writable === false ? 1 : 0);
+})();
+JS
+)
+
+# modalità e schema da /api/health: "status<TAB>mode<TAB>configuredMode<TAB>schema"
+HEALTH_JS=$(cat <<'JS'
+const base = "http://127.0.0.1:3000" + (process.env.NEXT_BASE_PATH || "");
+const s = (v) => (v == null ? "" : typeof v === "string" ? v : JSON.stringify(v));
+fetch(base + "/api/health").then((r) => r.json()).then((j) => console.log([j.status, j.mode, j.configuredMode, j.schema].map(s).join("\t")))
+  .catch((e) => { console.error("health: " + e.message); process.exit(2); });
+JS
+)
+
+tailticket_id() { dc ps -q tailticket 2>/dev/null | head -1; }
+container_env() { # valore di una variabile nel container tailticket in esecuzione
+  local id; id="$(tailticket_id)"; [[ -n "$id" ]] || return 1
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$id" | grep -E "^$1=" | head -1 | cut -d= -f2- || true
+}
+
+doctor_run() {
+  if [[ -z "$(tailticket_id)" ]]; then warn "TailTicket non è in esecuzione: ./tailticket up"; return 2; fi
+  local rc=0
+  dc exec -T tailticket node -e "$DOCTOR_JS" || rc=$?
+  case $rc in 0|1) return $rc ;; *) return 2 ;; esac
+}
+
+cmd_doctor() {
+  check_env
+  local rc=0; doctor_run || rc=$?
+  case $rc in
+    0) say "doctor: nessun blocco" ;;
+    1) warn "doctor: la scrittura è bloccata finché i problemi segnalati (BLOCK) non sono risolti" ;;
+    *) warn "doctor non disponibile" ;;
+  esac
+  return $rc
+}
+
+# modalità configurata in .env (default: readonly in attach, full nello stack integrato)
+configured_mode() { local m; m="$(envget TAILTICKET_MODE)"; if [[ -n "$m" ]]; then echo "$m"; elif attach_mode; then echo readonly; else echo full; fi; }
+mode_rank() { case "$1" in readonly) echo 0 ;; operational) echo 1 ;; full) echo 2 ;; *) echo -1 ;; esac; }
+
+show_mode() {
+  local cm; cm="$(container_env TAILTICKET_MODE || true)"
+  echo "  Modalità in .env          $(configured_mode)"
+  if [[ -z "$(tailticket_id)" ]]; then echo "  Container                 non in esecuzione"; return 0; fi
+  echo "  Modalità del container    ${cm:-(non impostata: full)}"
+  local line st mode conf schema
+  if line="$(dc exec -T tailticket node -e "$HEALTH_JS" 2>/dev/null)"; then
+    IFS=$'\t' read -r st mode conf schema <<<"$line"
+    echo "  Modalità effettiva        ${c_bold}${mode:-?}${c_off}  ${c_dim}(/api/health: stato ${st:-?}, configurata ${conf:-?})${c_off}"
+    [[ -n "$schema" ]] && echo "  Schema                    $schema"
+    if [[ -n "$mode" && -n "$conf" && "$mode" != "$conf" ]]; then
+      warn "la modalità effettiva è più restrittiva di quella configurata: ./tailticket doctor per il motivo"
+    fi
+  else
+    echo "  Modalità effettiva        ${c_dim}non disponibile (/api/health non risponde)${c_off}"
+  fi
+}
+
+# ricrea solo il container tailticket con la modalità di .env e verifica che sia quella applicata
+apply_mode() {
+  local want="$1"
+  dc up -d --no-deps tailticket
+  local got; got="$(container_env TAILTICKET_MODE || true)"
+  if [[ "$want" == full && -z "$got" ]] && ! attach_mode; then got=full; fi
+  [[ "$got" == "$want" ]] || die "il container tailticket ha TAILTICKET_MODE='$got' invece di '$want': controlla $ENV_FILE"
+  wait_healthy tailticket
+}
+
+# ultimo backup del DB attuale più recente di TAILTICKET_BACKUP_MAX_AGE_HOURS (marcatore scritto da backup)
+backup_recent() {
+  local f="$STATE_DIR/last-backup" ts db file max
+  [[ -f "$f" ]] || { warn "nessun backup registrato: ./tailticket backup"; return 1; }
+  ts="$(grep -E '^epoch=' "$f" | cut -d= -f2 || true)"
+  db="$(grep -E '^db=' "$f" | cut -d= -f2- || true)"
+  file="$(grep -E '^file=' "$f" | cut -d= -f2- || true)"
+  max="$(envget TAILTICKET_BACKUP_MAX_AGE_HOURS)"; max="${max:-24}"
+  [[ "$ts" =~ ^[0-9]+$ ]] || { warn "marcatore del backup non valido ($f)"; return 1; }
+  [[ "$db" == "$(db_identity)" ]] || { warn "l'ultimo backup è di un altro database ($db): ./tailticket backup"; return 1; }
+  [[ -f "$file" ]] || { warn "l'archivio dell'ultimo backup non c'è più ($file): ./tailticket backup"; return 1; }
+  (( $(date +%s) - ts <= max * 3600 )) || { warn "l'ultimo backup ha più di $max ore ($file): ./tailticket backup"; return 1; }
+  say "backup recente: $file"
+}
+
+cmd_mode() {
+  local target="" yes=0 admin_ok=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      readonly|operational|full) target="$1"; shift ;;
+      --yes) yes=1; shift ;;
+      --confirm-admin) admin_ok=1; shift ;;
+      *) die "uso: ./tailticket mode [readonly|operational|full] [--yes] [--confirm-admin]" ;;
+    esac
+  done
+  if [[ -z "$target" ]]; then check_env; show_mode; return 0; fi
+  prepare_env
+  local current; current="$(configured_mode)"
+
+  if attach_mode && (( $(mode_rank "$target") > $(mode_rank "$current") )); then
+    attach_db
+    say "passaggio a $target sul database di produzione ${c_bold}$DB_NAME${c_off} ($DB_HOST:$DB_PORT)"
+    say "1/3 doctor"
+    local rc=0; doctor_run || rc=$?
+    case $rc in
+      0) ;;
+      1) die "il doctor ha trovato blocchi: TailTicket resta in $current" ;;
+      *) die "doctor non disponibile: TailTicket resta in $current (avvialo con ./tailticket up)" ;;
+    esac
+    say "2/3 backup"
+    backup_recent || die "serve un backup recente prima di scrivere: ./tailticket backup"
+    say "3/3 conferma"
+    if [[ $yes -eq 0 ]]; then
+      echo "  TailTicket scriverà sul database di produzione: ticket, task, utenti e portale clienti."
+      confirm_word "$DB_NAME" "scrivi il nome del database per confermare ($DB_NAME)"
+    fi
+    if [[ "$target" == full ]]; then
+      echo "  ${c_warn}full${c_off} abilita anche l'area admin: reparti, email, filtri, SLA, agenti, impostazioni"
+      echo "  di osTicket in produzione, condivise con il pannello classico."
+      if [[ $yes -eq 1 ]]; then
+        [[ $admin_ok -eq 1 ]] || die "full con --yes richiede anche --confirm-admin"
+      else
+        confirm_word admin "scrivi admin per abilitare le modifiche dell'area admin"
+      fi
+    fi
+  fi
+
+  envset TAILTICKET_MODE "$target"
+  if [[ -z "$(tailticket_id)" ]]; then
+    say "TAILTICKET_MODE=$target in $ENV_FILE (TailTicket non è in esecuzione: vale dal prossimo ./tailticket up)"
+    return 0
+  fi
+  say "TAILTICKET_MODE=$target: ricreo il container tailticket"
+  apply_mode "$target"
+  show_mode
+}
+
+# interruttore d'emergenza: nessuna conferma, nessun controllo che possa fallire prima del cambio
+cmd_readonly() {
+  check_env
+  envset TAILTICKET_MODE readonly
+  if [[ -z "$(tailticket_id)" ]]; then say "TAILTICKET_MODE=readonly in $ENV_FILE (TailTicket non è in esecuzione)"; return 0; fi
+  say "TailTicket in SOLA LETTURA: ricreo il container"
+  dc up -d --no-deps tailticket
+  [[ "$(container_env TAILTICKET_MODE || true)" == readonly ]] || die "il container non risulta in readonly: ferma TailTicket con ./tailticket down"
+  say "sola lettura attiva (il pannello classico continua a funzionare)"
+  wait_healthy tailticket
+}
+
+# Avvio protetto in attach: TailTicket parte in sola lettura, il doctor controlla il collegamento e solo
+# senza blocchi si passa alla modalità configurata. Con blocchi .env torna a readonly (anche per i riavvii).
+# ATTACH_RC = 3 se la modalità configurata non è stata attivata (la funzione non va chiamata in un
+# contesto || o if, che disattiverebbe set -e al suo interno).
+ATTACH_RC=0
+attach_start() {
+  ATTACH_RC=0
+  local want; want="$(configured_mode)"
+  [[ "$want" != readonly ]] && say "avvio protetto: TailTicket parte in sola lettura finché il doctor non ha dato l'esito"
+  (export TAILTICKET_MODE=readonly; dc up -d "$@")
+  wait_healthy tailticket
+  wait_healthy proxy 60
+  echo
+  say "doctor"
+  local rc=0; doctor_run || rc=$?
+  if [[ "$want" == readonly ]]; then
+    case $rc in
+      1) warn "il doctor ha trovato blocchi: TailTicket resta in sola lettura (risolvili prima di ./tailticket mode operational)" ;;
+      2) warn "doctor non disponibile: TailTicket resta in sola lettura" ;;
+    esac
+    return 0
+  fi
+  if (( rc != 0 )); then
+    envset TAILTICKET_MODE readonly
+    echo >&2
+    warn "${c_bold}modalità $want NON attivata${c_off}: il doctor ha trovato blocchi o non ha risposto."
+    warn "TailTicket è in SOLA LETTURA e in $ENV_FILE ora c'è TAILTICKET_MODE=readonly (vale anche per i riavvii)."
+    warn "Risolvi i problemi (./tailticket doctor), poi: ./tailticket mode $want"
+    ATTACH_RC=3
+    return 0
+  fi
+  say "doctor senza blocchi: attivo la modalità $want"
+  apply_mode "$want"
 }
 
 # --- up / down / status / logs ----------------------------------------------------------------------
 cmd_up() {
   [[ -f "$ENV_FILE" ]] || cmd_init
-  check_env
+  prepare_env
   say "avvio dello stack (la prima volta la build richiede alcuni minuti)"
-  if [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]]; then dc up -d --build; else dc up -d; fi
-  if ! attach_mode; then wait_healthy db; wait_healthy osticket; fi
+  local build=(); [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]] && build=(--build)
+  if attach_mode; then
+    attach_start ${build[@]+"${build[@]}"}
+    summary
+    return $ATTACH_RC
+  fi
+  dc up -d ${build[@]+"${build[@]}"}
+  wait_healthy db; wait_healthy osticket
   wait_healthy tailticket
   wait_healthy proxy 60
   summary
@@ -180,10 +785,38 @@ cmd_down() { check_env; dc down; }
 cmd_status() { check_env; dc ps; }
 cmd_logs() { check_env; dc logs -f --tail=200 "$@"; }
 
+# --- DB di produzione (attach) ------------------------------------------------------------------------
+# Parametri come li vede la app: variabili OST_* di .env, altrimenti ost-config.php (OST_CONFIG_FILE).
+# Imposta DB_HOST DB_PORT DB_NAME DB_USER DB_PASS DB_PREFIX DB_SALT. Argomenti opzionali: .env e
+# ost-config.php da usare (per gli archivi di backup).
+attach_db() {
+  local ENV_FILE="${1:-$ENV_FILE}" cfg="${2:-}"
+  [[ -n "$cfg" ]] || cfg="$(envget OST_CONFIG_FILE)"
+  [[ -z "$cfg" || -r "$cfg" ]] || die "non riesco a leggere $cfg (ost-config.php): serve un utente che possa leggerlo"
+  local hp p=""
+  hp="$(cfgval OST_DB_HOST DBHOST)"
+  DB_HOST="${hp%%:*}"; [[ "$hp" == *:* ]] && p="${hp#*:}"
+  DB_PORT="$(envget OST_DB_PORT)"
+  if [[ -z "$DB_PORT" ]]; then if [[ "$p" =~ ^[0-9]+$ ]]; then DB_PORT="$p"; else DB_PORT=3306; fi; fi
+  DB_NAME="$(cfgval OST_DB_NAME DBNAME)"
+  DB_USER="$(cfgval OST_DB_USER DBUSER)"
+  DB_PASS="$(cfgval OST_DB_PASS DBPASS)"
+  DB_PREFIX="$(cfgval OST_TABLE_PREFIX TABLE_PREFIX)"; DB_PREFIX="${DB_PREFIX:-ost_}"
+  DB_SALT="$(cfgval OST_SECRET_SALT SECRET_SALT)"
+}
+cfgval() { local v; v="$(envget "$1")"; if [[ -z "$v" && -n "${cfg:-}" ]]; then v="$(phpdefine "$cfg" "$2")"; fi; printf '%s' "$v"; }
+db_identity() { if attach_mode; then attach_db; echo "$DB_HOST:$DB_PORT/$DB_NAME/$DB_PREFIX"; else echo "integrato/$(envget TAILTICKET_DB_NAME)"; fi; }
+mariadb_image() { grep -m1 -oE 'mariadb:[0-9][0-9.]*' compose.yaml || die "immagine MariaDB non trovata in compose.yaml"; }
+
+write_backup_marker() {
+  mkdir -p "$STATE_DIR"
+  (umask 077; printf 'epoch=%s\ndate=%s\ndb=%s\nfile=%s\n' "$(date +%s)" "$(date '+%Y-%m-%d %H:%M:%S')" "$(db_identity)" "$(abspath "$1")" >"$STATE_DIR/last-backup")
+}
+
 # --- backup / restore -------------------------------------------------------------------------------
 cmd_backup() {
   check_env
-  attach_mode && die "in modalità attach il database è quello dell'osTicket esistente: usa i suoi backup"
+  if attach_mode; then backup_attach "$@"; return; fi
   local dir="${1:-./backups}" stamp tmp
   stamp="$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$dir"; tmp="$(mktemp -d)"
@@ -196,14 +829,67 @@ cmd_backup() {
   local out="$dir/tailticket-$stamp.tar.gz"
   (umask 077; tar czf "$out" -C "$tmp" db.sql.gz files.tar.gz env)
   rm -rf "$tmp"
+  write_backup_marker "$out"
   say "backup: $out ${c_dim}(contiene segreti: conservalo al sicuro)${c_off}"
 }
 
+# Backup in attach: dump del DB di produzione da un container usa e getta dell'immagine MariaDB di
+# compose.yaml, con le credenziali della configurazione. mariadb-dump legge soltanto:
+#  --single-transaction --skip-lock-tables  istantanea coerente (InnoDB) senza bloccare il PHP
+#  --no-tablespaces                         niente privilegio PROCESS (utente con soli permessi sul DB)
+#  --hex-blob                               file_chunk e altri binari in esadecimale, indipendenti dal charset
+#  --default-character-set=utf8mb4          come utf8mb3 dello stack integrato per le tabelle utf8 di osTicket,
+#                                           ma senza perdere caratteri se qualche tabella è già utf8mb4
+# Gli allegati su disco (plugin storage-fs) restano del server di produzione: si salvano con i suoi backup.
+backup_attach() {
+  local dir="${1:-./backups}" stamp tmp img
+  attach_db
+  [[ -n "$DB_HOST" && -n "$DB_NAME" && -n "$DB_USER" ]] || die "parametri del DB incompleti (OST_CONFIG_FILE o OST_DB_*)"
+  case "$DB_HOST" in localhost|127.0.0.1|::1) die "DB_HOST=$DB_HOST: dal container il DB della macchina è host.docker.internal (OST_DB_HOST in $ENV_FILE)" ;; esac
+  img="$(mariadb_image)"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$dir"; tmp="$(mktemp -d)"
+  # stessa rete del container tailticket se è in esecuzione (stesso percorso verso il DB), altrimenti
+  # la rete predefinita con host.docker.internal come in compose.attach.yaml
+  local net=(--add-host host.docker.internal:host-gateway) id; id="$(tailticket_id)"
+  [[ -n "$id" ]] && net=(--network "container:$id")
+  # credenziali passate su stdin come file di opzioni: mai sulla riga di comando né nell'ambiente del container
+  local esc_pw="${DB_PASS//\\/\\\\}"; esc_pw="${esc_pw//\"/\\\"}"
+  local esc_user="${DB_USER//\\/\\\\}"; esc_user="${esc_user//\"/\\\"}"
+  say "dump del database di produzione $DB_NAME ($DB_HOST:$DB_PORT) con $img, in sola lettura"
+  if ! printf '[client]\nhost="%s"\nport=%s\nuser="%s"\npassword="%s"\n' "$DB_HOST" "$DB_PORT" "$esc_user" "$esc_pw" \
+    | docker run --rm -i "${net[@]}" --entrypoint mariadb-dump "$img" --defaults-extra-file=/dev/stdin \
+        --single-transaction --skip-lock-tables --quick --routines --no-tablespaces --hex-blob \
+        --default-character-set=utf8mb4 "$DB_NAME" | gzip -9 >"$tmp/db.sql.gz"; then
+    rm -rf "$tmp"; die "dump non riuscito: nessun backup scritto"
+  fi
+  # integrità: dump completo e con le tabelle di osTicket del prefisso configurato
+  # grep -c legge tutto l'input: con pipefail, grep -q chiuderebbe la pipe e gunzip uscirebbe con errore
+  if [[ "$(gunzip -c "$tmp/db.sql.gz" | tail -n 3 | grep -c 'Dump completed' || true)" == 0 ]]; then rm -rf "$tmp"; die "dump incompleto: nessun backup scritto"; fi
+  if [[ "$(gunzip -c "$tmp/db.sql.gz" | grep -c "^CREATE TABLE \`${DB_PREFIX}config\`" || true)" == 0 ]]; then
+    rm -rf "$tmp"; die "il dump non contiene la tabella ${DB_PREFIX}config: database o prefisso sbagliati"
+  fi
+  cp "$ENV_FILE" "$tmp/env"
+  local files=(db.sql.gz env) cfg; cfg="$(envget OST_CONFIG_FILE)"; [[ -n "$cfg" ]] || cfg="$(envget OST_CONFIG_COPIED_FROM)"
+  # ost-config.php contiene SECRET_SALT: serve per ripristinare o provare il backup (rehearse)
+  if [[ -n "$cfg" && -r "$cfg" ]]; then cp "$cfg" "$tmp/ost-config.php"; files+=(ost-config.php); fi
+  local out="$dir/tailticket-attach-$stamp.tar.gz"
+  (umask 077; tar czf "$out" -C "$tmp" "${files[@]}")
+  rm -rf "$tmp"
+  write_backup_marker "$out"
+  say "backup: $out ${c_dim}(contiene segreti: conservalo al sicuro)${c_off}"
+  warn "gli allegati su disco dell'osTicket (se usa il plugin storage-fs) non sono nel backup: restano del server di produzione"
+}
+
 cmd_restore() {
+  if [[ -f "$ENV_FILE" ]] && attach_mode; then
+    die "in modalità attach il database è quello dell'osTicket di produzione: si ripristina con i suoi strumenti (l'archivio contiene db.sql.gz per mariadb)"
+  fi
   local archive="${1:-}" with_env=0
   [[ -n "$archive" && -f "$archive" ]] || die "uso: ./tailticket restore <archivio.tar.gz> [--with-env]"
   [[ "${2:-}" == "--with-env" ]] && with_env=1
   local tmp; tmp="$(mktemp -d)"; tar xzf "$archive" -C "$tmp"
+  [[ -f "$tmp/files.tar.gz" ]] || { rm -rf "$tmp"; die "$archive non è un backup dello stack integrato (per gli archivi attach: ./tailticket rehearse --dump)"; }
   if [[ $with_env -eq 1 ]]; then cp "$tmp/env" "$ENV_FILE"; chmod 600 "$ENV_FILE"; say "ripristinato $ENV_FILE"; fi
   check_env
   if [[ "$(grep -E '^TAILTICKET_SECRET_SALT=' "$tmp/env")" != "$(grep -E '^TAILTICKET_SECRET_SALT=' "$ENV_FILE")" ]]; then
@@ -225,21 +911,222 @@ cmd_restore() {
 }
 
 # --- update -----------------------------------------------------------------------------------------
+refresh_images() {
+  if [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]]; then dc build --pull
+  elif attach_mode && [[ -z "$(envget TAILTICKET_IMAGE)" ]]; then dc build --pull tailticket; dc pull proxy
+  else dc pull; fi
+}
+
 cmd_update() {
-  check_env
+  prepare_env
   local git=1; [[ "${1:-}" == "--no-git" ]] && git=0
-  attach_mode || cmd_backup
+  # anche in attach: il backup del DB di produzione è la prima cosa, senza backup non si aggiorna
+  cmd_backup
   if [[ $git -eq 1 ]] && git -C .. rev-parse --git-dir >/dev/null 2>&1; then
     say "aggiornamento del codice (git pull --ff-only)"
     git -C .. pull --ff-only || warn "git pull non riuscito: proseguo con il codice attuale"
   fi
-  if [[ "$(envget COMPOSE_FILE)" == *compose.build.yaml* ]]; then dc build --pull; else dc pull; fi
+  refresh_images
+  if attach_mode; then
+    attach_start
+    say "aggiornamento completato"
+    return $ATTACH_RC
+  fi
   # l'entrypoint di osTicket esegue "php manage.php upgrade" se lo schema va aggiornato
   dc up -d
-  attach_mode || wait_healthy osticket
+  wait_healthy osticket
   wait_healthy tailticket
   say "aggiornamento completato"
   warn "se osTicket ha cambiato lo schema del DB, TailTicket resta in sola lettura finché la nuova versione non è verificata (docs/compatibility.md)"
+}
+
+# --- rehearse: prova generale -------------------------------------------------------------------------
+# Stack integrato completo in un progetto compose separato (tailticket-rehearsal: volumi, rete e porte
+# propri, solo su 127.0.0.1) con una copia del DB di produzione. Il PHP è quello di legacy/ e la posta
+# in uscita di PHP e TailTicket finisce in Mailpit.
+use_rehearsal() {
+  ENV_FILE="$REHEARSAL_ENV"
+  DC_OPTS=(-p "$REHEARSAL_PROJECT" -f compose.yaml -f compose.build.yaml)
+}
+rehearsal_exists() { docker volume inspect "${REHEARSAL_PROJECT}_db" >/dev/null 2>&1; }
+rdb() { dc exec -T db sh -c 'exec mariadb -N -B -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"'; }
+
+cmd_rehearse() {
+  case "${1:-}" in
+    down) rehearse_down; return ;;
+    status) [[ -f "$REHEARSAL_ENV" ]] || die "nessuna prova generale in corso"; use_rehearsal; dc ps; return ;;
+    logs) shift; [[ -f "$REHEARSAL_ENV" ]] || die "nessuna prova generale in corso"; use_rehearsal; dc logs -f --tail=200 "$@"; return ;;
+    doctor) [[ -f "$REHEARSAL_ENV" ]] || die "nessuna prova generale in corso"; use_rehearsal; local rc=0; doctor_run || rc=$?; return $rc ;;
+  esac
+  local dump="" attachments="" port=18080 mail_port=18025 mode=full upgrade=0 yes=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dump) dump="${2:?--dump richiede un file}"; shift 2 ;;
+      --attachments) attachments="${2:?--attachments richiede una cartella}"; shift 2 ;;
+      --port) port="${2:?--port richiede un numero}"; shift 2 ;;
+      --mail-port) mail_port="${2:?--mail-port richiede un numero}"; shift 2 ;;
+      --mode) mode="${2:?--mode richiede readonly|operational|full}"; shift 2 ;;
+      --upgrade) upgrade=1; shift ;;
+      --yes) yes=1; shift ;;
+      *) die "opzione sconosciuta: $1 (uso: ./tailticket rehearse --dump <file> …, oppure rehearse down)" ;;
+    esac
+  done
+  [[ -n "$dump" && -f "$dump" ]] || die "uso: ./tailticket rehearse --dump <file.sql[.gz]|backup.tar.gz> [--attachments CARTELLA]"
+  [[ "$port" =~ ^[0-9]+$ && "$mail_port" =~ ^[0-9]+$ ]] || die "--port e --mail-port vogliono un numero"
+  [[ $(mode_rank "$mode") -ge 0 ]] || die "--mode deve essere readonly, operational oppure full"
+  if [[ -n "$attachments" ]]; then [[ -d "$attachments" ]] || die "--attachments: $attachments non è una cartella"; attachments="$(abspath "$attachments")"; fi
+  rehearsal_exists && die "c'è già una prova generale ($REHEARSAL_PROJECT): ./tailticket rehearse down"
+
+  REHEARSAL_TMP="$(mktemp -d)"
+  trap 'if [[ -n "${REHEARSAL_TMP:-}" ]]; then rm -rf "$REHEARSAL_TMP"; fi' EXIT
+  local tmp="$REHEARSAL_TMP"
+  # identità della produzione (SECRET_SALT, prefisso, nome del DB): dall'archivio di ./tailticket backup,
+  # altrimenti dalla configurazione attach di questa macchina
+  local sql="$dump" envf="" cfgf=""
+  case "$dump" in
+    *.tar.gz|*.tgz)
+      tar xzf "$dump" -C "$tmp" 2>/dev/null || die "$dump: archivio non leggibile"
+      [[ -f "$tmp/db.sql.gz" ]] || die "$dump non è un archivio di ./tailticket backup (manca db.sql.gz)"
+      sql="$tmp/db.sql.gz"
+      [[ -f "$tmp/env" ]] && envf="$tmp/env"
+      [[ -f "$tmp/ost-config.php" ]] && cfgf="$tmp/ost-config.php"
+      ;;
+  esac
+  DB_NAME="" DB_PREFIX="" DB_SALT=""
+  if [[ -n "$envf" || -n "$cfgf" ]]; then
+    attach_db "${envf:-/dev/null}" "$cfgf"
+    # archivio dello stack integrato: chiavi TAILTICKET_*
+    if [[ -z "$DB_SALT" && -n "$envf" ]]; then
+      DB_SALT="$(ENV_FILE="$envf" envget TAILTICKET_SECRET_SALT)"
+      DB_PREFIX="$(ENV_FILE="$envf" envget TAILTICKET_TABLE_PREFIX)"; DB_PREFIX="${DB_PREFIX:-ost_}"
+      DB_NAME="$(ENV_FILE="$envf" envget TAILTICKET_DB_NAME)"
+    fi
+  elif [[ -f "$ENV_FILE" ]] && attach_mode; then
+    attach_db
+  fi
+  [[ -n "$DB_SALT" ]] || die "serve il SECRET_SALT della produzione: esegui da questo deploy in modalità attach, oppure usa un archivio di ./tailticket backup"
+  [[ "$DB_PREFIX" =~ ^[A-Za-z0-9_]*$ ]] || die "prefisso delle tabelle non valido: $DB_PREFIX"
+
+  local cat_cmd=(cat); [[ "$sql" == *.gz ]] && cat_cmd=(gunzip -c)
+  # un dump con USE `db` va importato in un DB con quel nome
+  local use_db; use_db="$("${cat_cmd[@]}" "$sql" 2>/dev/null | head -n 300 | grep -m1 -oE '^USE `[^`]+`' | cut -d'`' -f2 || true)"
+  local name="${use_db:-${DB_NAME:-osticket}}"
+  [[ "$name" =~ ^[A-Za-z0-9_\$-]+$ ]] || die "nome del database non gestito nella prova: $name"
+  local want_sig; want_sig="$(cat ../legacy/include/upgrader/streams/core.sig 2>/dev/null || true)"
+  local P="$DB_PREFIX"
+
+  echo
+  say "${c_bold}prova generale${c_off} — progetto compose separato $REHEARSAL_PROJECT, nessun contatto con lo stack di produzione"
+  echo "  dump                  $dump"
+  echo "  database della prova  $name (prefisso ${P}), SECRET_SALT della produzione"
+  echo "  osTicket classico     legacy/ ${want_sig:+(firma $want_sig)}, $([[ $upgrade -eq 1 ]] && echo "con upgrade dello schema della copia" || echo "senza upgrade dello schema")"
+  echo "  TailTicket            modalità $mode, http://localhost:$port (solo 127.0.0.1)"
+  echo "  allegati su disco     ${attachments:-nessuno (i file 'F' non saranno leggibili)}"
+  echo "  Nella COPIA, prima di avviare PHP e cron:"
+  echo "   - caselle in entrata (IMAP/POP) disattivate e fetch spento: nessuna email letta o cancellata dalle caselle reali;"
+  echo "   - account SMTP reindirizzati a Mailpit (mailpit:1025, senza TLS né autenticazione);"
+  echo "   - mail() del PHP e TailTicket senza account: Mailpit (http://127.0.0.1:$mail_port);"
+  echo "   - helpdesk_url = URL della prova. Plugin e auth esterne (LDAP…) non ci sono."
+  [[ $yes -eq 1 ]] || confirm_yes "procedo?"
+
+  mkdir -p "$STATE_DIR"
+  (umask 077; cat >"$REHEARSAL_ENV" <<EOF
+# Prova generale di TailTicket (./tailticket rehearse): COPIA del DB di produzione, non produzione.
+# Progetto compose $REHEARSAL_PROJECT; si elimina con ./tailticket rehearse down
+COMPOSE_PROFILES=mail
+TAILTICKET_DOMAIN=localhost
+TAILTICKET_URL=http://localhost:$port
+TAILTICKET_HTTPS=off
+TAILTICKET_SITE=:80
+TAILTICKET_HTTP_PORT=127.0.0.1:$port
+TAILTICKET_HTTPS_PORT=127.0.0.1:$((port + 363))
+TAILTICKET_MAILPIT_PORT=$mail_port
+TAILTICKET_SMTP_URL=smtp://mailpit:1025
+TAILTICKET_SESSION_SECRET=$(rand 48)
+TAILTICKET_DOCTOR_TOKEN=$(rand 48)
+TAILTICKET_DB_NAME=$name
+TAILTICKET_DB_USER=osticket
+TAILTICKET_DB_PASSWORD=$(rand 32)
+TAILTICKET_DB_ROOT_PASSWORD=$(rand 32)
+TAILTICKET_TABLE_PREFIX=$P
+TAILTICKET_INSTALL=off
+TAILTICKET_AUTO_UPGRADE=$([[ $upgrade -eq 1 ]] && echo true || echo false)
+TAILTICKET_SYNC_URL=true
+TAILTICKET_MODE=$mode
+TAILTICKET_LEGACY_IMAGE=tailticket-legacy:rehearsal
+EOF
+  )
+  local main_env="$ENV_FILE" k v
+  use_rehearsal
+  envset_user TAILTICKET_SECRET_SALT "$DB_SALT"
+  for k in TAILTICKET_IMAGE TAILTICKET_BUILD_CA; do
+    v="$(ENV_FILE="$main_env" envget "$k")"
+    if [[ -n "$v" ]]; then envset_user "$k" "$v"; fi
+  done
+  if [[ -n "$attachments" ]]; then
+    envset_user OST_ATTACHMENTS_HOST_DIR "$attachments"
+    envset OST_ATTACHMENTS_DIR /var/lib/osticket-attachments
+    others_can_read "$attachments" || envset TAILTICKET_FILES_GID "$(file_gid "$attachments")"
+  fi
+
+  say "costruzione dell'osTicket classico di legacy/"
+  dc build osticket
+  dc up -d db
+  wait_healthy db
+  say "import del dump (può richiedere qualche minuto)"
+  "${cat_cmd[@]}" "$sql" | dc exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' \
+    || die "import non riuscito: ./tailticket rehearse down e riprova"
+
+  local sig
+  sig="$(echo "SELECT value FROM \`${P}config\` WHERE namespace='core' AND \`key\`='schema_signature';" | rdb 2>/dev/null || true)"
+  [[ -n "$sig" ]] || die "nel dump non c'è un osTicket con prefisso '$P' nel database $name: ./tailticket rehearse down"
+  if [[ -n "$want_sig" && "$sig" != "$want_sig" ]]; then
+    warn "firma di schema del dump $sig diversa da quella di legacy/ ($want_sig): la prova NON riproduce la produzione"
+    warn "aggiorna osTicket in produzione alla stessa versione, oppure ripeti con --upgrade (upgrade della sola copia)"
+  else
+    say "firma di schema $sig, uguale a legacy/"
+  fi
+
+  say "neutralizzo la posta della copia"
+  cat <<SQL | rdb || die "neutralizzazione della posta non riuscita: la prova NON parte (./tailticket rehearse down)"
+UPDATE \`${P}email_account\` SET active=0 WHERE type='mailbox';
+UPDATE \`${P}email_account\` SET host='mailpit', port=1025, encryption='NONE', auth_bk='none', auth_id=NULL WHERE type='smtp';
+UPDATE \`${P}config\` SET value='0', updated=NOW() WHERE namespace='core' AND \`key\`='enable_mail_polling';
+SQL
+  local left
+  left="$(echo "SELECT COUNT(*) FROM \`${P}email_account\` WHERE (type='mailbox' AND active<>0) OR (type='smtp' AND host<>'mailpit');" | rdb)"
+  [[ "$left" == 0 ]] || die "restano account email attivi verso l'esterno ($left): la prova NON parte (./tailticket rehearse down)"
+  echo "SELECT CONCAT('  ', type, ': ', COUNT(*), ' account (', SUM(active), ' attivi)') FROM \`${P}email_account\` GROUP BY type;" | rdb || true
+
+  say "avvio di osTicket classico, cron, TailTicket e Mailpit"
+  dc up -d
+  wait_healthy osticket
+  wait_healthy tailticket
+  wait_healthy proxy 60
+  echo
+  say "doctor della prova"
+  doctor_run || true
+  echo
+  say "prova generale pronta ${c_dim}(solo su 127.0.0.1: da un'altra macchina ssh -L $port:127.0.0.1:$port -L $mail_port:127.0.0.1:$mail_port)${c_off}"
+  echo "  TailTicket             http://localhost:$port/agent  ${c_dim}(credenziali degli agenti di produzione)${c_off}"
+  echo "  Portale clienti        http://localhost:$port/"
+  echo "  Pannello classico      http://localhost:$port/classic/scp/"
+  echo "  Email in uscita        http://127.0.0.1:$mail_port  ${c_dim}(Mailpit: nessuna email esce davvero)${c_off}"
+  echo "  Fine della prova       ./tailticket rehearse down  ${c_dim}(cancella la copia dei dati)${c_off}"
+}
+
+rehearse_down() {
+  if [[ ! -f "$REHEARSAL_ENV" ]]; then
+    rehearsal_exists || { say "nessuna prova generale da fermare"; return 0; }
+    # .env della prova perso: bastano valori fittizi per far leggere compose.yaml a down
+    mkdir -p "$STATE_DIR"
+    (umask 077; printf '%s\n' TAILTICKET_DB_PASSWORD=x TAILTICKET_DB_ROOT_PASSWORD=x TAILTICKET_SECRET_SALT=x TAILTICKET_SESSION_SECRET=x COMPOSE_PROFILES=mail >"$REHEARSAL_ENV")
+  fi
+  use_rehearsal
+  say "fermo la prova generale ed elimino i suoi volumi (copia del DB di produzione)"
+  dc down -v --remove-orphans
+  rm -f "$REHEARSAL_ENV"
+  say "prova generale eliminata"
 }
 
 case "${1:-help}" in
@@ -248,9 +1135,13 @@ case "${1:-help}" in
   down) shift; cmd_down ;;
   status|ps) shift; cmd_status ;;
   logs) shift; cmd_logs "$@" ;;
+  doctor) shift; cmd_doctor ;;
+  mode) shift; cmd_mode "$@" ;;
+  readonly) shift; cmd_readonly ;;
   backup) shift; cmd_backup "$@" ;;
   restore) shift; cmd_restore "$@" ;;
   update) shift; cmd_update "$@" ;;
+  rehearse) shift; cmd_rehearse "$@" ;;
   help|-h|--help) usage ;;
   *) usage; exit 1 ;;
 esac

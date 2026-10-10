@@ -1,9 +1,9 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
-import { ChevronDownIcon } from "@/icons";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/utils";
 
 import type { Choice, DynField } from "./types";
@@ -12,25 +12,51 @@ const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800";
 
 /** Messaggio d'errore di un campo (codici di peopleUi.fieldErrors). */
-export function FieldError({ code }: { code?: string }) {
+export function FieldError({ code, id }: { code?: string; id?: string }) {
   const t = useTranslations("peopleUi");
   if (!code) return null;
-  return <p className="mt-1.5 text-theme-xs text-error-500">{t.has(`fieldErrors.${code}`) ? t(`fieldErrors.${code}`) : code}</p>;
+  return (
+    <p id={id} className="mt-1.5 text-theme-xs text-error-500">
+      {t.has(`fieldErrors.${code}`) ? t(`fieldErrors.${code}`) : code}
+    </p>
+  );
 }
 
-function Wrap({ label, required, error, hint, children }: { label?: ReactNode; required?: boolean; error?: string; hint?: string | null; children: ReactNode }) {
+/**
+ * Etichetta, suggerimento ed errore di un campo. L'etichetta è collegata al controllo con htmlFor/id e
+ * suggerimento ed errore con aria-describedby: avvolgendo il controllo, il loro testo finirebbe nel nome
+ * accessibile del campo.
+ */
+function useFieldIds(hint?: string | null, error?: string) {
+  const id = useId();
+  const described = [hint && !error ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ");
+  return {
+    id,
+    a11y: {
+      id,
+      "aria-describedby": described || undefined,
+      "aria-invalid": error ? true : undefined,
+    },
+  };
+}
+
+function Wrap({ id, label, required, error, hint, children }: { id: string; label?: ReactNode; required?: boolean; error?: string; hint?: string | null; children: ReactNode }) {
   return (
-    <label className="block space-y-1.5">
+    <div className="space-y-1.5">
       {label && (
-        <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-400">
+        <label htmlFor={id} className="block text-theme-sm font-medium text-gray-700 dark:text-gray-400">
           {label}
           {required && <span className="ms-0.5 text-error-500">*</span>}
-        </span>
+        </label>
       )}
       {children}
-      {hint && !error && <span className="block text-theme-xs text-gray-500 dark:text-gray-400">{hint}</span>}
-      <FieldError code={error} />
-    </label>
+      {hint && !error && (
+        <span id={`${id}-hint`} className="block text-theme-xs text-gray-500 dark:text-gray-400">
+          {hint}
+        </span>
+      )}
+      <FieldError code={error} id={`${id}-error`} />
+    </div>
   );
 }
 
@@ -57,9 +83,11 @@ export function TextField({
   autoComplete?: string;
   maxLength?: number;
 }) {
+  const { id, a11y } = useFieldIds(hint, error);
   return (
-    <Wrap label={label} required={required} error={error} hint={hint}>
+    <Wrap id={id} label={label} required={required} error={error} hint={hint}>
       <input
+        {...a11y}
         name={name}
         type={type}
         defaultValue={defaultValue ?? ""}
@@ -72,15 +100,27 @@ export function TextField({
   );
 }
 
-export function TextAreaField({ name, label, defaultValue, rows = 4, error, hint, required }: { name: string; label?: ReactNode; defaultValue?: string | null; rows?: number; error?: string; hint?: string | null; required?: boolean }) {
+export function TextAreaField({
+  name,
+  label,
+  defaultValue,
+  rows = 4,
+  error,
+  hint,
+  required,
+}: {
+  name: string;
+  label?: ReactNode;
+  defaultValue?: string | null;
+  rows?: number;
+  error?: string;
+  hint?: string | null;
+  required?: boolean;
+}) {
+  const { id, a11y } = useFieldIds(hint, error);
   return (
-    <Wrap label={label} required={required} error={error} hint={hint}>
-      <textarea
-        name={name}
-        rows={rows}
-        defaultValue={defaultValue ?? ""}
-        className={cn(inputClass, "h-auto", error && "border-error-500 dark:border-error-500")}
-      />
+    <Wrap id={id} label={label} required={required} error={error} hint={hint}>
+      <textarea {...a11y} name={name} rows={rows} defaultValue={defaultValue ?? ""} className={cn(inputClass, "h-auto", error && "border-error-500 dark:border-error-500")} />
     </Wrap>
   );
 }
@@ -105,28 +145,28 @@ export function SelectField({
   required?: boolean;
 }) {
   const optionClass = "text-gray-700 dark:bg-gray-900 dark:text-gray-400";
+  const { id, a11y } = useFieldIds(undefined, error);
+  // valore attuale fuori elenco (fuso, lingua, 2FA o avatar di un plugin…): resta tra le opzioni, così il
+  // salvataggio non lo sostituisce in silenzio con la prima voce
+  const current = String(defaultValue);
+  const shown = current !== "" && !options.some((o) => String(o.id) === current) ? [...options, { id: current, name: current }] : options;
   return (
-    <Wrap label={label} error={error} required={required}>
+    <Wrap id={id} label={label} error={error} required={required}>
       <span className="relative block">
-        <select
-          name={name}
-          defaultValue={String(defaultValue)}
-          onChange={(e) => onChange?.(e.target.value)}
-          className={cn(inputClass, "appearance-none pe-11")}
-        >
+        <select {...a11y} name={name} defaultValue={String(defaultValue)} onChange={(e) => onChange?.(e.target.value)} className={cn(inputClass, "appearance-none pe-11")}>
           {placeholder !== undefined && (
             <option value="" className={optionClass}>
               {placeholder}
             </option>
           )}
-          {options.map((o) => (
+          {shown.map((o) => (
             <option key={o.id} value={String(o.id)} className={optionClass}>
               {o.name}
             </option>
           ))}
         </select>
         <span className="pointer-events-none absolute inset-e-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-          <ChevronDownIcon />
+          <ChevronDown className="size-5" />
         </span>
       </span>
     </Wrap>
@@ -173,7 +213,9 @@ export function DynamicField({ field, error }: { field: DynField; error?: string
     case "phone":
       return <TextField name={key} type="tel" label={field.label} defaultValue={field.value} required={field.required} error={error} hint={field.hint} />;
     default:
-      return <TextField name={key} type={field.name === "email" ? "email" : "text"} label={field.label} defaultValue={field.value} required={field.required} error={error} hint={field.hint} />;
+      return (
+        <TextField name={key} type={field.name === "email" ? "email" : "text"} label={field.label} defaultValue={field.value} required={field.required} error={error} hint={field.hint} />
+      );
   }
 }
 

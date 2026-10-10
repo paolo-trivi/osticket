@@ -27,11 +27,18 @@ export default function IdentityCard({ settings, set, helpdeskTitle, hasStaffLog
   const t = useTranslations("admin.theme");
   return (
     <ComponentCard title={t("identity")}>
-      <Field label={t("appName")} hint={t("appNameHint", { title: helpdeskTitle })}>
-        <Input value={settings.app_name} maxLength={80} onChange={(e) => set("app_name", e.target.value)} placeholder={helpdeskTitle} />
+      <Field label={t("appName")} hint={t("appNameHint", { title: helpdeskTitle })} htmlFor="theme-app-name">
+        <Input
+          id="theme-app-name"
+          aria-describedby="theme-app-name-hint"
+          value={settings.app_name}
+          maxLength={80}
+          onChange={(e) => set("app_name", e.target.value)}
+          placeholder={helpdeskTitle}
+        />
       </Field>
-      <Field label={t("tagline")}>
-        <Input value={settings.login_tagline} maxLength={200} onChange={(e) => set("login_tagline", e.target.value)} />
+      <Field label={t("tagline")} htmlFor="theme-tagline">
+        <Input id="theme-tagline" value={settings.login_tagline} maxLength={200} onChange={(e) => set("login_tagline", e.target.value)} />
       </Field>
       <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
         <input

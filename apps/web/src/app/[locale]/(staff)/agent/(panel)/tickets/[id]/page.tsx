@@ -26,8 +26,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: number ? `#${number}` : title };
 }
 
-export default async function TicketViewPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
+export default async function TicketViewPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ created?: string }> }) {
   const { locale, id } = await params;
+  const { created } = await searchParams;
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
   const view = await loadTicketView(agent, idOrNotFound(id));
@@ -37,7 +38,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
 
   return (
     <div className="space-y-6">
-      <TicketHeader ticket={ticket} agent={agent} locale={locale} taskCount={view.taskCount} legacyUrl={view.legacyUrl} />
+      <TicketHeader ticket={ticket} agent={agent} locale={locale} taskCount={view.taskCount} legacyUrl={view.legacyUrl} created={created === "1"} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">

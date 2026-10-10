@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import BackLink from "@/components/adminsys/BackLink";
 import AdminForm from "@/components/admin/AdminForm";
 import AdminNotice from "@/components/admin/AdminNotice";
 import MassBar from "@/components/admin/MassBar";
@@ -12,17 +13,21 @@ import { Schedule } from "@/lib/osticket/flags";
 import { idOrNotFound } from "@/lib/route-id";
 import { db } from "@/server/db";
 import { scheduleOptions, timezoneOptions } from "@/server/domain/admin/lookups";
-import { FREQUENCIES } from "@/server/domain/admin/schedule-entry-form";
+import { describeEntry, displaySortOrder, FREQUENCIES, isFullDayEntry, type EntryDesc } from "@/server/domain/admin/schedule-entry-form";
 import { phpJsonDecode } from "@/server/format/php-json";
 
+import { dateFormatter } from "../../_sys/server";
 import { requireAdmin } from "../../guard";
 import { deleteEntriesAction, saveEntryAction, updateScheduleAction } from "../actions";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("schedules");
 
 /** Orario (include/staff/schedule.inc.php): dati, festività, ordine e gestione delle voci. */
 export default async function SchedulePage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
-  await requireAdmin(locale);
+  const date = await dateFormatter(await requireAdmin(locale), locale);
   const t = await getTranslations("admSchedules");
   const u = await getTranslations("admUi");
   const sp = await searchParams;
@@ -51,7 +56,15 @@ export default async function SchedulePage({ params, searchParams }: { params: P
     {
       title: t("sections.order"),
       desc: t("orderDesc"),
-      fields: entries.map((e) => ({ kind: "number" as const, name: `sort-${e.id}`, label: e.name, value: String(e.sort) })),
+      fields: (() => {
+        const order = displaySortOrder(entries.map((e) => e.sort));
+        return entries.map((e, i) => ({
+          kind: "number" as const,
+          name: `sort-${e.id}`,
+          label: e.name,
+          value: String(order[i]),
+        }));
+      })(),
     },
   ];
 
@@ -59,8 +72,55 @@ export default async function SchedulePage({ params, searchParams }: { params: P
   const edit = editId ? entries.find((e) => e.id === editId) : undefined;
   const isoDate = (v: string | null) => (v ? String(v).slice(0, 10) : "");
   const hhmm = (v: string | null) => (v ? String(v).slice(0, 5) : "");
-  const days = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ value: String(d), label: t(`days.${d}`) }));
-  const weeks = ["1", "2", "3", "4", "5", "-1"].map((w) => ({ value: w, label: t(`weeks.${w}`) }));
+  // ScheduleEntry::getDesc(): frequenza con giorno/settimana/mese e, se non è tutto il giorno, l'orario
+  const word = (v: string) => (locale.startsWith("en") ? v : v.toLocaleLowerCase(locale));
+  const dayName = (d: number) => (t.has(`days.${d}`) ? word(t(`days.${d}`)) : String(d));
+  const weekName = (w: number) => (t.has(`weeks.${w}`) ? word(t(`weeks.${w}`)) : String(w));
+  const monthName = (m: number) => (t.has(`months.${m}`) ? word(t(`months.${m}`)) : String(m));
+  const descText = (d: EntryDesc): string => {
+    switch (d.key) {
+      case "never":
+        return t("desc.never", {
+          date: d.date
+            ? new Intl.DateTimeFormat(locale, {
+                dateStyle: "long",
+                timeZone: "UTC",
+              }).format(new Date(`${d.date}T00:00:00Z`))
+            : "—",
+        });
+      case "daily":
+        return t("freq.daily");
+      case "weekdays":
+        return t("weekdays");
+      case "weekends":
+        return t("weekends");
+      case "weekly":
+        return t("desc.weekly", { day: dayName(d.day) });
+      case "monthlyDay":
+        return t("desc.monthlyDay", { day: d.day });
+      case "monthlyWeek":
+        return t("desc.monthlyWeek", {
+          week: weekName(d.week),
+          day: dayName(d.day),
+        });
+      case "yearlyDate":
+        return t("desc.yearlyDate", { day: d.day, month: monthName(d.month) });
+      case "yearlyWeek":
+        return t("desc.yearlyWeek", {
+          week: weekName(d.week),
+          day: dayName(d.day),
+          month: monthName(d.month),
+        });
+    }
+  };
+  const days = [1, 2, 3, 4, 5, 6, 7].map((d) => ({
+    value: String(d),
+    label: t(`days.${d}`),
+  }));
+  const weeks = ["1", "2", "3", "4", "5", "-1"].map((w) => ({
+    value: w,
+    label: t(`weeks.${w}`),
+  }));
   const allDay = edit ? edit.starts_at === "00:00:00" && edit.ends_at === "23:59:59" : !bizhrs;
   const weeklyDay = edit ? (edit.repeats === "weekdays" || edit.repeats === "weekends" ? edit.repeats : String(edit.day ?? "")) : "";
   const entrySections: FormSection[] = [
@@ -128,9 +188,7 @@ export default async function SchedulePage({ params, searchParams }: { params: P
             <Link href={`/admin/schedules/new?clone=${scheduleId}`} className="text-sm font-medium text-brand-500 hover:text-brand-600">
               {t("clone")}
             </Link>
-            <Link href="/admin/schedules" className="text-sm font-medium text-brand-500 hover:text-brand-600">
-              ← {t("back")}
-            </Link>
+            <BackLink href="/admin/schedules" label={t("back")} />
           </span>
         }
       />
@@ -147,8 +205,7 @@ export default async function SchedulePage({ params, searchParams }: { params: P
               { key: "sel", label: "", className: "w-10" },
               { key: "name", label: t("name") },
               { key: "repeats", label: t("repeats") },
-              { key: "starts", label: t("startsOn") },
-              { key: "hours", label: t("hours") },
+              { key: "updated", label: t("updated") },
             ]}
             rows={entries.map((e) => ({
               key: e.id,
@@ -159,9 +216,8 @@ export default async function SchedulePage({ params, searchParams }: { params: P
                     {e.name}
                   </Link>
                 ),
-                repeats: t.has(`freq.${e.repeats}`) ? t(`freq.${e.repeats}`) : e.repeats,
-                starts: isoDate(e.starts_on),
-                hours: `${hhmm(e.starts_at)}–${hhmm(e.ends_at)}`,
+                repeats: isFullDayEntry(e) ? descText(describeEntry(e)) : `${descText(describeEntry(e))} (${hhmm(e.starts_at)}–${hhmm(e.ends_at)})`,
+                updated: date(e.updated),
               },
             }))}
           />

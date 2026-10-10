@@ -19,33 +19,52 @@ interface DropdownProps {
 /** Margine minimo dai bordi della finestra (1rem, come il gutter delle pagine). */
 const VIEWPORT_GAP = 16;
 
-/** Quanto il rettangolo esce dalla finestra (somma dei due lati, in px). */
-function overflow(r: DOMRect, vw: number): number {
-  return Math.max(0, VIEWPORT_GAP - r.left) + Math.max(0, r.right - (vw - VIEWPORT_GAP));
+/** Lati entro cui deve restare il pannello. */
+interface Bounds {
+  left: number;
+  right: number;
+}
+
+/** Quanto il rettangolo esce dai limiti (somma dei due lati, in px). */
+function overflow(r: DOMRect, b: Bounds): number {
+  return Math.max(0, b.left - r.left) + Math.max(0, r.right - b.right);
 }
 
 /**
- * Tiene il pannello nella finestra: di base è allineato alla fine del pulsante (inset-e-0); se esce dallo
- * schermo prova l'allineamento all'inizio e, se serve ancora, lo sposta del minimo necessario. Si misura
- * il rettangolo reale, quindi vale sia in LTR sia in RTL.
+ * Limiti del pannello: la finestra, ristretta al <main> che lo contiene (nel pannello agenti e admin la
+ * sidebar fissa copre la parte di finestra a sinistra del contenuto), meno il margine dai bordi.
  */
-function fitToViewport(el: HTMLElement): void {
+function boundsOf(el: HTMLElement): Bounds {
+  const vw = document.documentElement.clientWidth;
+  const main = el.closest("main")?.getBoundingClientRect();
+  return {
+    left: Math.max(0, main?.left ?? 0) + VIEWPORT_GAP,
+    right: Math.min(vw, main?.right ?? vw) - VIEWPORT_GAP,
+  };
+}
+
+/**
+ * Tiene il pannello dentro i limiti: di base è allineato alla fine del pulsante (inset-e-0); se esce prova
+ * l'allineamento all'inizio e, se serve ancora, lo sposta del minimo necessario. Si misura il rettangolo
+ * reale, quindi vale sia in LTR sia in RTL.
+ */
+function fitToBounds(el: HTMLElement): void {
   el.style.insetInlineStart = "";
   el.style.insetInlineEnd = "";
   el.style.translate = "";
-  const vw = document.documentElement.clientWidth;
+  const bounds = boundsOf(el);
   let rect = el.getBoundingClientRect();
-  if (overflow(rect, vw) === 0) return;
+  if (overflow(rect, bounds) === 0) return;
   el.style.insetInlineStart = "0";
   el.style.insetInlineEnd = "auto";
   const flipped = el.getBoundingClientRect();
-  if (overflow(flipped, vw) < overflow(rect, vw)) {
+  if (overflow(flipped, bounds) < overflow(rect, bounds)) {
     rect = flipped;
   } else {
     el.style.insetInlineStart = "";
     el.style.insetInlineEnd = "";
   }
-  const dx = rect.left < VIEWPORT_GAP ? VIEWPORT_GAP - rect.left : rect.right > vw - VIEWPORT_GAP ? vw - VIEWPORT_GAP - rect.right : 0;
+  const dx = rect.left < bounds.left ? bounds.left - rect.left : rect.right > bounds.right ? bounds.right - rect.right : 0;
   if (dx) el.style.translate = `${dx}px 0`;
 }
 
@@ -87,7 +106,7 @@ export const Dropdown: React.FC<DropdownProps> = ({ isOpen, onClose, children, c
   useLayoutEffect(() => {
     const el = dropdownRef.current;
     if (!isOpen || !el) return;
-    const fit = () => fitToViewport(el);
+    const fit = () => fitToBounds(el);
     fit();
     if (role === "menu") menuItems(el)[0]?.focus();
     window.addEventListener("resize", fit);

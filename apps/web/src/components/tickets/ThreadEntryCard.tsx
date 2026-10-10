@@ -1,3 +1,4 @@
+import { Paperclip } from "lucide-react";
 import { renderThreadBody } from "@/components/common/thread-body";
 import { ThreadEntryType } from "@/lib/osticket/object-types";
 import type { ThreadEntryView } from "@/server/domain/ticket/ticket";
@@ -22,7 +23,15 @@ export default function ThreadEntryCard({
   entry: ThreadEntryView;
   tz: string;
   locale: string;
-  labels: { note: string; reply: string; message: string; edited: string; via: string };
+  /** `sources`: origini tradotte (le stesse di lista e dettagli) */
+  labels: {
+    note: string;
+    reply: string;
+    message: string;
+    edited: string;
+    via: string;
+    sources?: Record<string, string>;
+  };
   iframeWhitelist: string[];
 }) {
   const kindLabel = entry.type === ThreadEntryType.NOTE ? labels.note : entry.type === ThreadEntryType.RESPONSE ? labels.reply : labels.message;
@@ -43,7 +52,7 @@ export default function ThreadEntryCard({
             <p className="text-sm font-medium text-gray-800 dark:text-white/90">{entry.poster}</p>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
               {kindLabel}
-              {entry.source ? ` · ${labels.via} ${entry.source}` : ""}
+              {entry.source ? ` · ${labels.via} ${labels.sources?.[entry.source] ?? entry.source}` : ""}
             </p>
           </div>
         </div>
@@ -52,12 +61,12 @@ export default function ThreadEntryCard({
           {entry.editor_name ? ` · ${labels.edited} ${entry.editor_name}` : ""}
         </time>
       </header>
-      {entry.title && entry.type === ThreadEntryType.NOTE && (
-        <p className="px-5 pt-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{entry.title}</p>
-      )}
+      {entry.title && entry.type === ThreadEntryType.NOTE && <p className="px-5 pt-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{entry.title}</p>}
       <div
-        className="thread-body prose prose-sm max-w-none px-5 py-4 text-gray-700 dark:prose-invert dark:text-gray-300"
-        dangerouslySetInnerHTML={{ __html: renderThreadBody(entry, { area: "agent", iframeWhitelist }) }}
+        className="thread-body prose prose-sm dark:prose-invert max-w-none px-5 py-4 text-gray-700 dark:text-gray-300"
+        dangerouslySetInnerHTML={{
+          __html: renderThreadBody(entry, { area: "agent", iframeWhitelist }),
+        }}
       />
       {files.length > 0 && (
         <footer className="flex flex-wrap gap-2 border-t border-inherit px-5 py-3">
@@ -67,7 +76,7 @@ export default function ThreadEntryCard({
               href={withBase(`/api/agent/file/${a.key}`)}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
             >
-              📎 {a.name} <span className="text-gray-400">{humanSize(a.size)}</span>
+              <Paperclip className="size-3.5 text-gray-400" /> {a.name} <span className="text-gray-400">{humanSize(a.size)}</span>
             </a>
           ))}
         </footer>

@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
 import DataTable, { PageHeader, type DataColumn } from "@/components/common/DataTable";
-import { Link } from "@/i18n/navigation";
 
 import AdminNotice from "./AdminNotice";
 import MassBar from "./MassBar";
+import NewLink from "./NewLink";
 
 /**
  * Lista dell'area admin: intestazione con "Nuovo", esito delle azioni di massa, tabella con le
@@ -37,17 +37,7 @@ export default function AdminList({
 }) {
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={title}
-        subtitle={subtitle}
-        actions={
-          newHref ? (
-            <Link href={newHref} className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600">
-              {newLabel}
-            </Link>
-          ) : undefined
-        }
-      />
+      <PageHeader title={title} subtitle={subtitle} actions={newHref ? <NewLink href={newHref} label={newLabel ?? ""} /> : undefined} />
       <AdminNotice ok={notice.ok} n={notice.n} err={notice.err} />
       <form action={action} className="space-y-4">
         <MassBar actions={actions} />

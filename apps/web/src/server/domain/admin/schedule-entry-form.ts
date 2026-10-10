@@ -145,3 +145,57 @@ export function processEntryForm(input: EntryInput, holidays: boolean, tz = "UTC
   }
   return { vars };
 }
+
+/** Descrizione di una voce (ScheduleEntry::getDesc): chiave del testo e parametri, senza traduzioni. */
+export type EntryDesc =
+  | { key: "never"; date: string }
+  | { key: "daily" | "weekdays" | "weekends" }
+  | { key: "weekly"; day: number }
+  | { key: "monthlyDay"; day: number }
+  | { key: "monthlyWeek"; week: number; day: number }
+  | { key: "yearlyDate"; day: number; month: number }
+  | { key: "yearlyWeek"; week: number; day: number; month: number };
+
+interface EntryRow {
+  repeats: string;
+  day: number | null;
+  week: number | null;
+  month: number | null;
+  starts_on: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+export function describeEntry(e: EntryRow): EntryDesc {
+  const day = Number(e.day ?? 0);
+  const week = Number(e.week ?? 0);
+  const month = Number(e.month ?? 0);
+  switch (e.repeats) {
+    case "weekly":
+      return { key: "weekly", day };
+    case "monthly":
+      return week ? { key: "monthlyWeek", week, day } : { key: "monthlyDay", day };
+    case "yearly":
+      return week ? { key: "yearlyWeek", week, day, month } : { key: "yearlyDate", day, month };
+    case "daily":
+    case "weekdays":
+    case "weekends":
+      return { key: e.repeats };
+    default:
+      return { key: "never", date: String(e.starts_on ?? "").slice(0, 10) };
+  }
+}
+
+/** ScheduleEntry::isFullDay(): dalle 00:00:00 alle 23:59:59. */
+export function isFullDayEntry(e: Pick<EntryRow, "starts_at" | "ends_at">): boolean {
+  return String(e.starts_at ?? "").startsWith("00:00:00") && String(e.ends_at ?? "").startsWith("23:59:59");
+}
+
+/**
+ * Ordine mostrato nel form (schedule-entries.tmpl.php: `$entry->sort ?: ++$sort`): le voci con ordine 0
+ * (nuove o clonate) prendono un progressivo, che diventa definitivo al salvataggio dell'orario.
+ */
+export function displaySortOrder(sorts: number[]): number[] {
+  let n = 0;
+  return sorts.map((s) => s || ++n);
+}

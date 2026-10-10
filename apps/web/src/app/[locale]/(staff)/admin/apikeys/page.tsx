@@ -12,6 +12,9 @@ import { listApiKeys } from "@/server/domain/adminsys/apikey";
 import { dateFormatter } from "../_sys/server";
 import { requireAdmin } from "../guard";
 import { massApiKeyAction } from "./actions";
+import { adminMetadata } from "../metadata";
+
+export const generateMetadata = adminMetadata("apikeys");
 
 /** Chiavi API (include/staff/apikeys.inc.php). */
 export default async function ApiKeysPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string>> }) {

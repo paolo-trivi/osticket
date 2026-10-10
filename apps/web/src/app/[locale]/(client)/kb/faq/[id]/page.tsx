@@ -1,3 +1,4 @@
+import { Paperclip } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import KbSidebar from "@/components/portal/KbSidebar";
@@ -57,8 +58,12 @@ export default async function KbFaqPage({ params }: { params: Promise<{ locale: 
             <h2 className="mb-2 text-theme-sm font-medium text-gray-800 dark:text-white/90">{t("attachments")}</h2>
             <div className="flex flex-wrap gap-2">
               {f.attachments.map((a) => (
-                <a key={a.id} href={withBase(`/api/portal/file/${a.key}`)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-                  📎 {a.name}
+                <a
+                  key={a.id}
+                  href={withBase(`/api/portal/file/${a.key}`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                >
+                  <Paperclip className="size-3.5 text-gray-400" /> {a.name}
                 </a>
               ))}
             </div>

@@ -57,6 +57,11 @@ Lo stack di deploy li esegue con il codice osTicket in `legacy/`.
 
 ## Cosa significa per chi ha già osTicket
 
-- Si può puntare TailTicket a un DB osTicket 1.18 in produzione senza alcuna migrazione ([deploy/README.md](../deploy/README.md), modalità "attach").
-- Si può spegnere TailTicket in qualsiasi momento: i dati restano un normale DB osTicket.
-- Gli aggiornamenti di osTicket si applicano come sempre (`php manage.php upgrade`). TailTicket li segue quando la nuova firma di schema è verificata.
+- Si può puntare TailTicket a un DB osTicket 1.18 in produzione senza alcuna migrazione ([deploy/README.md](../deploy/README.md), modalità "attach"). La configurazione si legge dall'`ost-config.php` esistente, montato in sola lettura: una variabile d'ambiente in conflitto con il file blocca l'avvio.
+- **Si parte in sola lettura.** In attach `TAILTICKET_MODE` vale `readonly`; `operational` (lavoro quotidiano, area admin in sola lettura) e `full` si attivano con `./tailticket mode`, solo con il doctor senza blocchi, un backup recente e una conferma esplicita.
+- **Il doctor** (`./tailticket doctor`) verifica prima di ogni scrittura ciò che potrebbe rompere l'osTicket esistente: firma dello schema, prefisso delle tabelle, `SECRET_SALT`, fuso orario del DB, permessi dell'utente MySQL (niente DDL), email in uscita, allegati su disco, plugin, cron. Con un problema critico la modalità effettiva scende da sola a sola lettura.
+- **Prova generale**: `./tailticket rehearse` ripete il collegamento su una copia del DB di produzione con l'osTicket di `legacy/`, con la posta in uscita catturata da Mailpit e le caselle in entrata spente.
+- **Registro delle scritture**: ogni transazione confermata da TailTicket lascia una riga JSON (tabelle e verbi, senza valori) in `TAILTICKET_JOURNAL_DIR`.
+- Cron, email in entrata, API e plugin restano al PHP esistente, che continua a girare come prima.
+- Si può spegnere TailTicket in qualsiasi momento (`./tailticket readonly` per l'emergenza, `./tailticket down` per fermarlo): i dati restano un normale DB osTicket.
+- Gli aggiornamenti di osTicket si applicano come sempre (`php manage.php upgrade`). TailTicket li segue quando la nuova firma di schema è verificata; fino ad allora resta in sola lettura.

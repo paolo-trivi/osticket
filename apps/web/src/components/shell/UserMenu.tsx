@@ -3,7 +3,7 @@
 import LanguageSwitcher from "@/components/common/LanguageSwitcher";
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { Link } from "@/i18n/navigation";
-import { ChevronDownIcon } from "@/icons";
+import { ChevronDown } from "lucide-react";
 import type { ShellUser } from "@/layout/nav-types";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
@@ -39,7 +39,7 @@ export default function UserMenu({ user, logoutAction, links }: Props) {
           {user.initials}
         </span>
         <span className="me-1 block text-theme-sm font-medium">{user.name}</span>
-        <ChevronDownIcon aria-hidden="true" className={cn("size-5 text-gray-500 transition-transform duration-200 dark:text-gray-400", open && "rotate-180")} />
+        <ChevronDown aria-hidden="true" className={cn("size-5 text-gray-500 transition-transform duration-200 dark:text-gray-400", open && "rotate-180")} />
       </button>
 
       <Dropdown

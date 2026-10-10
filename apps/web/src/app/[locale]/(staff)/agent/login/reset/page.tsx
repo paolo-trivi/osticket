@@ -8,6 +8,10 @@ import { staffIdForResetToken } from "@/server/domain/staff/password-reset";
 import { db } from "@/server/db";
 import { loadTheme } from "@/server/theme/theme";
 
+export async function generateMetadata() {
+  return { title: (await getTranslations("auth"))("agentLoginTitle") };
+}
+
 export const dynamic = "force-dynamic";
 
 /**

@@ -10,6 +10,8 @@ import { menuButtonClass, menuItemClass } from "@/components/common/menu-classes
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { useRouter } from "@/i18n/navigation";
 
+import { useTicketNotice } from "../view/use-ticket-notice";
+
 import ActionDialogs from "./ActionDialogs";
 import type { ActionKind, TicketActionsData } from "./types";
 
@@ -23,7 +25,8 @@ export default function TicketActionsBar({ data }: { data: TicketActionsData }) 
   const t = useTranslations("ticketActions");
   const router = useRouter();
   const [kind, setKind] = useState<ActionKind | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // un solo esito visibile nella testata: il nuovo sostituisce quelli delle altre barre
+  const [notice, setNotice] = useTicketNotice<string>();
   const closeDialog = useCallback(() => setKind(null), []);
 
   const onSuccess = useCallback(
@@ -32,8 +35,10 @@ export default function TicketActionsBar({ data }: { data: TicketActionsData }) 
       setKind(null);
       if (k === null) return;
       const status = typeof k === "object" ? data.statuses.find((s) => s.id === k.status) : undefined;
-      if (k === "assignAgent" || k === "assignTeam" || k === "transfer" || (status && status.state !== "open")) {
-        router.push("/agent/tickets");
+      const done = k === "assignAgent" || k === "assignTeam" ? "assign" : k === "transfer" ? "transfer" : status && status.state !== "open" ? "status" : null;
+      if (done) {
+        // la lista mostra l'esito (TicketDoneNotice), come il messaggio di sessione del PHP
+        router.push(`/agent/tickets?done=${done}&tid=${data.ticketId}`);
         return;
       }
       let text: string;
@@ -43,7 +48,7 @@ export default function TicketActionsBar({ data }: { data: TicketActionsData }) 
       setNotice(text);
       router.refresh();
     },
-    [kind, data.statuses, router, t],
+    [kind, data.statuses, data.ticketId, router, t, setNotice],
   );
 
   const item = (label: string, k: ActionKind, close: () => void) => (

@@ -91,6 +91,7 @@
       "keyboardHelp": "Usa il menu della card (Sposta in…) per spostarla da tastiera"
     },
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "title": "Impossibile spostare il ticket {number}",
       "not_found": "Ticket non trovato o non più accessibile.",
       "forbidden": "Non hai il permesso di impostare questo stato.",

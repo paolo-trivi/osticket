@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 
-import { CheckCircleIcon, CloseLineIcon, ErrorIcon, InfoIcon } from "@/icons";
+import { CircleCheck, Info, OctagonAlert, X } from "lucide-react";
 import { cn } from "@/utils";
 
 export interface ToastMessage {
@@ -14,13 +14,7 @@ export interface ToastMessage {
 }
 
 /** Notifica in basso (annunciata agli screen reader): successo e info si chiudono da sole, gli errori no. */
-export default function BoardToast({
-  toast,
-  onClose,
-}: {
-  toast: ToastMessage | null;
-  onClose: () => void;
-}) {
+export default function BoardToast({ toast, onClose }: { toast: ToastMessage | null; onClose: () => void }) {
   const t = useTranslations("common");
   useEffect(() => {
     if (!toast || toast.kind === "error") return;
@@ -55,26 +49,16 @@ export default function BoardToast({
             )}
           >
             {toast.kind === "error" ? (
-              <ErrorIcon viewBox="0 0 24 24" className="size-5" aria-hidden />
+              <OctagonAlert className="size-5" aria-hidden />
             ) : toast.kind === "success" ? (
-              <CheckCircleIcon
-                viewBox="0 0 24 24"
-                className="size-5"
-                aria-hidden
-              />
+              <CircleCheck className="size-5" aria-hidden />
             ) : (
-              <InfoIcon viewBox="0 0 24 24" className="size-5" aria-hidden />
+              <Info className="size-5" aria-hidden />
             )}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-              {toast.title}
-            </p>
-            {toast.message && (
-              <p className="mt-0.5 text-theme-sm text-gray-600 dark:text-gray-400">
-                {toast.message}
-              </p>
-            )}
+            <p className="text-sm font-medium text-gray-800 dark:text-white/90">{toast.title}</p>
+            {toast.message && <p className="mt-0.5 text-theme-sm text-gray-600 dark:text-gray-400">{toast.message}</p>}
           </div>
           <button
             type="button"
@@ -82,7 +66,7 @@ export default function BoardToast({
             aria-label={t("close")}
             className="-me-1 -mt-1 flex size-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-200"
           >
-            <CloseLineIcon viewBox="0 0 17 16" className="size-4" aria-hidden />
+            <X className="size-4" aria-hidden />
           </button>
         </div>
       )}

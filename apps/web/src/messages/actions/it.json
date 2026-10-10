@@ -29,6 +29,9 @@
     "selectTeam": "Seleziona un team",
     "selectDept": "Seleziona un reparto",
     "selectTarget": "Seleziona",
+    "noAgents": "Nessun agente disponibile per l'assegnazione: servono agenti attivi con accesso al reparto del ticket.",
+    "noTeams": "Nessun team disponibile per l'assegnazione: servono team attivi con almeno un membro attivo.",
+    "noneAvailable": "Nessuna voce disponibile",
     "keepReferral": "Mantieni l'accesso tramite referral per {who}",
     "assignPlaceholder": "Motivo facoltativo dell'assegnazione",
     "transferTitle": "Ticket #{number}: trasferimento",
@@ -73,6 +76,7 @@
       "status": "Stato del ticket cambiato in {status}"
     },
     "errors": {
+      "read_only": "Operazione non disponibile: TailTicket è in sola lettura.",
       "generic": "Operazione non riuscita",
       "session_expired": "Sessione scaduta: accedi di nuovo",
       "not_found": "Ticket inesistente o non accessibile",

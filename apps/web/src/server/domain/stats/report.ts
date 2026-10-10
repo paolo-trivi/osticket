@@ -79,13 +79,34 @@ export async function plotData(range: ReportRange, agent: Agent, executor: DbOrT
     WHERE E.timestamp BETWEEN ${range.start} AND ${range.stop} AND NOT E.annulled AND E.thread_type = 'T'
       AND E.dept_id IN (${sql.join(depts)})
     GROUP BY E.event_id, day ORDER BY day, H.name`.execute(executor);
-  const days = [...new Set(rows.map((r) => r.day))];
+  const days = rangeDays(
+    range,
+    rows.map((r) => r.day),
+  );
   const names = [...new Set(rows.map((r) => r.name))].sort();
   const series = names.map((name) => ({
     name,
     data: days.map((d) => Number(rows.find((r) => r.name === name && r.day === d)?.n ?? 0)),
   }));
   return { days, series };
+}
+
+/** oltre questo numero di giorni l'intervallo non viene riempito (solo i giorni con eventi) */
+const MAX_FILLED_DAYS = 731;
+
+/**
+ * Giorni del grafico: tutti quelli dell'intervallo, anche senza eventi (valgono 0), più quelli con dati
+ * (calcolati sul fuso del DB, possono sporgere di un giorno). Differenza voluta dal PHP, che usa solo i
+ * giorni con eventi: con un solo giorno di dati il grafico sembrerebbe vuoto.
+ */
+function rangeDays(range: ReportRange, dataDays: string[]): string[] {
+  const days = new Set(dataDays);
+  const first = DateTime.fromISO(range.startDay ?? "", { zone: "UTC" });
+  const last = DateTime.fromISO(range.lastDay ?? "", { zone: "UTC" });
+  if (first.isValid && last.isValid && last >= first && last.diff(first, "days").days <= MAX_FILLED_DAYS) {
+    for (let d = first; d <= last; d = d.plus({ days: 1 })) days.add(d.toISODate() ?? "");
+  }
+  return [...days].filter(Boolean).sort();
 }
 
 export interface TabularRow {
@@ -150,7 +171,11 @@ export async function tabularData(
     GROUP BY ${key} ORDER BY label`.execute(executor);
 
   // Tempi medi (ore): servizio = creazione→chiusura; risposta = messaggio→risposta agente (pid)
-  const { rows: times } = await sql<{ key: number; service: number | null; response: number | null }>`
+  const { rows: times } = await sql<{
+    key: number;
+    service: number | null;
+    response: number | null;
+  }>`
     SELECT ${key} AS ${sql.ref("key")},
       AVG(TIMESTAMPDIFF(HOUR, EC.timestamp, V.timestamp)) AS service,
       AVG(TIMESTAMPDIFF(HOUR, P.created, R.created)) AS response

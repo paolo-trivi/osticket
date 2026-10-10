@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { MassActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/actions-mass";
 import ActionNotice from "@/components/common/ActionNotice";
 import { useRouter } from "@/i18n/navigation";
-import { checkedIds } from "@/lib/checked-ids";
+import { checkedIds, useCheckedCount } from "@/lib/checked-ids";
 
 import MassActionMenu from "./MassActionMenu";
 import MassDialogs from "./MassDialogs";
@@ -23,14 +23,20 @@ export default function TicketMassActions({ data }: { data: MassData }) {
   const router = useRouter();
   const [kind, setKind] = useState<MassKind | null>(null);
   const [ids, setIds] = useState<number[]>([]);
-  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  // `select`: avviso "seleziona almeno un ticket", superato appena si seleziona una riga
+  const [notice, setNotice] = useState<{
+    ok: boolean;
+    text: string;
+    select?: boolean;
+  } | null>(null);
+  const checked = useCheckedCount("input[data-mass-tid]");
   const close = useCallback(() => setKind(null), []);
 
   const open = (k: MassKind) => {
     // la lista ha due viste (schede su mobile, tabella da md in su): stessi id, senza duplicati
     const sel = checkedIds("input[data-mass-tid]");
     if (k !== "export" && !sel.length) {
-      setNotice({ ok: false, text: t("selectFirst") });
+      setNotice({ ok: false, text: t("selectFirst"), select: true });
       return;
     }
     setIds(sel);
@@ -48,7 +54,7 @@ export default function TicketMassActions({ data }: { data: MassData }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <MassActionMenu data={data} onOpen={open} />
-      {notice && (
+      {notice && !(notice.select && checked > 0) && (
         <ActionNotice tone={notice.ok ? "success" : "warning"} closeLabel={t("close")} onClose={() => setNotice(null)}>
           {notice.text}
         </ActionNotice>

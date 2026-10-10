@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { withBase } from "@/lib/base-path";
 import { readStoredFile } from "@/server/domain/file/storage";
+import { localRedirect } from "@/server/http/redirect";
 import { loadTheme } from "@/server/theme/theme";
 
 /**
@@ -22,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ kind
   const fileId = kind === "staff-logo" ? theme.staffLogoId : kind === "client-logo" ? theme.clientLogoId : theme.backdropId;
   const file = fileId ? await readStoredFile(fileId) : null;
   if (!file || !file.type.startsWith("image/") || file.type.includes("svg")) {
-    return NextResponse.redirect(new URL(FALLBACK[kind], request.url));
+    return localRedirect(withBase(FALLBACK[kind]));
   }
   return new NextResponse(new Uint8Array(file.data), {
     headers: {

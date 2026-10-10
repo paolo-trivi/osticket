@@ -7,10 +7,11 @@ import { db } from "../../db";
 import { detectDbTimezone } from "../../db/time";
 import { isUserId, lookupAccountByUsername } from "./identity";
 import { prepareUnlockMail } from "./mails";
+import { canWrite, withWriteScope } from "../../system/write-mode";
 
 /** Richiesta di reset della password dal portale (pwreset.php do=sendmail → UserAccount::sendResetEmail). */
 
-type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unavailable" | "failed" };
+type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unavailable" | "failed" | "read_only" };
 
 /**
  * pwreset.php POST do=sendmail: nessuna informazione sull'esistenza dell'account (stessa risposta),
@@ -18,24 +19,31 @@ type ResetRequestResult = { ok: true } | { ok: false; error: "disabled" | "unava
  */
 export async function requestClientPasswordReset(userid: string, opts: { pad?: boolean } = {}): Promise<ResetRequestResult> {
   const start = Date.now();
+  // il token del link va salvato in config: in sola lettura nessun invio
+  if (!(await canWrite("operational"))) return { ok: false, error: "read_only" };
   const cfg = await coreConfig();
   await detectDbTimezone(db());
   let out: ResetRequestResult = { ok: true };
   let send: (() => Promise<void>) | null = null;
   const id = userid.trim();
   if (isUserId(id)) {
-    await db()
-      .transaction()
-      .execute(async (tx) => {
-        const acct = await lookupAccountByUsername(tx, id);
-        if (!acct) return;
-        if (acct.status & UserAccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
-        else if (!acct.passwd || (acct.backend && acct.backend !== "client")) out = { ok: false, error: "unavailable" };
-        else {
-          send = await prepareUnlockMail(tx, cfg, acct.user_id, "pwreset-client");
-          if (!send) out = { ok: false, error: "failed" };
-        }
-      });
+    await withWriteScope(
+      "operational",
+      () =>
+        db()
+          .transaction()
+          .execute(async (tx) => {
+            const acct = await lookupAccountByUsername(tx, id);
+            if (!acct) return;
+            if (acct.status & UserAccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
+            else if (!acct.passwd || (acct.backend && acct.backend !== "client")) out = { ok: false, error: "unavailable" };
+            else {
+              send = await prepareUnlockMail(tx, cfg, acct.user_id, "pwreset-client");
+              if (!send) out = { ok: false, error: "failed" };
+            }
+          }),
+      { op: "client.pwreset.request" },
+    );
   }
   if (send) {
     try {

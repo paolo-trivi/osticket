@@ -1,9 +1,12 @@
+import { Boxes, ChartPie, Headset, LayoutDashboard, Mail, SlidersHorizontal, UserCog } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 
 import AppShell from "@/components/shell/AppShell";
-import { BoxCubeIcon, GridIcon, GroupIcon, ListIcon, MailIcon, PieChartIcon } from "@/icons";
+import WriteModeBanner from "@/components/shell/WriteModeBanner";
+import { WriteModeProvider } from "@/context/WriteModeContext";
 import type { NavSection } from "@/layout/nav-types";
+import { uiWriteMode } from "@/server/system/write-mode-ui";
 
 import { agentLogoutAction } from "../agent/actions";
 import { shellUser } from "../agent/nav";
@@ -24,17 +27,23 @@ export default async function AdminLayout({ children, params }: { children: Reac
     {
       title: t("nav.groups.admin"),
       items: [
-        { key: "admin-home", label: t("admin.home"), icon: <GridIcon />, href: "/admin", exact: true },
+        {
+          key: "admin-home",
+          label: t("admin.home"),
+          icon: <LayoutDashboard />,
+          href: "/admin",
+          exact: true,
+        },
         {
           key: "dashboard",
           label: n("dashboard"),
-          icon: <PieChartIcon />,
+          icon: <ChartPie />,
           children: [link("logs", "/admin/logs"), link("system", "/admin/system")],
         },
         {
           key: "settings",
           label: t("nav.items.settings"),
-          icon: <ListIcon />,
+          icon: <SlidersHorizontal />,
           children: [
             link("company", "/admin/settings/company"),
             link("systemSettings", "/admin/settings/system"),
@@ -49,7 +58,7 @@ export default async function AdminLayout({ children, params }: { children: Reac
         {
           key: "manage",
           label: n("manage"),
-          icon: <BoxCubeIcon />,
+          icon: <Boxes />,
           children: [
             link("topics", "/admin/topics"),
             link("filters", "/admin/filters"),
@@ -66,7 +75,7 @@ export default async function AdminLayout({ children, params }: { children: Reac
         {
           key: "emails",
           label: n("emails"),
-          icon: <MailIcon />,
+          icon: <Mail />,
           children: [
             link("emailAccounts", "/admin/emails"),
             link("emailSettings", "/admin/settings/emails"),
@@ -78,31 +87,38 @@ export default async function AdminLayout({ children, params }: { children: Reac
         {
           key: "staff",
           label: n("agents"),
-          icon: <GroupIcon />,
-          children: [
-            link("agentsList", "/admin/agents"),
-            link("teams", "/admin/teams"),
-            link("roles", "/admin/roles"),
-            link("departments", "/admin/departments"),
-          ],
+          icon: <UserCog />,
+          children: [link("agentsList", "/admin/agents"), link("teams", "/admin/teams"), link("roles", "/admin/roles"), link("departments", "/admin/departments")],
         },
       ],
     },
     {
       title: t("nav.groups.agent"),
-      items: [{ key: "agent", label: t("nav.items.agentPanel"), icon: <PieChartIcon />, href: "/agent" }],
+      items: [
+        {
+          key: "agent",
+          label: t("nav.items.agentPanel"),
+          icon: <Headset />,
+          href: "/agent",
+        },
+      ],
     },
   ];
 
+  // modalità di scrittura effettiva: l'amministrazione scrive solo in modalità completa
+  const wm = await uiWriteMode();
   return (
-    <AppShell
-      sections={sections}
-      homeHref="/admin"
-      user={await shellUser(agent)}
-      logoutAction={agentLogoutAction}
-      menuLinks={[{ label: t("nav.items.agentPanel"), href: "/agent" }]}
-    >
-      {children}
-    </AppShell>
+    <WriteModeProvider configured={wm.configured} effective={wm.effective} reasons={wm.reasons}>
+      <AppShell
+        sections={sections}
+        homeHref="/admin"
+        user={await shellUser(agent)}
+        logoutAction={agentLogoutAction}
+        menuLinks={[{ label: t("nav.items.agentPanel"), href: "/agent" }]}
+        banner={<WriteModeBanner area="admin" legacyUrl={process.env.OST_PHP_URL} />}
+      >
+        {children}
+      </AppShell>
+    </WriteModeProvider>
   );
 }

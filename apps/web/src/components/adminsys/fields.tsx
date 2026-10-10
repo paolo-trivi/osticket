@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import ComponentCard from "@/components/common/ComponentCard";
+import { withCurrentOption } from "@/lib/admin/current-value";
 import { cn } from "@/utils";
 
 /**
@@ -85,7 +86,23 @@ export function TextField({
   );
 }
 
-export function TextAreaField({ name, label, value, hint, rows = 4, wide = true, mono }: { name: string; label?: string; value?: string | null; hint?: string; rows?: number; wide?: boolean; mono?: boolean }) {
+export function TextAreaField({
+  name,
+  label,
+  value,
+  hint,
+  rows = 4,
+  wide = true,
+  mono,
+}: {
+  name: string;
+  label?: string;
+  value?: string | null;
+  hint?: string;
+  rows?: number;
+  wide?: boolean;
+  mono?: boolean;
+}) {
   return (
     <Wrap id={fid(name)} label={label} hint={hint} wide={wide}>
       <textarea id={fid(name)} name={name} rows={rows} defaultValue={value ?? ""} className={cn(controlClass, mono && "font-mono text-theme-xs")} />
@@ -93,12 +110,28 @@ export function TextAreaField({ name, label, value, hint, rows = 4, wide = true,
   );
 }
 
-export function SelectField({ name, label, value, options, hint, wide, id }: { name: string; label?: string; value?: string | number | null; options: Opt[]; hint?: string; wide?: boolean; id?: string }) {
+export function SelectField({
+  name,
+  label,
+  value,
+  options,
+  hint,
+  wide,
+  id,
+}: {
+  name: string;
+  label?: string;
+  value?: string | number | null;
+  options: Opt[];
+  hint?: string;
+  wide?: boolean;
+  id?: string;
+}) {
   return (
     <Wrap id={fid(name, id)} label={label} hint={hint} wide={wide}>
       <select id={fid(name, id)} name={name} defaultValue={value === null || value === undefined ? "" : String(value)} className={cn(controlClass, "h-11 py-0")}>
-        {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled} className="dark:bg-gray-900">
+        {withCurrentOption(options, value === null || value === undefined ? "" : String(value), String).map((o) => (
+          <option key={o.value} value={o.value} disabled={"disabled" in o ? o.disabled : undefined} className="dark:bg-gray-900">
             {o.label}
           </option>
         ))}
@@ -111,7 +144,7 @@ export function RadioField({ name, label, value, options, hint, wide }: { name: 
   return (
     <Wrap id={fid(name)} label={label} hint={hint} wide={wide} group>
       <div role="radiogroup" aria-labelledby={label ? `${fid(name)}-label` : undefined} className="flex flex-wrap gap-4 pt-2">
-        {options.map((o) => (
+        {withCurrentOption(options, value, String).map((o) => (
           <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} className="h-4 w-4 accent-brand-500" />
             {o.label}

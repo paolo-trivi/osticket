@@ -16,6 +16,9 @@ import { requireAdmin } from "../../guard";
 import { saveFilterAction } from "../actions";
 import { FilterFields } from "../form";
 import { filterLabels } from "../labels";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("filters");
 
 export default async function EditFilterPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { locale, id } = await params;

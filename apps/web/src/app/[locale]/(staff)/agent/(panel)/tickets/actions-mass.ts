@@ -1,14 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { formFlag, formHtml, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
+import { adhocListQueue, type AdhocListParams } from "@/server/domain/queue/queues";
 import { activeTeams } from "@/server/domain/ticket/assignees";
 import type { WriteContext } from "@/server/domain/ticket/context";
+import { exportQueueCsv } from "@/server/domain/ticket/export";
 import { mergeTickets } from "@/server/domain/ticket/merge";
 import {
   massAssign,
@@ -21,6 +24,7 @@ import {
   type MassResult,
 } from "@/server/domain/ticket/mass";
 import { runWrite } from "@/server/domain/write";
+import { agentTimeZone } from "@/server/format/datetime";
 
 /**
  * Server action delle azioni di massa della lista ticket (area "ticketedit"): ajax.tickets.php
@@ -106,4 +110,29 @@ export async function massAssigneesAction(ids: number[], what: "agents" | "teams
   if (what === "teams") return (await activeTeams(db())).map((t) => ({ value: `t${t.id}`, label: t.name }));
   const cfg = await coreConfig();
   return (await massAssignableAgents(db(), agent, ids, cfg.str("agent_name_format"))).map((a) => ({ value: `s${a.id}`, label: a.name }));
+}
+
+/**
+ * Export CSV di una ricerca ad hoc (ajax.php/tickets/export/adhoc,<chiave> → CustomQueue::export): la
+ * ricerca è ricostruita dai parametri della lista; il file torna al browser come testo.
+ */
+export async function exportAdhocAction(
+  adhoc: AdhocListParams,
+  opts: { fields: string[]; delimiter: string; sort?: string; dir?: string },
+): Promise<{ filename: string; content: string } | { error: string }> {
+  const agent = await currentAgent();
+  if (!agent) return { error: "session_expired" };
+  const t = await getTranslations("tickets");
+  const queue = adhocListQueue(agent, adhoc, {
+    user: t("userTickets"),
+    org: t("orgTickets"),
+  });
+  if (!queue) return { error: "not_found" };
+  return exportQueueCsv(db(), await coreConfig(), agent, queue, {
+    fields: opts.fields.length ? opts.fields : undefined,
+    delimiter: [",", ";", "\t", "|"].includes(opts.delimiter) ? opts.delimiter : ",",
+    sort: opts.sort,
+    dir: opts.dir === "1" ? 1 : 0,
+    userTz: await agentTimeZone(agent),
+  });
 }

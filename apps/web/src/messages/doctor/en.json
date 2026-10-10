@@ -1,0 +1,26 @@
+{
+  "doctor": {
+    "title": "osTicket connection",
+    "desc": "Checks that verify, before allowing writes, that TailTicket is correctly and safely connected to the osTicket database.",
+    "loading": "Running checks...",
+    "writable": "Writes allowed: no blocking checks.",
+    "blocked": "Writes blocked: {count, plural, one {# problem to fix} other {# problems to fix}}.",
+    "summary": "{ok} ok, {warn} warnings, {block} blocking",
+    "legendTitle": "Legend",
+    "levels": {
+      "block": "Blocking",
+      "warn": "Warning",
+      "info": "Information",
+      "ok": "Ok"
+    },
+    "legend": {
+      "block": "writes are not safe until the problem is fixed",
+      "warn": "worth knowing, does not prevent writes (also when the check cannot be verified)",
+      "info": "information only",
+      "ok": "verified, no problems"
+    },
+    "hint": "What to do",
+    "contentNote": "Check results are reported in Italian. Passwords, salts, keys and tokens are never shown.",
+    "error": "Unable to run the checks: {message}"
+  }
+}

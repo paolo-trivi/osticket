@@ -6,6 +6,7 @@ import { useActionState, useEffect, useRef, type ReactNode } from "react";
 import type { EditActionState } from "@/app/[locale]/(staff)/agent/(panel)/tickets/[id]/actions-edit";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import { submitKeepingValues } from "@/lib/submit-keeping-values";
 
 type EditAction = (prev: EditActionState, form: FormData) => Promise<EditActionState>;
 
@@ -53,20 +54,33 @@ export default function EditDialog({ ticketId, title, action, submitLabel, onClo
   const t = useTranslations("ticketEdit");
   const [state, formAction, pending] = useActionState<EditActionState, FormData>(action, {});
   const done = useRef<number | undefined>(undefined);
+  const errorBox = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (state.ok && done.current !== state.nonce) {
       done.current = state.nonce;
       onSuccess(state);
     }
   }, [state, onSuccess]);
+  // l'errore è in cima alla finestra e il pulsante in fondo: lo si porta in vista
+  useEffect(() => {
+    if (state.error)
+      errorBox.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+  }, [state]);
+
+  const submit = submitKeepingValues(formAction);
 
   return (
     <Modal isOpen onClose={onClose} className={`m-4 ${wide ? "max-w-[840px]" : "max-w-[600px]"} p-6 lg:p-8`}>
-      <form action={formAction} className="max-h-[80vh] space-y-5 overflow-y-auto pe-1 custom-scrollbar">
+      <form onSubmit={submit} className="custom-scrollbar max-h-[80vh] space-y-5 overflow-y-auto pe-1">
         <h4 className="pe-12 text-title-sm font-semibold text-gray-800 dark:text-white/90">{title}</h4>
         <input type="hidden" name="ticketId" value={ticketId} />
         {warning && <div className={`${box} bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-orange-400`}>{warning}</div>}
-        <EditErrorBox state={state} />
+        <div ref={errorBox} className="empty:hidden">
+          <EditErrorBox state={state} />
+        </div>
         {children}
         <div className="flex items-center justify-end gap-3">
           <Button size="sm" variant="outline" onClick={onClose}>

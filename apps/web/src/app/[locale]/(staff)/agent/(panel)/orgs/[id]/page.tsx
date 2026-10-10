@@ -5,6 +5,7 @@ import ComponentCard from "@/components/common/ComponentCard";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import InfoRow from "@/components/common/InfoRow";
 import AccountStatusBadge from "@/components/people/AccountStatusBadge";
+import PeopleDoneNotice from "@/components/people/PeopleDoneNotice";
 import { RowSelect } from "@/components/people/directory/DirectoryButtons";
 import OrgActions, { OrgMembersBar } from "@/components/people/directory/OrgActions";
 import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
@@ -21,15 +22,13 @@ import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
 
 import { requireAgent } from "../../../guard";
 
-export default async function OrgPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string; id: string }>;
-  searchParams: Promise<{ tickets?: string }>;
-}) {
+export async function generateMetadata() {
+  return { title: (await getTranslations("directory"))("orgs") };
+}
+
+export default async function OrgPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<{ tickets?: string; done?: string }> }) {
   const { locale, id } = await params;
-  const { tickets } = await searchParams;
+  const { tickets, done } = await searchParams;
   const filter: TicketStateFilter = tickets === "open" || tickets === "closed" ? tickets : "all";
   setRequestLocale(locale);
   const agent = await requireAgent(locale);
@@ -67,6 +66,7 @@ export default async function OrgPage({
           </Link>
         }
       />
+      <PeopleDoneNotice done={done} name={org.name} />
       <OrgActions
         data={{
           orgId: org.id,
@@ -106,7 +106,13 @@ export default async function OrgPage({
               key: u.id,
               cells: {
                 sel: <RowSelect id={u.id} group="member" />,
-                name: canSeeUsers ? <Link href={`/agent/users/${u.id}`} className="text-brand-600 dark:text-brand-400">{u.name}</Link> : u.name,
+                name: canSeeUsers ? (
+                  <Link href={`/agent/users/${u.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
+                    {u.name}
+                  </Link>
+                ) : (
+                  u.name
+                ),
                 email: u.email,
                 status: <AccountStatusBadge status={u.account_status} />,
                 tickets: u.tickets,

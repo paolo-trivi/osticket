@@ -11,6 +11,9 @@ import { banlistFilterId } from "@/server/domain/adminsys/banlist";
 
 import { requireAdmin } from "../../guard";
 import { updateBanAction } from "../actions";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("banlist");
 
 export default async function EditBanPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;

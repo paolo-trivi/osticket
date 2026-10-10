@@ -2,12 +2,15 @@ import "server-only";
 
 import { getTranslations } from "next-intl/server";
 
-import type { FormSection } from "@/lib/admin/form-schema";
+import { withCurrentOption } from "@/lib/admin/current-value";
+import type { FormSection, Opt } from "@/lib/admin/form-schema";
 import { StaffDeptAccess, TeamMember } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 import { deptOptions, roleOptions, teamOptions } from "@/server/domain/admin/lookups";
 import { AGENT_PERMISSIONS } from "@/server/domain/admin/staff-admin";
 import { phpJsonDecode } from "@/server/format/php-json";
+
+import { permLabel } from "../roles/perm-label";
 
 /** Sezioni del form agente (include/staff/staff.inc.php). */
 export async function agentSections(staffId: number | null): Promise<FormSection[] | null> {
@@ -22,6 +25,27 @@ export async function agentSections(staffId: number | null): Promise<FormSection
   const perms = phpJsonDecode<Record<string, unknown>>(s?.permissions ?? "", {}) ?? {};
   const extra = phpJsonDecode<Record<string, unknown>>(s?.extra ?? "", {}) ?? {};
   const groups = [...new Set(AGENT_PERMISSIONS.map((p) => p.group))];
+  // StaffAuthenticationBackend::getInteractive(): nel PHP "local" più i backend dei plugin attivi
+  // (LDAP, OAuth2…), registrati solo a runtime. TailTicket propone quelli già in uso dagli agenti
+  // (scritti dal PHP) e sempre quello attuale: salvare un agente LDAP non lo riporta a "".
+  const usedBackends = await executor
+    .selectFrom("staff")
+    .select("backend")
+    .distinct()
+    .where("backend", "is not", null)
+    .where("backend", "not in", ["", "local"])
+    .orderBy("backend")
+    .execute();
+  const backendLabel = (code: string) => (code === "ldap" || code.startsWith("ldap.") ? t("ldapBackend", { code }) : t("pluginBackend", { code }));
+  const backends = usedBackends
+    .map((b) => String(b.backend))
+    .reduce<Opt[]>(
+      (acc, code) => withCurrentOption(acc, code, backendLabel),
+      [
+        { value: "", label: t("anyBackend") },
+        { value: "local", label: t("localBackend") },
+      ],
+    );
   const sections: FormSection[] = [
     {
       title: t("sections.account"),
@@ -40,16 +64,12 @@ export async function agentSections(staffId: number | null): Promise<FormSection
           name: "backend",
           label: t("backend"),
           value: s?.backend ?? "",
-          options: [
-            { value: "", label: t("anyBackend") },
-            { value: "local", label: t("localBackend") },
-          ],
+          options: withCurrentOption(backends, s?.backend, backendLabel),
         },
       ],
     },
     {
       title: t("sections.status"),
-      desc: t("statusDesc"),
       fields: [
         { kind: "checkbox", name: "islocked", value: "1", label: t("locked"), checked: s ? !s.isactive : false },
         { kind: "checkbox", name: "isadmin", value: "1", label: t("admin"), checked: !!s?.isadmin },
@@ -89,7 +109,7 @@ export async function agentSections(staffId: number | null): Promise<FormSection
           values: Object.entries(perms).filter(([, v]) => !!v).map(([k]) => k),
           groups: groups.map((g) => ({
             title: r.has(`groups.${g}`) ? r(`groups.${g}`) : g,
-            options: AGENT_PERMISSIONS.filter((p) => p.group === g).map((p) => ({ value: p.key, label: `${p.title} — ${p.desc}` })),
+            options: AGENT_PERMISSIONS.filter((p) => p.group === g).map((p) => ({ value: p.key, label: permLabel(r, p) })),
           })),
         },
       ],

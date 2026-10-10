@@ -26,6 +26,7 @@
       "createdNotice": "Elemento creato."
     },
     "errors": {
+      "read_only": "Operazione non disponibile: in questa installazione l'amministrazione di TailTicket è in sola lettura.",
       "failed": "Operazione non riuscita.",
       "unknown": "Elemento non trovato.",
       "unknown_action": "Azione sconosciuta.",
@@ -61,6 +62,7 @@
       "configure_auth": "Configura prima l'autenticazione (credenziali).",
       "configure_mailbox_auth": "Configura prima l'autenticazione della casella di posta.",
       "oauth_unsupported": "L'autenticazione OAuth2 è gestita solo dal pannello PHP.",
+      "auth_unsupported": "Questo tipo di autenticazione (plugin) è gestito solo dal pannello PHP.",
       "resource_owner_mismatch": "Proprietario della risorsa OAuth2 e indirizzo non corrispondono.",
       "unknown_folder": "Cartella sconosciuta.",
       "cannot_create_folder": "Impossibile creare la cartella d'archivio.",
@@ -101,6 +103,7 @@
       "invalid_set": "Set di template non valido.",
       "unknown_set": "Set di template sconosciuto.",
       "body_required": "Il corpo del messaggio è obbligatorio.",
+      "page_body_required": "Il contenuto della pagina è obbligatorio.",
       "set_required": "Set di template obbligatorio.",
       "code_name_required": "Messaggio obbligatorio.",
       "valid_ip_required": "Indirizzo IP valido obbligatorio.",
@@ -192,6 +195,7 @@
       "sameAsMailbox": "Come la casella remota",
       "noAuth": "Nessuna autenticazione",
       "oauthConfigured": "OAuth2 (configurato dal pannello PHP)",
+      "pluginAuth": "{code} (plugin, configurato dal pannello PHP)",
       "authHint": "Configura le credenziali nella sezione qui sotto prima di attivare l'account.",
       "fetchFreq": "Intervallo di lettura (minuti)",
       "fetchMax": "Email per lettura",
@@ -226,7 +230,8 @@
       "body": "Messaggio",
       "bodyHint": "HTML ammesso (viene sanificato).",
       "send": "Invia",
-      "sent": "Email di prova inviata."
+      "sent": "Email di prova inviata.",
+      "fixErrors": "Impossibile inviare: correggi gli errori indicati e riprova."
     },
     "banlist": {
       "title": "Ban list",
@@ -413,12 +418,14 @@
       "notes": "Note interne"
     },
     "forms": {
-      "title": "Form personalizzati",
-      "subtitle": "Form e campi di ticket, utenti, organizzazioni e task",
-      "new": "Nuovo form",
-      "edit": "Modifica form",
-      "builtIn": "Form di sistema",
-      "custom": "Form personalizzati",
+      "title": "Moduli",
+      "subtitle": "Moduli e campi di ticket, utenti, organizzazioni e task",
+      "new": "Nuovo modulo",
+      "edit": "Modifica modulo",
+      "configNote": "La configurazione dei singoli campi (opzioni, validazione, valori predefiniti) si fa dal pannello classico.",
+      "openPhp": "Apri il modulo nel pannello PHP",
+      "builtIn": "Moduli di sistema",
+      "custom": "Moduli personalizzati",
       "formTitle": "Titolo",
       "type": "Tipo",
       "fieldsCount": "Campi",
@@ -513,6 +520,8 @@
       "status": "Stato",
       "backToList": "Torna alla lista",
       "systemNote": "La lista degli stati dei ticket è gestita dal pannello PHP (gli elementi sono gli stati dei ticket).",
+      "sortNote": "Il riordino manuale degli elementi si fa dal pannello classico.",
+      "openPhp": "Apri la lista nel pannello PHP",
       "unsupportedProps": "Alcune proprietà non sono di tipo testo: gli elementi di questa lista vanno modificati dal pannello PHP."
     },
     "pages": {
@@ -613,7 +622,8 @@
       "installed": "Installato",
       "none": "Nessun plugin installato.",
       "instancesOf": "Istanze di {name}",
-      "phpNote": "Installazione, disinstallazione e configurazione dei plugin (e delle istanze) richiedono il codice PHP del plugin: si fanno dal pannello PHP. Qui si possono abilitare o disabilitare."
+      "phpNote": "Installazione, disinstallazione e configurazione dei plugin (e delle istanze) richiedono il codice PHP del plugin: si fanno dal pannello PHP. Qui si possono abilitare o disabilitare.",
+      "openPhp": "Apri i plugin nel pannello PHP"
     }
   }
 }

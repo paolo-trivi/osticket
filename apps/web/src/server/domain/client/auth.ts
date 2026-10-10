@@ -9,6 +9,7 @@ import { sanitizeText } from "../../format/text";
 import { sendMail } from "../../mail/mailer";
 import { adminAlertMail } from "../../system/admin-alert";
 import { logSystem } from "../../system/syslog";
+import { writeIfAllowed } from "../../system/write-mode";
 import { phpAlertDate } from "../../auth/staff-auth";
 import { accountIsConfirmed, accountIsLocked, loadClientIdentity, passwordVersion, type GuestAccess } from "./identity";
 
@@ -27,6 +28,7 @@ import { accountIsConfirmed, accountIsLocked, loadClientIdentity, passwordVersio
  *  - user_account.extra.browser_lang (ClientAccount::onLogin, se l'utente ha un account);
  *  - eventuale rehash da MD5 della password (ClientAccount::check_passwd).
  * La tabella user_account non ha una colonna lastlogin: il PHP non registra l'ultimo accesso dei clienti.
+ * Sono scritture accessorie "operational" (write-mode.ts): in sola lettura il login riesce senza di esse.
  */
 
 export type ClientAuthError =
@@ -40,7 +42,9 @@ export type ClientAuthError =
   | "backend"
   | "invalid_token"
   | "invalid_user"
-  | "reset_failed";
+  | "reset_failed"
+  /** l'operazione richiede scritture non consentite dalla modalità (TAILTICKET_MODE) */
+  | "read_only";
 
 export interface ClientLogin {
   userId: number;
@@ -118,20 +122,32 @@ export async function loginWrites(
   // osTicket::logDebug(_S('User login'), "%1$s (%2$s) logged in [%3$s]"): EndUser::getUserName() = (string) EmailAddress = indirizzo
   await logSystem("Debug", "User login", sanitizeText(`${ident.email} (${ident.id}) logged in [${opts.ip}]`), opts.ip, { executor });
   if (acct) {
-    if (opts.interactive) {
-      // ClientAccount::cancelResetTokens
-      await executor.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", `c${userId}`).execute();
-    }
-    // ClientAccount::onLogin: lingua corrente (getCurrentLanguage senza utente = lingua di sistema;
-    // la negoziazione con Accept-Language del PHP non è replicata)
-    const extra = phpJsonDecode<Record<string, unknown> | null>(acct.extra, null) ?? {};
-    extra.browser_lang = cfg.str("system_language", "en_US");
-    const encoded = phpJsonEncode(extra);
-    const set: Record<string, unknown> = {};
-    if (encoded !== (acct.extra ?? "")) set.extra = encoded;
-    if (opts.rehash) set.passwd = opts.rehash;
-    if (Object.keys(set).length) await executor.updateTable("user_account").set(set as never).where("id", "=", acct.id).execute();
-    return { ok: true, pwv: passwordVersion(opts.rehash ?? acct.passwd) };
+    const written = await writeIfAllowed("operational", { actor: { type: "client", id: userId } }, async () => {
+      if (opts.interactive) {
+        // ClientAccount::cancelResetTokens
+        await executor.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", `c${userId}`).execute();
+      }
+      // ClientAccount::onLogin: lingua corrente (getCurrentLanguage senza utente = lingua di sistema;
+      // la negoziazione con Accept-Language del PHP non è replicata)
+      const extra = phpJsonDecode<Record<string, unknown> | null>(acct.extra, null) ?? {};
+      extra.browser_lang = cfg.str("system_language", "en_US");
+      const encoded = phpJsonEncode(extra);
+      const set: Record<string, unknown> = {};
+      if (encoded !== (acct.extra ?? "")) set.extra = encoded;
+      if (opts.rehash) set.passwd = opts.rehash;
+      if (Object.keys(set).length)
+        await executor
+          .updateTable("user_account")
+          .set(set as never)
+          .where("id", "=", acct.id)
+          .execute();
+      return true;
+    });
+    // senza il rehash salvato la sessione resta legata alla password attuale
+    return {
+      ok: true,
+      pwv: passwordVersion((written ? opts.rehash : undefined) ?? acct.passwd),
+    };
   }
   return { ok: true, pwv: passwordVersion(null) };
 }

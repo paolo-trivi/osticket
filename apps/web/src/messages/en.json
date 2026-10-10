@@ -15,6 +15,31 @@
     "legacyPanel": "Classic panel",
     "pagination": "Pagination"
   },
+  "writeMode": {
+    "banner": {
+      "readonly": "Read-only: changes must be made in the classic panel.",
+      "admin": "Administration is read-only in this installation.",
+      "portal": "The help center is temporarily view-only: you can read your tickets, but you cannot submit new requests or replies.",
+      "legacy": "Open the classic panel",
+      "reason": "Reason: {reason}"
+    },
+    "reasons": {
+      "schema": "the osTicket database schema is not one TailTicket has verified.",
+      "schemaUnreadable": "the osTicket database schema version could not be read.",
+      "tablePrefix": "the osTicket tables do not match the configured prefix.",
+      "secretSalt": "SECRET_SALT does not match the one used by osTicket.",
+      "timezone": "the database time zone is inconsistent with TailTicket's or osTicket's.",
+      "critical": "a critical installation check failed (Administration > System).",
+      "doctorFailed": "the critical installation checks could not be completed.",
+      "other": "a safety check disabled writes."
+    },
+    "hint": "Not available: TailTicket is read-only.",
+    "hintAdmin": "Not available: administration is read-only.",
+    "notice": "Operation not available: TailTicket is read-only. Changes must be made in the classic panel.",
+    "noticeAdmin": "Changes cannot be saved: administration is read-only in this installation.",
+    "noticePortal": "Requests and changes cannot be submitted right now: the help center is view-only. Please try again later.",
+    "boardDrag": "Read-only: moving cards is disabled."
+  },
   "nav": {
     "groups": {
       "agent": "Agent panel",
@@ -42,6 +67,7 @@
   },
   "header": {
     "searchPlaceholder": "Search tickets…",
+    "searchLabel": "Search tickets",
     "toggleSidebar": "Toggle sidebar",
     "signOut": "Sign out",
     "profile": "My profile",
@@ -61,6 +87,7 @@
     "sideTitle": "TailTicket",
     "sideText": "The modern helpdesk, fully compatible with osTicket: a new interface on the same data as the classic panel.",
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "invalid": "Invalid login",
       "locked_out": "Maximum failed login attempts reached: try again later",
       "too_many": "Too many failed attempts. Forgot your login info? Contact Admin.",
@@ -117,12 +144,35 @@
       "serviceTime": "Service time (h)",
       "responseTime": "Response time (h)"
     },
-    "eventNames": {}
+    "eventNames": {
+      "created": "Created",
+      "closed": "Closed",
+      "reopened": "Reopened",
+      "assigned": "Assigned",
+      "released": "Released",
+      "transferred": "Transferred",
+      "referred": "Referred",
+      "overdue": "Overdue",
+      "edited": "Edited",
+      "viewed": "Viewed",
+      "error": "Errors",
+      "collab": "Collaborators",
+      "resent": "Resent",
+      "deleted": "Deleted",
+      "merged": "Merged",
+      "linked": "Linked",
+      "unlinked": "Unlinked",
+      "login": "Logins",
+      "logout": "Logouts",
+      "message": "Messages",
+      "note": "Notes"
+    }
   },
   "notFound": {
     "error": "ERROR",
     "message": "The page you are looking for does not exist.",
-    "backHome": "Back to home"
+    "backHome": "Back to home",
+    "title": "Page not found"
   },
   "admin": {
     "home": "Administration",
@@ -133,6 +183,8 @@
       "colors": "Primary color",
       "colorsDesc": "The full scale is generated automatically from the chosen color.",
       "customColor": "Custom color",
+      "hexLabel": "Color hex code",
+      "hexInvalid": "Enter a valid hex color, for example #465fff.",
       "presets": {
         "osticket": "osTicket orange",
         "hospital": "Hospital",
@@ -186,7 +238,7 @@
         "custom": "custom",
         "default": "TailTicket default"
       },
-      "logosHint": "Logos are uploaded from the classic panel (Admin › Settings › System): the new interface picks them up automatically.",
+      "logosHint": "Logos are uploaded from the classic panel (Settings › Company): the new interface picks them up automatically.",
       "openLegacy": "Open in classic panel",
       "preview": "Preview",
       "sample": {
@@ -212,6 +264,14 @@
     "sortBy": "Sort by",
     "apply": "Apply",
     "tooManyWords": "Search can contain at most 3 words",
+    "done": {
+      "assign": "Ticket #{number} assigned to {assignee}.",
+      "transfer": "Ticket #{number} transferred to the {dept} department.",
+      "status": "Ticket #{number} status changed to {status}.",
+      "delete": "Ticket #{number} deleted.",
+      "deleteGeneric": "Ticket deleted.",
+      "generic": "Ticket action completed."
+    },
     "empty": "No tickets in this queue",
     "pageOf": "Page {page} of {pages}",
     "prev": "Previous",
@@ -226,6 +286,8 @@
     "answered": "Answered",
     "locked": "Being edited by another agent",
     "openLegacy": "Open in classic panel",
+    "created": "Ticket created successfully.",
+    "closeNotice": "Close",
     "details": "Details",
     "department": "Department",
     "helpTopic": "Help topic",
@@ -274,17 +336,49 @@
     "statusChanged": "<b>{somebody}</b> changed the status to <b>{status}</b>",
     "edited": "Updated by <b>{somebody}</b>",
     "collab": "<b>{somebody}</b> updated the collaborators",
+    "collabAdded": "<b>{somebody}</b> added <b>{names}</b> as collaborators",
+    "collabRemoved": "<b>{somebody}</b> removed <b>{names}</b> from the collaborators",
+    "collabOrg": "Collaborators for <b>{org}</b> organization added",
+    "collabVia": "{name} via {src}",
+    "ownerChanged": "<b>{somebody}</b> changed ownership to <b>{owner}</b>",
+    "editedChanges": "Updated by <b>{somebody}</b> — <changes></changes>",
+    "changeFromTo": "<b>{field}</b> changed from <b>{old}</b> to <b>{new}</b>",
+    "changeSet": "<b>{field}</b> set to <b>{new}</b>",
+    "changeUnset": "unset <b>{field}</b>",
+    "fields": {
+      "topic_id": "Help Topic",
+      "sla_id": "SLA",
+      "duedate": "Due Date",
+      "user_id": "Ticket Owner",
+      "source": "Source"
+    },
+    "slaName": "{name} ({hours} hours - {active, select, yes {Active} other {Disabled}})",
+    "filterSet": "<b>{filter}</b> Filter set {type} to <b>{value}</b>",
+    "filterSetEmpty": "<b>{filter}</b> Filter set {type}",
+    "filterTypes": {
+      "Department": "Department",
+      "Priority": "Priority",
+      "SLA": "SLA",
+      "Team": "Team",
+      "Agent": "Agent",
+      "Topic": "Topic",
+      "Ticket Status": "Ticket Status"
+    },
     "merged": "<b>{somebody}</b> merged tickets",
+    "mergedWith": "<b>{somebody}</b> merged this ticket with <ticket></ticket>",
     "linked": "<b>{somebody}</b> linked tickets",
+    "linkedWith": "<b>{somebody}</b> linked this ticket with <ticket></ticket>",
+    "unlinked": "<b>{somebody}</b> unlinked tickets",
+    "unlinkedFrom": "<b>{somebody}</b> unlinked this ticket from <ticket></ticket>",
     "resent": "<b>{somebody}</b> resent a previous response",
     "deleted": "Deleted by <b>{somebody}</b>"
   },
   "directory": {
     "users": "Users",
     "orgs": "Organizations",
-    "usersCount": "{n} users",
-    "orgsCount": "{n} organizations",
-    "searchUsers": "Search name, email, organization…",
+    "usersCount": "{n, plural, one {# user} other {# users}}",
+    "orgsCount": "{n, plural, one {# organization} other {# organizations}}",
+    "searchUsers": "Name, email, organization…",
     "searchOrgs": "Search organization…",
     "noAccess": "You do not have access to the user directory (user.dir permission).",
     "empty": "No results",
@@ -304,6 +398,7 @@
     "accountLocked": "Locked",
     "accountPending": "Pending confirmation",
     "viewTickets": "View tickets ({n})",
+    "newTicketForUser": "New ticket",
     "orgTickets": "Organization tickets",
     "domain": "Domain",
     "prev": "Previous",
@@ -422,6 +517,7 @@
     "posted": "Posted successfully.",
     "lockedBy": "This ticket is being edited by {name}: replies and notes are blocked until the lock expires.",
     "errors": {
+      "read_only": "Operation not available: TailTicket is read-only.",
       "session_expired": "Session expired: please sign in again.",
       "not_found": "Ticket not found or not accessible.",
       "denied": "Action denied: your role cannot reply.",
@@ -430,7 +526,9 @@
       "lock_required": "This action requires a lock. Please try again.",
       "locked_by_other": "Action denied: ticket is locked by someone else.",
       "lock_expired": "Your lock has expired. Please try again.",
-      "banned": "The user's email is banned. Remove it from the ban list to reply."
+      "banned": "The user's email is banned. Remove it from the ban list to reply.",
+      "forbidden": "Access denied: sign in again as an agent.",
+      "generic": "The operation failed. Please try again."
     },
     "editor": {
       "bold": "Bold",
@@ -440,7 +538,9 @@
       "numbers": "Numbered list",
       "link": "Link",
       "quote": "Quote",
-      "linkPrompt": "Link URL"
+      "linkPrompt": "Link URL",
+      "linkApply": "Apply",
+      "linkInvalid": "Use an address starting with https://, http:// or mailto:"
     }
   },
   "adminNav": {

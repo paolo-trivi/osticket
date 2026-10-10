@@ -26,7 +26,8 @@ export default async function PwresetPage({ params, searchParams }: { params: Pr
     redirect({ href: `/pwreset/confirm?token=${encodeURIComponent(token)}`, locale });
   }
   return (
-    <div className="space-y-6">
+    // colonna centrata della larghezza della scheda (max-w-md), come una pagina di accesso
+    <div className="mx-auto w-full max-w-md space-y-6">
       <h1 className="text-title-sm font-semibold text-gray-800 dark:text-white/90">{t("title")}</h1>
       {!token && !cfg.bool("allow_pw_reset") ? <p className="text-sm text-gray-500 dark:text-gray-400">{t("disabled")}</p> : <ResetForms token={token} />}
     </div>

@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
-
 import { startClientSession } from "@/server/auth/client-auth";
 import { clientIp } from "@/server/auth/session";
 import { performTokenSignOn } from "@/server/domain/client/auth-access-link";
 import { withBase } from "@/lib/base-path";
+import { localRedirect } from "@/server/http/redirect";
 
 /**
  * view.php?auth=<token> (o i vecchi link ?t=&e=&a=): accesso come ospite al ticket del link
@@ -11,8 +10,7 @@ import { withBase } from "@/lib/base-path";
  * È un route handler perché scrive il cookie di sessione.
  */
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const q = url.searchParams;
+  const q = new URL(request.url).searchParams;
   const ip = await clientIp();
   const res = await performTokenSignOn({
     auth: q.get("auth") ?? undefined,
@@ -23,8 +21,8 @@ export async function GET(request: Request) {
   });
   if (res?.ok && res.guest) {
     await startClientSession(res);
-    return NextResponse.redirect(new URL(withBase(`/tickets/${res.guest.ticketId}`), url));
+    return localRedirect(withBase(`/tickets/${res.guest.ticketId}`));
   }
   const err = res && !res.ok ? `?error=${res.error}` : "?error=link";
-  return NextResponse.redirect(new URL(withBase(`/login${err}#access`), url));
+  return localRedirect(withBase(`/login${err}#access`));
 }

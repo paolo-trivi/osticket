@@ -15,6 +15,9 @@ import { dateFormatter } from "../../_sys/server";
 import { requireAdmin } from "../../guard";
 import { updateTemplateGroupAction } from "../actions";
 import { TemplateGroupFields } from "../fields";
+import { adminMetadata } from "../../metadata";
+
+export const generateMetadata = adminMetadata("templates");
 
 /** Set di template: proprietà e messaggi (include/staff/template.inc.php). */
 export default async function TemplateSetPage({ params, searchParams }: { params: Promise<{ locale: string; id: string }>; searchParams: Promise<Record<string, string>> }) {

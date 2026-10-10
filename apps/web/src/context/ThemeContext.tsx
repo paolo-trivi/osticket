@@ -15,6 +15,12 @@ type ThemeContextType = {
   allowUserMode: boolean;
 };
 
+/** Chiaro/scuro effettivo di una modalità ("auto" segue il sistema operativo). Solo lato client. */
+function resolveMode(mode: ThemeMode): ResolvedTheme {
+  if (mode === "auto") return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return mode;
+}
+
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 /** Chiave localStorage della preferenza utente (letta anche dallo script anti-flash del layout). */
@@ -35,9 +41,12 @@ export const ThemeProvider: React.FC<{
     const savedMode = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
     const initialMode = (allowUserMode && savedMode) || defaultMode;
 
-    // Lettura di localStorage possibile solo dopo il mount (niente mismatch di idratazione)
+    // Lettura di localStorage possibile solo dopo il mount (niente mismatch di idratazione).
+    // Il tema risolto si imposta insieme alla modalità: altrimenti il primo effetto che applica la classe
+    // vedrebbe ancora "light" e toglierebbe per un istante il "dark" messo dallo script anti-flash del layout.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeModeState(initialMode);
+    setTheme(resolveMode(initialMode));
     setIsInitialized(true);
   }, [allowUserMode, defaultMode]);
 
@@ -86,13 +95,7 @@ export const ThemeProvider: React.FC<{
     if (allowUserMode) setThemeModeState(theme === "light" ? "dark" : "light");
   };
 
-  return (
-    <ThemeContext.Provider
-      value={{ theme, themeMode, setThemeMode, toggleTheme, allowUserMode }}
-    >
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, themeMode, setThemeMode, toggleTheme, allowUserMode }}>{children}</ThemeContext.Provider>;
 };
 
 export const useTheme = () => {

@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import ComponentCard from "@/components/common/ComponentCard";
@@ -10,6 +11,9 @@ import { adminSummary } from "@/server/domain/admin/dashboard";
 import { VERIFIED_SCHEMAS } from "@/server/system/schema-compat";
 
 import { requireAdmin } from "./guard";
+import { adminMetadata } from "./metadata";
+
+export const generateMetadata = adminMetadata("home");
 
 const SECTIONS: { key: string; links: { key: string; href: string }[] }[] = [
   {
@@ -111,8 +115,9 @@ export default async function AdminHomePage({ params }: { params: Promise<{ loca
             <ul className="space-y-2">
               {sec.links.map((l) => (
                 <li key={l.key}>
-                  <Link href={l.href} className="text-sm font-medium text-brand-500 hover:text-brand-600">
-                    {t(`links.${l.key}`)} →
+                  <Link href={l.href} className="group inline-flex items-center gap-1.5 text-sm font-medium text-brand-500 hover:text-brand-600">
+                    {t(`links.${l.key}`)}
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
                   </Link>
                 </li>
               ))}

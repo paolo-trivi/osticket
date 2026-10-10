@@ -1,13 +1,17 @@
 import "server-only";
 
+import { sql } from "kysely";
+
 import { ThreadEntry, Ticket } from "@/lib/osticket/flags";
 import { ObjectType } from "@/lib/osticket/object-types";
 
-import type { DbOrTx } from "../../db";
+import { table, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import { phpJsonEncode } from "../../format/php-json";
 import { bodySearchable } from "../../format/text";
 import { replaceSearchRow } from "../search/index-writer";
-import { TicketPerm } from "../staff/staff";
+import { visibilitySql } from "../queue/scope";
+import { TicketPerm, type Agent } from "../staff/staff";
 import { currentTicketThreadId, ticketThread } from "../thread/ids";
 import { threadRefer } from "./referral";
 import { addTicketCollaborator } from "./collaborators";
@@ -300,4 +304,41 @@ export async function relatedTickets(executor: DbOrTx, ticketId: number) {
     mergeType: mergeTypeOf(parent?.flags ?? t.flags),
     tickets: rows.map((r) => ({ id: r.ticket_id, number: r.number ?? "", subject: r.subject ?? "", parent: r.ticket_id === parentId, mergeType: mergeTypeOf(r.flags) })),
   };
+}
+
+export interface TicketNumberHit {
+  id: number;
+  number: string;
+  subject: string;
+  user: string;
+  mergeType: "combine" | "separate" | "visual";
+}
+
+/**
+ * ajax.php/tickets/number-lookup (TicketsAjaxAPI::lookupByNumber) per "Aggiungi un ticket" del dialogo
+ * di merge/link: ticket visibili all'agente con il numero che inizia per `q`, in ordine di numero.
+ */
+export async function lookupTicketsByNumber(executor: DbOrTx, agent: Agent, q: string, limit = 25): Promise<TicketNumberHit[]> {
+  const term = q.trim();
+  if (!term) return [];
+  const { rows } = await sql<{
+    ticket_id: number;
+    number: string | null;
+    subject: string | null;
+    name: string | null;
+    flags: number;
+  }>`
+    SELECT T.ticket_id, T.number, CD.subject, U.name, T.flags FROM ${table("ticket")} T
+    INNER JOIN ${table("ticket_status")} ST ON (ST.id = T.status_id)
+    LEFT JOIN ${table("ticket__cdata")} CD ON (CD.ticket_id = T.ticket_id)
+    LEFT JOIN ${table("user")} U ON (U.id = T.user_id)
+    WHERE ${visibilitySql(agent, false)} AND T.number LIKE ${`${likeEscape(term)}%`}
+    ORDER BY T.number LIMIT ${limit}`.execute(executor);
+  return rows.map((r) => ({
+    id: r.ticket_id,
+    number: r.number ?? "",
+    subject: r.subject ?? "",
+    user: r.name ?? "",
+    mergeType: mergeTypeOf(r.flags),
+  }));
 }

@@ -26,6 +26,7 @@
       "next": "Next"
     },
     "errors": {
+      "read_only": "Operation not available: TailTicket administration is read-only in this installation.",
       "failed": "Operation failed.",
       "unknown": "Item not found.",
       "unknown_action": "Unknown action.",
@@ -61,6 +62,7 @@
       "configure_auth": "Configure authentication (credentials) first.",
       "configure_mailbox_auth": "Configure mailbox authentication first.",
       "oauth_unsupported": "OAuth2 authentication is only handled by the PHP panel.",
+      "auth_unsupported": "This authentication type (plugin) is only handled by the PHP panel.",
       "resource_owner_mismatch": "OAuth2 resource owner and email mismatch.",
       "unknown_folder": "Unknown folder.",
       "cannot_create_folder": "Unable to create the archive folder.",
@@ -101,6 +103,7 @@
       "invalid_set": "Invalid template set specified.",
       "unknown_set": "Unknown template set.",
       "body_required": "Message body is required.",
+      "page_body_required": "Page body is required.",
       "set_required": "Template set is required.",
       "code_name_required": "Message is required.",
       "valid_ip_required": "A valid IP address is required.",
@@ -192,6 +195,7 @@
       "sameAsMailbox": "Same as remote mailbox",
       "noAuth": "No authentication required",
       "oauthConfigured": "OAuth2 (configured from the PHP panel)",
+      "pluginAuth": "{code} (plugin, configured from the PHP panel)",
       "authHint": "Set the credentials in the section below before enabling the account.",
       "fetchFreq": "Fetch frequency (minutes)",
       "fetchMax": "Emails per fetch",
@@ -226,7 +230,8 @@
       "body": "Message",
       "bodyHint": "HTML allowed (it is sanitized).",
       "send": "Send",
-      "sent": "Test email sent."
+      "sent": "Test email sent.",
+      "fixErrors": "Unable to send: correct the errors below and try again."
     },
     "banlist": {
       "title": "Ban list",
@@ -413,10 +418,12 @@
       "notes": "Internal notes"
     },
     "forms": {
-      "title": "Custom forms",
+      "title": "Forms",
       "subtitle": "Forms and fields of tickets, users, organizations and tasks",
       "new": "Add new custom form",
       "edit": "Edit form",
+      "configNote": "Per-field configuration (options, validation, default values) is done in the classic panel.",
+      "openPhp": "Open the form in the PHP panel",
       "builtIn": "Built-in forms",
       "custom": "Custom forms",
       "formTitle": "Title",
@@ -513,6 +520,8 @@
       "status": "Status",
       "backToList": "Back to the list",
       "systemNote": "The ticket status list is managed from the PHP panel (its items are the ticket statuses).",
+      "sortNote": "Manual reordering of the items is done in the classic panel.",
+      "openPhp": "Open the list in the PHP panel",
       "unsupportedProps": "Some properties are not text fields: the items of this list must be edited from the PHP panel."
     },
     "pages": {
@@ -613,7 +622,8 @@
       "installed": "Installed",
       "none": "No plugins installed.",
       "instancesOf": "Instances of {name}",
-      "phpNote": "Installing, uninstalling and configuring plugins (and instances) requires the plugin's PHP code: do it from the PHP panel. Here you can enable or disable them."
+      "phpNote": "Installing, uninstalling and configuring plugins (and instances) requires the plugin's PHP code: do it from the PHP panel. Here you can enable or disable them.",
+      "openPhp": "Open plugins in the PHP panel"
     }
   }
 }

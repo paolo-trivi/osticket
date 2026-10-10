@@ -1,32 +1,4 @@
-export { default as BoxCubeIcon } from "./box-cube.svg";
-export { default as CalenderIcon } from "./calender-line.svg";
-export { default as ChatIcon } from "./chat.svg";
-export { default as CheckCircleIcon } from "./check-circle.svg";
-export { default as CheckLineIcon } from "./check-line.svg";
-export { default as ChevronDownIcon } from "./chevron-down.svg";
-export { default as ChevronLeftIcon } from "./chevron-left.svg";
-export { default as CloseLineIcon } from "./close-line.svg";
-export { default as CloseIcon } from "./close.svg";
-export { default as DocsIcon } from "./docs.svg";
-export { default as DownloadIcon } from "./download.svg";
-export { default as EyeCloseIcon } from "./eye-close.svg";
-export { default as EyeIcon } from "./eye.svg";
+// Le icone dell'interfaccia vengono da un solo kit, Lucide (import da "lucide-react"); qui restano solo le
+// bandiere delle lingue, che sono immagini e non icone. Niente emoji né caratteri usati come icone.
 export { default as ItFlagIcon } from "./flag-it.svg";
 export { default as UsFlagIcon } from "./flag-us.svg";
-export { default as FolderIcon } from "./folder.svg";
-export { default as GridIcon } from "./grid.svg";
-export { default as GroupIcon } from "./group.svg";
-export { default as HorizontaLDots } from "./horizontal-dots.svg";
-export { default as ErrorIcon } from "./info-hexa.svg";
-export { default as InfoIcon } from "./info.svg";
-export { default as KanbanIcon } from "./kanban.svg";
-export { default as ListIcon } from "./list.svg";
-export { default as MagnifierIcon } from "./magnifier.svg";
-export { default as MailIcon } from "./mail-line.svg";
-export { default as MoreDotIcon } from "./more-dot.svg";
-export { default as PadlockIcon } from "./padlock.svg";
-export { default as PaperclipIcon } from "./paperclip.svg";
-export { default as PieChartIcon } from "./pie-chart.svg";
-export { default as PlugInIcon } from "./plug-in.svg";
-export { default as TaskIcon } from "./task-icon.svg";
-export { default as UserCircleIcon } from "./user-circle.svg";

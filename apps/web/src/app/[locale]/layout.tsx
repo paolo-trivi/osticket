@@ -7,17 +7,26 @@ import { DEFAULT_THEME, loadTheme, themeCss, type ResolvedTheme } from "@/server
 import "flatpickr/dist/flatpickr.css";
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
-import { setRequestLocale } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { FONT_CLASS } from "@/lib/fonts";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import "../globals.css";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
   const theme = await safeTheme();
+  // descrizione nella lingua della pagina (locale non valido: il layout risponde comunque 404)
+  const tb = await getTranslations({
+    locale: routing.locales.includes(locale as Locale) ? locale : routing.defaultLocale,
+    namespace: "brand",
+  });
   return {
-    title: { default: theme.displayName, template: `%s · ${theme.displayName}` },
-    description: "TailTicket — l'helpdesk moderno, compatibile con osTicket",
+    title: {
+      default: theme.displayName,
+      template: `%s · ${theme.displayName}`,
+    },
+    description: `${tb("name")} — ${tb("tagline")}`,
     applicationName: "TailTicket",
   };
 }
