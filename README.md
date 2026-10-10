@@ -81,7 +81,7 @@ Elenco completo e limiti noti in [docs/scope.md](docs/scope.md).
 ## Avvio rapido
 
 ```bash
-git clone https://github.com/paolo-trivi/tailticket tailticket
+git clone https://github.com/paolo-trivi/TailTicket tailticket
 cd tailticket/deploy
 ./tailticket up
 ```

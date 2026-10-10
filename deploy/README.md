@@ -3,7 +3,7 @@
 Uno stack Docker completo che si avvia con **un comando**:
 
 ```bash
-git clone https://github.com/paolo-trivi/tailticket tailticket
+git clone https://github.com/paolo-trivi/TailTicket tailticket
 cd tailticket/deploy
 ./tailticket up
 ```
