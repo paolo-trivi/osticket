@@ -57,9 +57,10 @@ async function addNewProperties(executor: DbOrTx, formId: number, info: PhpVars,
     field.set("name", info[`name-new-${i}`] === undefined ? null : str(info[`name-new-${i}`]));
     field.set("flags", PROPERTY_FLAGS);
     field.set("created", SQL_NOW);
+    // con l'etichetta presente l'unico errore possibile è sul nome (obbligatorio o non valido): un codice
     const err = fieldTemplateErrors(field);
     if (err.length) {
-      errors[`new-${i}`] = err.join(", ");
+      errors[`new-${i}`] = err[0];
       continue;
     }
     field.set("form_id", formId);

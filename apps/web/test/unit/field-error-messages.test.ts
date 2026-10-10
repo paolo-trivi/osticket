@@ -8,11 +8,13 @@ import { FIELD_ERROR_CODES } from "@/server/domain/forms/fields";
 
 /**
  * Ogni form che mostra gli errori dei campi dinamici (validateField) traduce tutti i codici, in tutte
- * le lingue: azienda (admUi.errors), directory utenti/organizzazioni e task (peopleUi.fieldErrors),
- * portale (portal.fieldErrors e dynamicForms.errors), modifica del ticket (ticketEdit.fieldErrors).
+ * le lingue: azienda (admUi.errors), proprietà degli elementi di lista (asys.errors), directory
+ * utenti/organizzazioni e task (peopleUi.fieldErrors), portale (portal.fieldErrors e
+ * dynamicForms.errors), modifica del ticket (ticketEdit.fieldErrors).
  */
 const NAMESPACES: [area: string, path: string][] = [
   ["admin", "admUi.errors"],
+  ["adminsys", "asys.errors"],
   ["people", "peopleUi.fieldErrors"],
   ["portal", "portal.fieldErrors"],
   ["create", "dynamicForms.errors"],

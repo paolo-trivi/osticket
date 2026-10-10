@@ -5,6 +5,11 @@ import { getTranslations } from "next-intl/server";
 import { Section, TextAreaField, TextField } from "@/components/adminsys/fields";
 import { phpJsonDecode } from "@/server/format/php-json";
 
+/** Etichette degli errori delle proprietà (codice per id del campo) nel riepilogo di SysForm. */
+export function propertyLabels(properties: { id: number; label: string }[]): Record<string, string> {
+  return Object.fromEntries(properties.map((p) => [String(p.id), p.label]));
+}
+
 /** Campi dell'elemento: valore, abbreviazione e proprietà testuali (ajax.forms.php, list-item-properties). */
 export async function ItemFields({
   item,

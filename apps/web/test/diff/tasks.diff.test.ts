@@ -208,6 +208,21 @@ describe("task: PHP vs TypeScript", () => {
     expect(await compareWorkingDatabases()).toEqual([]);
   });
 
+  it("modifica con un campo aggiuntivo non valido: nessuna scrittura, errori per campo", async () => {
+    await execBoth(
+      `INSERT INTO {p}form_field (id, form_id, flags, type, label, name, configuration, sort, hint, created, updated) VALUES
+        (71, 5, 13057, 'text', 'Stanza', 'stanza', '{"validator":"number"}', 4, '', NOW(), NOW())`,
+    );
+    const fields = { title: "Nuovo titolo", stanza: "dodici" };
+    const php = await runPhp<{ ok: boolean; errors: Record<string, unknown> }>({ op: "task.edit", args: { agent: 2, task: 1, fields, note: "<p>x</p>" } });
+    const ts = await withTask(2, 1, (ctx, t) => updateTaskFields(ctx, t, fields, "<p>x</p>"));
+    expect(php.ok).toBe(false);
+    // un solo errore (array_merge rinumera la chiave 71 del campo)
+    expect(Object.keys(php.errors)).toHaveLength(1);
+    expect(ts).toEqual({ ok: false, error: "invalid", fields: { stanza: "number" } });
+    expect(await compareWorkingDatabases()).toEqual([]);
+  });
+
   it("azioni di massa: claim, chiusura, eliminazione", async () => {
     await runPhp({ op: "task.mass", args: { agent: 1, action: "claim", tids: [1, 2] } });
     await runPhp({ op: "task.mass", args: { agent: 1, action: "close", tids: [1, 3], comments: "" } });

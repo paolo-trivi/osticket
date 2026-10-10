@@ -53,7 +53,7 @@ function toDynFields(fields: FieldDef[], values: Record<string, string> = {}, fi
 }
 
 /** Campi del form predefinito (vuoti) per la creazione. */
-export async function newFormFields(type: "U" | "O", executor: DbOrTx = db()): Promise<DynFieldData[]> {
+export async function newFormFields(type: "U" | "O" | "A", executor: DbOrTx = db()): Promise<DynFieldData[]> {
   const form = await defaultFormOf(executor, type);
   return form ? toDynFields(form.fields) : [];
 }

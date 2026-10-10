@@ -122,7 +122,11 @@
       "number": "Must be a number.",
       "phone": "Not a valid phone number.",
       "ip": "Not a valid IP address.",
-      "regex": "Invalid value."
+      "regex": "Invalid value.",
+      "phone_ext": "Invalid extension.",
+      "phone_ext_missing": "Extension without a phone number.",
+      "files_max": "Too many files.",
+      "date_past": "The date must be in the future."
     },
     "emailSettings": {
       "title": "Email settings",

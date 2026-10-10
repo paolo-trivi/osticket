@@ -116,6 +116,9 @@ azioni in `adminsys/filter-actions.ts`):
   controllo di unicità del PHP non blocca mai), enable/disable (bit status), delete (`list_id=NULL`).
 - Proprietà gestite: campi `text` e `memo`; altri tipi → `unsupported_property`. Lista degli stati dei
   ticket (handler) in sola lettura. Import CSV al PHP.
+- Errori come codici traducibili (`asys.errors`), uno per proprietà: valori non validi degli elementi
+  per id del campo proprietà (`required`, `email`, `formula`…; il PHP li unisce in un array numerico),
+  proprietà nuove della lista per `new-<i>` (`name_invalid`/`name_required`). Nessuna scrittura.
 
 ## Pagine — `/admin/pages` (scp/pages.php)
 - `content`: type, name (striptags), body/notes (sanitize), isactive 1/0, created/updated.

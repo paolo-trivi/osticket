@@ -59,8 +59,13 @@ export type TaskError =
   | "already_assigned" | "unavailable" | "unknown_assignee" | "team_disabled" | "team_empty" | "same_dept"
   | "not_closeable" | "no_change" | "due_past" | "invalid_date" | "already_status" | "invalid";
 
-/** `fields`: errori dei campi del form del task (nome o id del campo → codice), alla creazione. */
+/** `fields`: errori dei campi del form del task (nome o id del campo → codice), in creazione e modifica. */
 export type TaskResult<T = object> = ({ ok: true } & T) | { ok: false; error: TaskError; fields?: Record<string, FieldErrorCode> };
+
+/** Esito dei campi del form non validi: `title_required` se manca il titolo, altrimenti `invalid`, con i codici per campo. */
+function invalidFields(errors: Record<string, FieldErrorCode>): { ok: false; error: TaskError; fields: Record<string, FieldErrorCode> } {
+  return { ok: false, error: errors.title ? "title_required" : "invalid", fields: errors };
+}
 
 const isOpen = (t: TaskDbRow) => (t.flags & TaskModel.ISOPEN) !== 0;
 
@@ -478,7 +483,7 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   // del form blocca la creazione
   const inst = new FormInstance({ id: form.id, type: FormType.TASK, title: "", instructions: "", fields: form.fields }, values, 1, null, { timezone });
   const errors = await validateInput(form.fields, values, () => true, cfg, { timezone });
-  if (Object.keys(errors).length) return { ok: false, error: errors.title ? "title_required" : "invalid", fields: errors };
+  if (Object.keys(errors).length) return invalidFields(errors);
   if (!input.deptId) return { ok: false, error: "dept_required" };
   const dept = await tx.selectFrom("department").select("id").where("id", "=", input.deptId).executeTakeFirst();
   if (!dept) return { ok: false, error: "dept_required" };
@@ -555,10 +560,10 @@ export async function updateTaskFields(ctx: WriteContext, task: TaskDbRow, field
   const entries = await entriesFor(tx, "A", task.id);
   if (!entries.length) return { ok: false, error: "not_found" };
   const timezone = await currentTimezone(ctx);
-  for (const e of entries) {
-    const errors = await validateInput(e.fields, fields, (f) => isEditableToStaff(f), ctx.cfg, { timezone });
-    if (Object.keys(errors).length) return { ok: false, error: "title_required" };
-  }
+  // Errori di tutti i form uniti (array_merge di $form->errors()), poi nessuna scrittura
+  const errors: Record<string, FieldErrorCode> = {};
+  for (const e of entries) Object.assign(errors, await validateInput(e.fields, fields, (f) => isEditableToStaff(f), ctx.cfg, { timezone }));
+  if (Object.keys(errors).length) return invalidFields(errors);
   const changes: Record<string, [string | null, string | null]> = {};
   for (const e of entries) {
     const r = await saveEntryAnswers(tx, e, task.id, fields, { isEditable: (f) => isEditableToStaff(f) && hasAnswerRow(f), timezone });

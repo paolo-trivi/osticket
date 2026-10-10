@@ -9,6 +9,7 @@ import { Link } from "@/i18n/navigation";
 import { TaskModel } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
+import { newFormFields } from "@/server/domain/directory/ui";
 import { pageSizeFor } from "@/server/domain/queue/context";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
@@ -62,10 +63,11 @@ export default async function TasksPage({
     delete: agent.hasPermInAnyRole(TaskPerm.DELETE),
   };
   const cfg = await coreConfig();
-  const [agents, teams, depts] = await Promise.all([
+  const [agents, teams, depts, taskFields] = await Promise.all([
     can.assign || canCreate ? assignableAgents(db(), null, agent, cfg) : Promise.resolve([]),
     can.assign || canCreate ? activeTeams(db()) : Promise.resolve([]),
     selectableDepts(db(), agent, null),
+    canCreate ? newFormFields("A") : Promise.resolve([]),
   ]);
 
   return (
@@ -81,6 +83,7 @@ export default async function TasksPage({
                 depts={depts}
                 agents={agents}
                 teams={teams}
+                fields={taskFields}
                 defaultDept={ticketOk ? ticket!.dept_id : agent.deptId}
                 canAssign={agent.hasPermInAnyRole(TaskPerm.ASSIGN)}
               />

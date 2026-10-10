@@ -179,6 +179,24 @@ export async function currentDates(ctx: WriteContext): Promise<DateFormatOptions
   return { cfg: ctx.cfg, timezone: await currentTimezone(ctx) };
 }
 
+/** Contesto della richiesta per transazione (vedi bindRequestContext). */
+const requestContexts = new WeakMap<object, WriteContext>();
+
+/**
+ * Lega la transazione al contesto della richiesta (runWrite). Nel PHP $cfg->getTimezone() è globale
+ * alla richiesta: anche chi riceve solo l'executor (TicketRecord.save → indice `_search`) deve
+ * formattare le date nel fuso dell'utente corrente.
+ */
+export function bindRequestContext(ctx: WriteContext): void {
+  requestContexts.set(ctx.tx, ctx);
+}
+
+/** currentDates del contesto legato all'executor; null fuori da una richiesta (cron, script). */
+export async function requestDates(executor: DbOrTx): Promise<DateFormatOptions | null> {
+  const ctx = requestContexts.get(executor);
+  return ctx ? currentDates(ctx) : null;
+}
+
 /** DynamicList::getConfigurationForm(autocreate): form "L<id>" delle proprietà, creato se manca */
 export async function ensureListPropertiesForm(executor: DbOrTx, listId: number): Promise<number | null> {
   const form = await executor.selectFrom("form").select("id").where("type", "=", `L${listId}`).orderBy("id").executeTakeFirst();

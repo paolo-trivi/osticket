@@ -288,14 +288,15 @@ export async function updateTicket(ctx: WriteContext, input: TicketUpdateInput):
   await rec.save();
   if (note) await logNote(ctx, rec.id, "Ticket Updated", note);
 
-  // Risposte dei form: modifiche (getChanges) prima del salvataggio
+  // Risposte dei form: modifiche (getChanges) prima del salvataggio. DynamicFormEntry::getChanges non
+  // filtra per visibilità: un campo che l'agente non vede o non può modificare risulta "cambiato" nel
+  // valore nullo del widget (stranezza del PHP replicata), anche se saveAnswers non lo salva
   const fieldChanges: [string, unknown][] = [];
   for (const form of forms) {
     if (!keep.includes(form.entryId)) continue;
     for (const a of form.answers) {
       const f = a.field;
       if (!a.exists || !hasData(f) || isPresentationOnly(f) || !parsed.has(f.id)) continue;
-      if (!(isVisibleTo(f, "staff") && isEditableTo(f, "staff"))) continue;
       const n = newRepr(f, parsed.get(f.id)!);
       if (!sameAnswer(f, a, n)) fieldChanges.push([String(f.id), [oldRepr(f, a), n.repr]]);
     }

@@ -143,6 +143,8 @@ Valore di partenza: 0. Si aggiungono:
 #### Ticket::save (`TicketRecord`)
 - Si scrivono solo i campi cambiati (confronto debole PHP), con `updated = NOW()`.
 - Poi si reindicizza `_search` (T): `title` = "numero oggetto", `content` = risposte indicizzabili del form, una per riga.
+  Date, Sì/No e telefoni sono formattati per l'utente della richiesta (fuso dell'agente o dell'utente, altrimenti
+  quello predefinito), come `$cfg->getTimezone()` del PHP.
 
 #### Ticket::setStatus (`status.ts`)
 **Chiusura**
@@ -158,7 +160,7 @@ Valore di partenza: 0. Si aggiungono:
 **Riapertura**
 - Se il ticket è riapribile: auto-assegnazione all'assegnatario o al penultimo agente che ha risposto (`LIMIT 1,1`, come il PHP), se disponibile e con accesso al reparto. Altrimenti `staff_id = 0`.
 - Aggiorna `closed = NULL`, `reopened = lastupdate = NOW()`.
-- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA.
+- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA (orari "floating" nel fuso dell'utente della richiesta).
 
 **Altri stati aperti**: evento `edited` `{"status":id}`. Se il ticket non era aperto: `isanswered = 0`.
 
@@ -481,7 +483,7 @@ Dopo l'azione:
 
 Fonte: `apps/web/docs/contract/ticketedit.md`.
 
-Verificato con 63 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
+Verificato con 67 scenari differenziali (righe DB ed email identiche al PHP, operazioni PHP in
 `test/diff/php/ops/ticketedit.php`):
 
 ```
@@ -491,7 +493,7 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 
 | File di test | Scenari |
 |---|---|
-| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (16) |
+| `ticket-edit.diff.test.ts` | Ticket::update, Ticket::updateField, Ticket::changeOwner (20) |
 | `ticket-edit-delete.diff.test.ts` | eliminazione da stato "deleted" e Ticket::delete (6) |
 | `ticket-edit-collab.diff.test.ts` | collaboratori, segna scaduto, ban list (13) |
 | `ticket-edit-merge.diff.test.ts` | link, scollegamento, merge combinato/separato (8) |
@@ -533,7 +535,8 @@ Permesso `ticket.edit`. Validazione come `Validator::process` + controlli del PH
 Con errori nessuna scrittura (`{error:"invalid", fields}`).
 
 Campi dei form (qui e in `updateTicketField`): date lette nel fuso dell'agente (`$cfg->getTimezone()`, `currentTimezone`),
-anche per il testo di `_search`. Un campo assente dall'input vale la risposta attuale per la validazione e il salvataggio
+anche per il testo di `_search` (che ogni `Ticket::save` riscrive nel fuso dell'utente della richiesta: `bindRequestContext`
+in `runWrite`, come il `$cfg->getTimezone()` globale del PHP). Un campo assente dall'input vale la risposta attuale per la validazione e il salvataggio
 (`getClean()` = `Widget::parseValue`, `parseFieldOrAnswer`), mentre le modifiche dell'evento leggono il solo widget
 (`getChanges`: assente → `null`, stranezza replicata); in `updateField` `FormField::save` salva proprio quel valore nullo.
 Il vecchio valore di un campo data `NULL` o non interpretabile compare come `0` nell'evento (`DatetimeField::to_php`).
@@ -549,8 +552,12 @@ Scritture, in ordine:
 5. Evento **edited** con le modifiche nell'ordine di assegnazione:
    `{"topic_id":[vecchio,nuovo],"sla_id":[...],"source":[...],"duedate":[...],"user_id":[...],"fields":{"<id>":[vecchio,nuovo]}}`;
    i valori nuovi sono quelli inviati (stringhe), le priorità `["Label",id]`. Nessun evento senza modifiche.
+   Come `DynamicFormEntry::getChanges` le modifiche includono anche i campi che l'agente non vede o non può
+   modificare: risultano cambiati nel valore nullo del widget (`[vecchio,null]`) anche se la risposta non si salva
+   (stranezza replicata).
 6. Se lo SLA non è stato cambiato e manca o è transitorio (`0x8`): `selectSLAId` (reparto → topic → `default_sla_id`).
-7. `updateEstDueDate` (est_duedate ricalcolata), reindicizzazione `_search`.
+7. `updateEstDueDate` (est_duedate ricalcolata; un orario lavorativo senza fuso, "floating", vale nel fuso
+   dell'agente: `$cfg->getTimezone()`), reindicizzazione `_search`.
 
 #### Ticket::updateField (ajax editField) — `updateTicketField`
 Permesso `ticket.edit`. Valore uguale all'attuale → `already_set` senza scritture.
@@ -769,7 +776,7 @@ Verificato con i test differenziali (righe DB ed email identiche al PHP; operazi
 
 | File | Scenari |
 |---|---|
-| `test/diff/tasks.diff.test.ts` | 15 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica, scadenza, eliminazione, massa, avvisi email) |
+| `test/diff/tasks.diff.test.ts` | 16 (creazione, campi aggiuntivi validi/non validi/a scelta multipla, note/risposte, assegnazione, claim, trasferimento, stato, riapertura del ticket con stato di riapertura configurato/non valido, modifica valida/con campo non valido, scadenza, eliminazione, massa, avvisi email) |
 | `test/diff/people-directory.diff.test.ts` | 9 (utenti: creazione, modifica, organizzazione, eliminazione, import CSV, account, email di attivazione/reset; organizzazioni: creazione, campi, profilo, eliminazione, membri) |
 | `test/diff/people-profile.diff.test.ts` | 7 (profilo, validazione, cambio password, reset via email + login con token, 2FA dal profilo, login con 2FA, tentativi falliti + avviso admin) |
 | `test/diff/staff-login.diff.test.ts` | 3 (login, invariato) |
@@ -829,6 +836,10 @@ Creazione (`createTask`): come `$form->isValid()` di ajax.tasks.php un errore in
 blocca la creazione senza scritture (`title_required` per il titolo, altrimenti `invalid`, con `fields` nome → codice);
 `addDynamicData($form->getClean())` salva i valori puliti già validati (`FormInstance` + `saveFormEntry`, un solo parse):
 la nuova entry del PHP rilegge il POST (o, senza, le risposte impostate con `setAnswer`) e la scelta multipla resta.
+Modifica (`updateTaskFields`, Task::update): gli errori di tutti i form del task (campi visibili e modificabili
+dall'agente) si uniscono e bloccano ogni scrittura, con lo stesso esito della creazione (`title_required`/`invalid` +
+`fields`). La UI invia gli altri campi del form del task (prefisso `f:`) sia in creazione sia in modifica e mostra
+l'errore accanto a ciascun campo.
 
 #### Utenti
 | Operazione | Scritture |
@@ -1279,6 +1290,9 @@ azioni in `adminsys/filter-actions.ts`):
   controllo di unicità del PHP non blocca mai), enable/disable (bit status), delete (`list_id=NULL`).
 - Proprietà gestite: campi `text` e `memo`; altri tipi → `unsupported_property`. Lista degli stati dei
   ticket (handler) in sola lettura. Import CSV al PHP.
+- Errori come codici traducibili (`asys.errors`), uno per proprietà: valori non validi degli elementi
+  per id del campo proprietà (`required`, `email`, `formula`…; il PHP li unisce in un array numerico),
+  proprietà nuove della lista per `new-<i>` (`name_invalid`/`name_required`). Nessuna scrittura.
 
 #### Pagine — `/admin/pages` (scp/pages.php)
 - `content`: type, name (striptags), body/notes (sanitize), isactive 1/0, created/updated.

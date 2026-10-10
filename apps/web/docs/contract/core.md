@@ -58,6 +58,8 @@ Valore di partenza: 0. Si aggiungono:
 ## Ticket::save (`TicketRecord`)
 - Si scrivono solo i campi cambiati (confronto debole PHP), con `updated = NOW()`.
 - Poi si reindicizza `_search` (T): `title` = "numero oggetto", `content` = risposte indicizzabili del form, una per riga.
+  Date, Sì/No e telefoni sono formattati per l'utente della richiesta (fuso dell'agente o dell'utente, altrimenti
+  quello predefinito), come `$cfg->getTimezone()` del PHP.
 
 ## Ticket::setStatus (`status.ts`)
 **Chiusura**
@@ -73,7 +75,7 @@ Valore di partenza: 0. Si aggiungono:
 **Riapertura**
 - Se il ticket è riapribile: auto-assegnazione all'assegnatario o al penultimo agente che ha risposto (`LIMIT 1,1`, come il PHP), se disponibile e con accesso al reparto. Altrimenti `staff_id = 0`.
 - Aggiorna `closed = NULL`, `reopened = lastupdate = NOW()`.
-- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA.
+- Evento `reopened` (annulla `closed`), poi `est_duedate` ricalcolata con lo SLA (orari "floating" nel fuso dell'utente della richiesta).
 
 **Altri stati aperti**: evento `edited` `{"status":id}`. Se il ticket non era aperto: `isanswered = 0`.
 

@@ -9,6 +9,7 @@ import type { DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import type { MassResult, SaveResult } from "../admin/common";
+import type { Errors } from "../admin/validator";
 import { OrmRow } from "../admin/orm";
 import { fieldConfig, isRequiredFor, parseFieldValue, validateField, type CleanValue, type FieldDef } from "../forms/fields";
 import { hasHandler, loadList } from "./list";
@@ -74,10 +75,14 @@ async function itemTextFields(executor: DbOrTx, vars: PhpVars): Promise<{ value:
   };
 }
 
-/** DynamicListItem::setConfiguration($_POST): proprietà come {id campo: valore}. */
-async function itemProperties(executor: DbOrTx, listId: number, vars: PhpVars): Promise<{ json: string; errors: string[] } | "unsupported"> {
+/**
+ * DynamicListItem::setConfiguration($_POST): proprietà come {id campo: valore}. Errori come codici
+ * traducibili, uno per proprietà (id del campo, nome del controllo nel form): un campo testo ha al
+ * più un errore (obbligatorio o validatore).
+ */
+async function itemProperties(executor: DbOrTx, listId: number, vars: PhpVars): Promise<{ json: string; errors: Errors } | "unsupported"> {
   const config: Record<string, PhpVal> = {};
-  const errors: string[] = [];
+  const errors: Errors = {};
   const cfg = await loadConfigNamespace("core", executor);
   for (const f of await propertyFields(executor, listId)) {
     if (f.type === "break" || f.type === "info") continue;
@@ -85,7 +90,7 @@ async function itemProperties(executor: DbOrTx, listId: number, vars: PhpVars): 
     const def = fieldDefOf(f, cfg);
     const raw = vars[f.name] !== undefined && f.name ? vars[f.name] : vars[String(f.id)];
     const r = await cleanAndValidate(def, raw, isRequiredFor(def, "staff"), cfg);
-    errors.push(...r.errors);
+    if (r.errors.length) errors[String(f.id)] = r.errors[0];
     config[String(f.id)] = r.clean as PhpVal;
   }
   return { json: Object.keys(config).length ? phpJsonEncode(config) : "[]", errors };
@@ -112,7 +117,7 @@ export async function addListItem(executor: DbOrTx, listId: number, vars: PhpVar
     item.set("value", value);
     item.set("extra", extra);
   }
-  if (props.errors.length) return { ok: false, errors: { properties: props.errors.join(", ") } };
+  if (Object.keys(props.errors).length) return { ok: false, errors: props.errors };
   item.set("properties", props.json);
   item.set("value", str(item.get("value") as PhpVal).trim());
   await item.save(executor);
@@ -139,7 +144,7 @@ export async function updateListItem(executor: DbOrTx, listId: number, itemId: n
   item.set("extra", truthy(extra) ? extra : null);
   item.set("value", str(item.get("value") as PhpVal).trim());
   await item.save(executor);
-  if (props.errors.length) return { ok: false, errors: { properties: props.errors.join(", ") } };
+  if (Object.keys(props.errors).length) return { ok: false, errors: props.errors };
   item.set("properties", props.json);
   await item.save(executor);
   return { ok: true, id: itemId, errors: {} };

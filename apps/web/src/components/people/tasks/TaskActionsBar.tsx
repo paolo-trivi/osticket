@@ -104,7 +104,7 @@ export default function TaskActionsBar({ data }: { data: TaskActionsData }) {
           {(s) => (
             <div className="space-y-4">
               {data.fields.map((f) => (
-                <DynamicField key={f.id} field={{ ...f, name: `f:${f.name || f.id}` }} error={s.error === "title_required" && f.name === "title" ? "required" : undefined} />
+                <DynamicField key={f.id} field={{ ...f, name: `f:${f.name || f.id}` }} error={s.fields?.[f.name || String(f.id)]} />
               ))}
             </div>
           )}
