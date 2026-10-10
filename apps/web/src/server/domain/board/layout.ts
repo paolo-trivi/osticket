@@ -2,7 +2,9 @@ import "server-only";
 
 import type { TicketRow } from "../ticket/rows";
 import { type BoardContext, type Placed, staffName } from "./cards";
-import { initials, orderDerived, safeColor } from "./grouping";
+import { initials } from "@/lib/format/initials";
+
+import { orderDerived, safeColor } from "./grouping";
 import type { BoardGroupBy, BoardLaneBy } from "./params";
 import { cellKey, type BoardCard, type BoardCell, type BoardColumn, type BoardLane } from "./types";
 

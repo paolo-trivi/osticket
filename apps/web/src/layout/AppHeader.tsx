@@ -1,6 +1,6 @@
 "use client";
 
-import { Command, Ellipsis, PanelLeft, Search } from "lucide-react";
+import { Command, Ellipsis, Menu, PanelLeft, Search, X } from "lucide-react";
 import BrandLogo from "@/components/brand/BrandLogo";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import UserMenu from "@/components/shell/UserMenu";
@@ -56,7 +56,9 @@ export default function AppHeader({ user, searchHref, logoutAction, menuLinks = 
             onClick={handleToggle}
             aria-label={t("toggleSidebar")}
           >
-            <PanelLeft className="size-5 rtl:-scale-x-100" />
+            {/* da telefono e tablet apre il menu laterale, da desktop comprime la sidebar */}
+            {isMobileOpen ? <X className="size-5 xl:hidden" /> : <Menu className="size-5 xl:hidden" />}
+            <PanelLeft className="hidden size-5 xl:block rtl:-scale-x-100" />
           </button>
 
           {/* marchio visibile quando la sidebar è nascosta (mobile e tablet) */}

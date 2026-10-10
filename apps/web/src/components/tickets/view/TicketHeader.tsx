@@ -42,7 +42,7 @@ export default async function TicketHeader({ ticket, agent, locale, taskCount, l
           <Badge color={ticket.status_state === "open" ? "success" : "light"}>{ticket.status_name}</Badge>
           {ticket.priority && (
             <span className="inline-flex items-center gap-1.5 text-theme-sm text-gray-600 dark:text-gray-400">
-              <span className="size-2.5 rounded-full" style={{ backgroundColor: ticket.priority_color ?? "#ccc" }} />
+              <span className="size-2.5 rounded-full ring-1 ring-black/15 dark:ring-white/25" style={{ backgroundColor: ticket.priority_color ?? "#ccc" }} />
               {ticket.priority}
             </span>
           )}

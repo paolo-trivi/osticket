@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { initials } from "@/lib/format/initials";
+
 import {
   appendCards,
   applyMove,
@@ -13,7 +15,6 @@ import {
   compareCards,
   criteriaStates,
   dropBlock,
-  initials,
   isDueSoon,
   orderDerived,
   safeColor,

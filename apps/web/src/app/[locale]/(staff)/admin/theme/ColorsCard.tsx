@@ -43,7 +43,7 @@ export default function ColorsCard({ color, hexDraft, onColor, onHexDraft }: Col
                 : "border-gray-200 dark:border-gray-800",
             )}
           >
-            <span className="size-5 rounded-full" style={{ backgroundColor: p.color }} />
+            <span className="size-5 rounded-full ring-1 ring-black/15 dark:ring-white/25" style={{ backgroundColor: p.color }} />
             <span className="text-gray-700 dark:text-gray-300">{t(`presets.${p.id}`)}</span>
           </button>
         ))}

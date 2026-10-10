@@ -129,16 +129,6 @@ export function orderDerived<
   });
 }
 
-/** Iniziali per l'avatar: prima lettera delle prime due parole. */
-export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const s =
-    parts.length > 1
-      ? (parts[0][0] ?? "") + (parts[parts.length - 1][0] ?? "")
-      : (parts[0] ?? "").slice(0, 2);
-  return s.toUpperCase();
-}
-
 /** Scadenza vicina: entro `hours` ore da adesso e non ancora passata. */
 export function isDueSoon(
   dueMs: number | null,

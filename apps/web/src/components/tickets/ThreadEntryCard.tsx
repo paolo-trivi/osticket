@@ -5,6 +5,7 @@ import type { ThreadEntryView } from "@/server/domain/ticket/ticket";
 import { formatDbDate, isoOf } from "@/server/format/datetime";
 import { cn } from "@/utils";
 import { withBase } from "@/lib/base-path";
+import { initials } from "@/lib/format/initials";
 import { humanSize } from "@/lib/format/size";
 
 const KIND_STYLE: Record<ThreadEntryView["type"], string> = {
@@ -46,7 +47,7 @@ export default function ThreadEntryCard({
               entry.type === ThreadEntryType.MESSAGE ? "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300" : "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
             )}
           >
-            {entry.poster.slice(0, 2).toUpperCase()}
+            {initials(entry.poster)}
           </span>
           <div>
             <p className="text-sm font-medium text-gray-800 dark:text-white/90">{entry.poster}</p>
