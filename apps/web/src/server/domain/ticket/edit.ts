@@ -1,40 +1,27 @@
 import "server-only";
 
-import { DateTime } from "luxon";
+import { SLA, Topic } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
 
-import { DynamicFormField, SLA, Topic } from "@/lib/osticket/flags";
-import { FormType, ObjectType } from "@/lib/osticket/object-types";
-
-import type { ConfigNamespace } from "../../config/config";
-import { NOW, type DbOrTx } from "../../db";
-import { phpJsonEncode } from "../../format/php-json";
+import { NOW } from "../../db";
 import { phpStripTags } from "../../format/html";
-import { editorSpacing, phpTrim, sanitizeText } from "../../format/text";
 import { isNumeric } from "../../php/values";
-import { upsertCdata } from "../forms/cdata";
 import { currentDates, currentTimezone } from "../forms/entry";
 import {
-  answerChangeValue,
-  fieldSearchKeys,
-  fieldToDatabase,
   hasAnswerRow,
   hasData,
-  hasFlag,
   isEditableTo,
   isPresentationOnly,
   isRequiredFor,
   isVisibleTo,
   parseField,
   parseFieldOrAnswer,
-  phpParseDateTime,
   plainLabel,
   validateField,
   type CleanValue,
-  type FieldDef,
   type FieldErrorCode,
   type FormSource,
 } from "../forms/fields";
-import { loadFormDef } from "../forms/load";
 import { reindexTicket } from "../search/index-writer";
 import { TicketPerm } from "../staff/staff";
 import { currentTicketThreadId, ticketThread } from "../thread/ids";
@@ -44,6 +31,8 @@ import { logNote, postNote } from "./post";
 import { SQL_NOW, TicketRecord, phpLooseEquals, type TicketColumns } from "./record";
 import { updateEstDueDate } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
+import { addMissingAnswers, newRepr, oldRepr, saveAnswer, sameAnswer, ticketForms, type Answer } from "./edit-answers";
+import { cleanHtmlBody, phpAssocJson, RawJson, TICKET_SOURCE_KEYS, truncate, userDateToDb } from "./edit-values";
 
 /**
  * Modifica del ticket da parte di un agente (area "ticketedit"):
@@ -54,127 +43,6 @@ import { checkStaffPerm, loadTicket } from "./ticket";
  */
 
 export type EditResult = { ok: true } | { error: string; detail?: string; fields?: Record<string, string[]> };
-
-/** Ticket::getSources() */
-export const TICKET_SOURCE_KEYS = ["Phone", "Email", "Web", "API", "Other"] as const;
-
-/** Frammento JSON già serializzato da inserire così com'è in phpAssocJson. */
-class RawJson {
-  constructor(readonly json: string) {}
-}
-
-/** JSON di un array associativo PHP con l'ordine delle chiavi preservato (anche numeriche). */
-function phpAssocJson(pairs: [string, unknown][]): string {
-  return `{${pairs.map(([k, v]) => `${phpJsonEncode(String(k))}:${v instanceof RawJson ? v.json : phpJsonEncode(v)}`).join(",")}}`;
-}
-
-/** ThreadEntryBody::clean per l'HTML di un agente: '' se il corpo è vuoto (solo spazi, <, >, b, r, /). */
-function cleanHtmlBody(body: string): string {
-  const b = phpTrim(body ?? "", " <>br/\t\n\r") ? body : "";
-  return b ? sanitizeText(editorSpacing(b)) : "";
-}
-
-/**
- * Data inserita dall'agente → datetime del DB come Ticket::update / updateField: la stringa è
- * interpretata da Format::parseDateTime nel fuso predefinito del PHP (UTC, anche se l'agente ha un
- * altro fuso: stranezza del PHP replicata) e convertita nel fuso del DB.
- */
-function userDateToDb(input: string, dbZone: string): { db: string; past: boolean } | null {
-  const dt = phpParseDateTime(input);
-  if (!dt) return null;
-  return { db: dt.setZone(dbZone).toFormat("yyyy-MM-dd HH:mm:ss"), past: dt.toMillis() <= Date.now() };
-}
-
-/** Risposta di un campo dei form del ticket (form_entry_values) con la definizione del campo. */
-interface Answer {
-  entryId: number;
-  field: FieldDef;
-  value: string | null;
-  valueId: number | null;
-  exists: boolean;
-}
-
-/** Rappresentazione to_database di un valore per i dati dell'evento "edited". */
-function dbRepr(f: FieldDef, value: string | null, valueId: number | null): unknown {
-  if (f.type === "priority" || f.type === "department") return value === null && valueId === null ? null : [value, valueId];
-  return value;
-}
-
-/** Risposta attuale nei dati dell'evento "edited" (getChanges: to_database(to_php($value))). */
-function oldRepr(f: FieldDef, a: Answer): unknown {
-  return f.type === "datetime" ? answerChangeValue(f, a.value) : dbRepr(f, a.value, a.valueId);
-}
-
-function newRepr(f: FieldDef, clean: CleanValue): { value: string | null; valueId: number | null; repr: unknown } {
-  const db = fieldToDatabase(f, clean);
-  return { ...db, repr: dbRepr(f, db.value, db.valueId) };
-}
-
-function sameAnswer(f: FieldDef, a: Answer, n: { value: string | null; valueId: number | null }): boolean {
-  if (f.type === "priority" || f.type === "department") return phpLooseEquals(a.value, n.value) && phpLooseEquals(a.valueId, n.valueId);
-  return phpLooseEquals(a.value, n.value);
-}
-
-/** Form del ticket (DynamicFormEntry::forTicket) con le risposte esistenti. */
-async function ticketForms(tx: DbOrTx, cfg: ConfigNamespace, ticketId: number) {
-  const entries = await tx
-    .selectFrom("form_entry")
-    .select(["id", "form_id", "sort"])
-    .where("object_type", "=", FormType.TICKET)
-    .where("object_id", "=", ticketId)
-    .orderBy("sort")
-    .orderBy("id")
-    .execute();
-  const out: { entryId: number; sort: number; fields: FieldDef[]; answers: Answer[] }[] = [];
-  for (const e of entries) {
-    const def = await loadFormDef(tx, cfg, { id: e.form_id }, "staff");
-    if (!def) continue;
-    const values = await tx.selectFrom("form_entry_values").select(["field_id", "value", "value_id"]).where("entry_id", "=", e.id).execute();
-    const byField = new Map(values.map((v) => [v.field_id, v]));
-    const answers: Answer[] = [];
-    for (const f of def.fields) {
-      const v = byField.get(f.id);
-      answers.push({ entryId: e.id, field: f, value: v?.value ?? null, valueId: v?.value_id ?? null, exists: !!v });
-    }
-    out.push({ entryId: e.id, sort: e.sort, fields: def.fields, answers });
-  }
-  return out;
-}
-
-/** DynamicFormEntryAnswer::save: aggiorna value/value_id se cambiano, poi la cdata. */
-async function saveAnswer(tx: DbOrTx, ticketId: number, a: Answer, clean: CleanValue): Promise<boolean> {
-  const n = fieldToDatabase(a.field, clean);
-  const set: Record<string, unknown> = {};
-  if (!phpLooseEquals(a.value, n.value)) set.value = n.value;
-  if ((a.field.type === "priority" || a.field.type === "department") && !phpLooseEquals(a.valueId, n.valueId)) set.value_id = n.valueId;
-  if (!Object.keys(set).length) return false;
-  await tx
-    .updateTable("form_entry_values")
-    .set(set as never)
-    .where("entry_id", "=", a.entryId)
-    .where("field_id", "=", a.field.id)
-    .execute();
-  a.value = n.value;
-  if ("value_id" in set) a.valueId = n.valueId;
-  await upsertCdata(tx, "T", ticketId, a.field, fieldSearchKeys(a.field, clean));
-  return true;
-}
-
-/**
- * DynamicFormEntry::addMissingFields (scp/tickets.php a=edit, alla visualizzazione del form): risposte
- * NULL per i campi aggiunti al form dopo la creazione dell'entry. Il PHP lo fa all'apertura della
- * pagina di modifica; qui avviene al salvataggio, prima di calcolare le modifiche (stesso risultato).
- */
-async function addMissingAnswers(tx: DbOrTx, forms: Awaited<ReturnType<typeof ticketForms>>): Promise<void> {
-  for (const form of forms) {
-    for (const a of form.answers) {
-      const f = a.field;
-      if (a.exists || !hasFlag(f, DynamicFormField.ENABLED) || !hasAnswerRow(f)) continue;
-      await tx.insertInto("form_entry_values").values({ entry_id: a.entryId, field_id: f.id, value: null, value_id: null }).execute();
-      a.exists = true;
-    }
-  }
-}
 
 async function guard(ctx: WriteContext, ticketId: number, perm?: string): Promise<{ ok: true; rec: TicketRecord } | { error: string }> {
   const { tx, agent } = ctx;
@@ -513,14 +381,6 @@ export async function updateTicketField(ctx: WriteContext, input: FieldUpdateInp
   return { ok: true };
 }
 
-/** Format::truncate($text, $len) senza parola spezzata: come il PHP, taglia e aggiunge "..." */
-function truncate(text: string, len: number): string {
-  if (text.length <= len) return text;
-  const cut = text.slice(0, len);
-  const sp = cut.lastIndexOf(" ");
-  return `${sp > 0 ? cut.slice(0, sp) : cut}...`;
-}
-
 /**
  * Ticket::changeOwner (scp/tickets.php do=changeuser): nuovo proprietario, rimozione del suo
  * eventuale ruolo di collaboratore, evento "edited" `{"owner":id,"fields":{"Ticket Owner":"Nome"}}`.
@@ -541,11 +401,4 @@ export async function changeTicketOwner(ctx: WriteContext, input: { ticketId: nu
     await logTicketEvent(tx, rec.row, thread.id, ctx.actor, "edited", { owner: user.id, fields: { "Ticket Owner": user.name } });
   }
   return { ok: true };
-}
-
-/** Data/ora del DB per il campo "scadenza" del form (datetime-local, interpretato come il PHP: UTC). */
-export function dbDateToInput(value: string | null, dbZone: string): string {
-  if (!value || value.startsWith("0000")) return "";
-  const dt = DateTime.fromSQL(value, { zone: dbZone });
-  return dt.isValid ? dt.setZone("UTC").toFormat("yyyy-MM-dd'T'HH:mm") : "";
 }

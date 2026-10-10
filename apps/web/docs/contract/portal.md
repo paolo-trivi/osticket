@@ -29,7 +29,7 @@ lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(execut
 registerClientAccount(vars, guest?)  updateClientProfile(client, vars, resetToken?)
 updateUserInfoForClient(tx, cfg, userId, input)  requestClientPasswordReset(userid, {pad?})
 
-// Ticket (src/server/domain/ticket/message.ts, domain/client/*)
+// Ticket (src/server/domain/ticket/{message,message-mail}.ts, domain/client/{tickets,ticket-view,ticket-edit,reply}.ts)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
 postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
 editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(ctx, ...)     // tickets.php a=edit

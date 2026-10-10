@@ -504,7 +504,9 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
+| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId` |
+| Dominio | `src/server/domain/ticket/edit-answers.ts` | risposte dei form del ticket: lettura, risposte mancanti, salvataggio con cdata, rappresentazione per l'evento edited |
+| Dominio | `src/server/domain/ticket/edit-values.ts` | `TICKET_SOURCE_KEYS`, `phpAssocJson`, `userDateToDb`, `dbDateToInput`, corpo delle note, `truncate` |
 | Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
 | Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `childTickets` |
 | Dominio | `src/server/domain/thread/ids.ts` | thread di ticket e task: `ticketThread` (thread T o C), `currentTicketThreadId`, `ticketThreadId`, `taskThreadId` |
@@ -699,7 +701,7 @@ Altre API: `uploadFile`, `createAttachmentFile`, `attachFilesToEntry`, `signUplo
 `onOpenLimit`, `onNewTicket`, `onAssignAlert`, `sendNewTicketNotice` (`ticket/create-alerts.ts`);
 `formView`, `baseForms`, `topicFormsView`, `openTicketOptions`, `searchUsers`, `usersByIds`, `formDataToVars`
 (`ticket/create-ui.ts`); `FormInstance`, `saveFormEntry`, `ensureListPropertiesForm` (`forms/entry.ts`);
-`phpParseDateTime`, `phpTzAbbr`, `phpFormatDate` (`forms/fields.ts`); `prepareSupportedMatches`
+`phpParseDateTime`, `phpTzAbbr` (`forms/field-dates.ts`), `phpFormatDate` (`format/datetime.ts`); `prepareSupportedMatches`
 (`filter/ticket-filter.ts`); `adminAlertMail`, `logWithAdminAlert` (`system/admin-alert.ts`).
 
 #### Ordine delle scritture (Ticket::create)
@@ -792,9 +794,9 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 #### File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/task/{model,vars,write,tasks}.ts` | task (scritture, avvisi, lista/visibilità) |
+| Dominio | `src/server/domain/task/{model,vars,tasks}.ts`, `task/write.ts` (facciata) + `task/{common,alerts,posts,assign,create,edit,delete,mass}.ts` | task: modello e variabili, lista/visibilità; scritture divise per responsabilità (esiti comuni, avvisi, note/risposte/stato, assegnazione/claim/trasferimento, creazione, modifica dei campi e scadenza, eliminazione, azioni di massa) |
 | Dominio (condiviso con i ticket) | `src/server/domain/{sequence,staff-alerts,drafts}.ts` | `Sequence::next/format` + `Misc::randNumber`; nucleo degli avvisi agli agenti (destinatari, doppia sostituzione, deduplica); `Draft::deleteForNamespace` |
-| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi e flag in `fields.ts`, `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
+| Dominio | `src/server/domain/forms/answers.ts` | form dinamici U/O/A/C: entry, risposte, validazione lato agente (motore comune `forms/`: campi in `fields.ts` (facciata di `field-def` definizione e flag, `field-dates`, `field-parse` lettura dell'input, `field-validate`, `field-convert` conversioni DB/testo), `*__cdata` in `cdata.ts`, equivalenti di `Validator` in `validator.ts`) |
 | Dominio | `src/server/domain/directory/users.ts` | `createUser`, `updateUser`, `setUserOrganization`, `removeUserFromOrg`, `deleteUser`, `reindexUser`, `userEntries` |
 | Dominio | `src/server/domain/directory/users-import.ts` | `importUsers` (User::importFromPost / CsvImporter); il testo è letto con `parseCsv` di `src/server/php/csv.ts` (fgetcsv di PHP 8, test `test/unit/php-csv.test.ts` con valori del PHP) |
 | Dominio | `src/server/domain/directory/accounts.ts` | `registerAccount`, `updateAccount`, `sendUserResetEmail`, `sendUserConfirmEmail`, `massUserAction`, `checkPasswordPolicy` |
@@ -825,7 +827,7 @@ password e codici 2FA vengono normalizzati prima del confronto; le password sono
 - `organization.updated` è `ON UPDATE CURRENT_TIMESTAMP`: cambia a ogni UPDATE della riga.
 
 #### Task
-Vedi i commenti di `src/server/domain/task/write.ts`. Tabelle: `task` (`number` da `sequence` o casuale),
+Vedi i commenti dei moduli di `src/server/domain/task/` (facciata `write.ts`). Tabelle: `task` (`number` da `sequence` o casuale),
 `task__cdata`, `form_entry(_values)`, `thread` (A), `thread_entry` (M con flag ORIGINAL, N, R), `thread_event`
 (`created`, `assigned` con `claim`/`staff`(AgentsName)/`team`, `transferred`, `closed`, `reopened` con annullamento,
 `edited`, `deleted`), nota sul ticket collegato (chiusura/riapertura, con riapertura del ticket chiuso tramite `Ticket::reopen` di
@@ -903,7 +905,7 @@ l'errore accanto a ciascun campo.
   `adminsys-banlist.diff.test.ts`. Lo stesso parser, senza validazione degli atomi, è `parseAddressList`
   (Mail_Parse) per i destinatari dell'azione di filtro "Send an Email" (validazione in `adminsys/filter-actions.ts`, invio in
   `ticket/create-alerts.ts`).
-- **Lettura dell'input dei form** (`forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
+- **Lettura dell'input dei form** (`forms/field-parse.ts`, esportato da `forms/fields.ts`: `parseField` = `FormField::parse(Widget::getValue)`, `parseFieldValue`
   = solo `parse`, per l'import CSV): un'unica implementazione per ticket, portale, utenti, organizzazioni, task, azienda
   e proprietà delle liste (prima `forms/answers.ts parseInput` divergeva). Come il PHP: nessun trim di testo e telefono
   (un telefono di soli spazi non è valido), interno "0" accodato senza `X`, casella = `(bool)` del valore inviato
@@ -955,7 +957,7 @@ lookupByAuthToken(executor, token) (auth-access-link.ts)  resetTokenValid(execut
 registerClientAccount(vars, guest?)  updateClientProfile(client, vars, resetToken?)
 updateUserInfoForClient(tx, cfg, userId, input)  requestClientPasswordReset(userid, {pad?})
 
-// Ticket (src/server/domain/ticket/message.ts, domain/client/*)
+// Ticket (src/server/domain/ticket/{message,message-mail}.ts, domain/client/{tickets,ticket-view,ticket-edit,reply}.ts)
 postMessage(ctx, {ticketId, userId, poster, message, files?, origin?, alerts?})   // Ticket::postMessage
 postClientMessage(cfg, client, ticketId, {message, files, ip})                    // tickets.php a=reply
 editClientTicket(cfg, client, ticketId, vars, ip) / editTicketAsClient(ctx, ...)     // tickets.php a=edit

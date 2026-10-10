@@ -7,7 +7,8 @@ import { runWrite } from "../write";
 import { clientDisplayName, type ClientIdentity } from "./identity";
 import { deleteDraftsForNamespace } from "../drafts";
 import { clientActor } from "./open";
-import { clientCanAccess, editTicketAsClient, type ClientEditResult } from "./tickets";
+import { editTicketAsClient, type ClientEditResult } from "./ticket-edit";
+import { clientCanAccess } from "./tickets";
 
 /**
  * tickets.php POST a=reply: controllo di accesso, Ticket::postMessage($vars, 'Web') con l'utente

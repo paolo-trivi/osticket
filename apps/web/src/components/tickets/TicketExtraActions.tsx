@@ -9,7 +9,7 @@ import { loadFormDef } from "@/server/domain/forms/load";
 import { GlobalPerm, TicketPerm, type Agent } from "@/server/domain/staff/staff";
 import { canEditEntry, entryEditContext } from "@/server/domain/thread/edit";
 import { formView, openTicketOptions } from "@/server/domain/ticket/create-ui";
-import { dbDateToInput, TICKET_SOURCE_KEYS } from "@/server/domain/ticket/edit";
+import { dbDateToInput, TICKET_SOURCE_KEYS } from "@/server/domain/ticket/edit-values";
 import { relatedTickets } from "@/server/domain/ticket/merge";
 import { mergeTypeOf } from "@/server/domain/ticket/merge-flags";
 import { emailInBanList } from "@/server/domain/ticket/overdue";

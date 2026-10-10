@@ -4,7 +4,8 @@ import EditTicketForm from "@/components/portal/EditTicketForm";
 import { redirect } from "@/i18n/navigation";
 import { fieldKey, type DynamicFormView } from "@/lib/forms/dynamic-field";
 import { coreConfig } from "@/server/config/config";
-import { clientEditForms, loadClientTicketView } from "@/server/domain/client/tickets";
+import { clientEditForms } from "@/server/domain/client/ticket-edit";
+import { loadClientTicketView } from "@/server/domain/client/ticket-view";
 import { fieldToString, isIdValue } from "@/server/domain/forms/fields";
 import { fieldView } from "@/server/domain/ticket/create-ui";
 

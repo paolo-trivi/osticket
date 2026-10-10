@@ -21,7 +21,9 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 ## File
 | Livello | File | Contenuto |
 |---|---|---|
-| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
+| Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId` |
+| Dominio | `src/server/domain/ticket/edit-answers.ts` | risposte dei form del ticket: lettura, risposte mancanti, salvataggio con cdata, rappresentazione per l'evento edited |
+| Dominio | `src/server/domain/ticket/edit-values.ts` | `TICKET_SOURCE_KEYS`, `phpAssocJson`, `userDateToDb`, `dbDateToInput`, corpo delle note, `truncate` |
 | Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
 | Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `childTickets` |
 | Dominio | `src/server/domain/thread/ids.ts` | thread di ticket e task: `ticketThread` (thread T o C), `currentTicketThreadId`, `ticketThreadId`, `taskThreadId` |
