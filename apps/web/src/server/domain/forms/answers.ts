@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { DynamicForm, DynamicFormField } from "@/lib/osticket/flags";
+
 import { loadConfigNamespace, type ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { phpLooseEquals } from "../../php/values";
@@ -9,7 +11,6 @@ import { cdataColumns, upsertCdata } from "./cdata";
 import { FormInstance, saveFormEntry } from "./entry";
 import {
   cleanFromDb,
-  FieldFlag,
   fieldSearchKeys,
   fieldSearchable,
   fieldToDatabase,
@@ -47,7 +48,7 @@ export async function defaultFormOf(executor: DbOrTx, type: "U" | "O" | "A"): Pr
     .selectFrom("form")
     .select("id")
     .where("type", "=", type)
-    .where(sql<boolean>`(flags & 2) = 0`)
+    .where(sql<boolean>`(flags & ${sql.lit(DynamicForm.DELETED)}) = 0`)
     .orderBy("id")
     .executeTakeFirst();
   if (!form) return null;
@@ -146,7 +147,7 @@ export async function addMissingAnswers(executor: DbOrTx, entry: FormEntry, obje
   let columns: Set<string> | null | undefined;
   for (const f of entry.fields) {
     const ans = entry.answers.get(f.id);
-    if (ans?.exists || !hasAnswerRow(f) || !(f.flags & FieldFlag.ENABLED)) continue;
+    if (ans?.exists || !hasAnswerRow(f) || !(f.flags & DynamicFormField.ENABLED)) continue;
     await executor.insertInto("form_entry_values").values({ entry_id: entry.id, field_id: f.id, value: null }).execute();
     if (columns === undefined) columns = await cdataColumns(executor, entry.form_type);
     await upsertCdata(executor, entry.form_type, objectId, f, answerSearchKeys(f, null), columns);

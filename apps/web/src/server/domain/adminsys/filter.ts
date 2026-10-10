@@ -1,5 +1,8 @@
 import "server-only";
 
+import { Dept, Filter, Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { phpJsonEncode } from "../../format/php-json";
@@ -7,10 +10,8 @@ import { stripEmoticons } from "../../format/text";
 import { htmlchars, intval, isArray, isNumeric, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
 import { sanitizeHtml as sanitizeText } from "./sanitize";
 import type { MassResult, SaveResult } from "../admin/common";
-import { DeptFlag } from "../admin/dept";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import { ov, pv } from "./orm-util";
-import { TopicFlag } from "../admin/topic";
 import type { Errors } from "../admin/validator";
 import { isEmail, isFormula, parseAddressList } from "../forms/validator";
 import { prepareSupportedMatches } from "../filter/ticket-filter";
@@ -31,7 +32,6 @@ import { prepareSupportedMatches } from "../filter/ticket-filter";
  * - le regole nuove hanno `created` = '0000-00-00 00:00:00' (save_rules non lo imposta).
  * La ban list di sistema ("SYSTEM BAN LIST") ha la sua pagina e qui non si modifica.
  */
-export const FilterFlag = { INACTIVE_HT: 0x0001, INACTIVE_DEPT: 0x0002, DELETED_OBJECT: 0x0004 } as const;
 
 export const MATCH_TYPES = ["equal", "not_equal", "contains", "dn_contain", "starts", "ends", "match", "not_match"] as const;
 export const TARGETS = ["Any", "Web", "API", "Email"] as const;
@@ -174,7 +174,7 @@ export async function matchFieldList(executor: DbOrTx): Promise<{ key: string; g
   if (t) forms.push({ ...t, group: "ticket" });
   const o = await firstOf("O");
   if (o) forms.push({ ...o, group: "organization" });
-  for (const g of await executor.selectFrom("form").select(["id", "title"]).where("type", "=", "G").orderBy("id").execute()) forms.push({ ...g, group: "custom" });
+  for (const g of await executor.selectFrom("form").select(["id", "title"]).where("type", "=", FormType.GENERIC).orderBy("id").execute()) forms.push({ ...g, group: "custom" });
   for (const form of forms) {
     const fields = await executor.selectFrom("form_field").select(["id", "type", "label"]).where("form_id", "=", form.id).orderBy("sort").orderBy("id").execute();
     for (const f of fields) {
@@ -287,10 +287,10 @@ async function isActiveRow(executor: DbOrTx, kind: "dept" | "topic", id: PhpVal)
   if (!n || (typeof id === "string" && !isNumeric(id))) return false;
   if (kind === "dept") {
     const d = await executor.selectFrom("department").select("flags").where("id", "=", n).executeTakeFirst();
-    return !!d && !!(d.flags & DeptFlag.ACTIVE);
+    return !!d && !!(d.flags & Dept.ACTIVE);
   }
   const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", n).executeTakeFirst();
-  return !!t && !!((t.flags ?? 0) & TopicFlag.ACTIVE);
+  return !!t && !!((t.flags ?? 0) & Topic.ACTIVE);
 }
 
 /** FilterAction::lookup($info) per id (stringa numerica o non). */
@@ -339,7 +339,7 @@ async function validateActions(ctx: Ctx, vars: PhpVars, errors: Errors): Promise
     const fa = await actionById(ctx.executor, info);
     if (fa) {
       // Filter::setFlag(...) ×3: ognuna esegue update() sui dati del modello (e ricrea le regole)
-      for (const flag of [FilterFlag.DELETED_OBJECT, FilterFlag.INACTIVE_DEPT, FilterFlag.INACTIVE_HT]) await setFlag(ctx, fa.filter_id, flag, false);
+      for (const flag of [Filter.DELETED_OBJECT, Filter.INACTIVE_DEPT, Filter.INACTIVE_HT]) await setFlag(ctx, fa.filter_id, flag, false);
     }
   }
   return !Object.keys(errors).length;

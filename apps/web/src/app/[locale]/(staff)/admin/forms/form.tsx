@@ -5,24 +5,24 @@ import { getTranslations } from "next-intl/server";
 import { Hidden, Section, TextAreaField, TextField } from "@/components/adminsys/fields";
 import Repeater from "@/components/adminsys/Repeater";
 import Callout from "@/components/common/Callout";
+import { DynamicFormField } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 import { FIELD_TYPES, REQUIREMENT_MODES, type formDetail } from "@/server/domain/adminsys/form";
 import { CDATA_FORM_TYPES } from "@/server/domain/forms/cdata";
-import { FieldFlag } from "@/server/domain/forms/fields";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof formDetail>>>;
 
 /** Descrizione della visibilità di un campo (DynamicFormField::getVisibilityDescription). */
 function visibility(flags: number, type: string, t: (k: string) => string): string {
-  if (!(flags & FieldFlag.ENABLED)) return t("vis.disabled");
+  if (!(flags & DynamicFormField.ENABLED)) return t("vis.disabled");
   const out: string[] = [];
-  const VIEW = FieldFlag.CLIENT_VIEW | FieldFlag.AGENT_VIEW;
+  const VIEW = DynamicFormField.CLIENT_VIEW | DynamicFormField.AGENT_VIEW;
   if (!(flags & VIEW)) out.push(t("vis.hidden"));
-  else if (!(flags & FieldFlag.CLIENT_VIEW)) out.push(t("vis.internal"));
-  else if (!(flags & FieldFlag.AGENT_VIEW)) out.push(t("vis.endUsers"));
+  else if (!(flags & DynamicFormField.CLIENT_VIEW)) out.push(t("vis.internal"));
+  else if (!(flags & DynamicFormField.AGENT_VIEW)) out.push(t("vis.endUsers"));
   if (!["break", "info"].includes(type)) {
-    out.push(flags & (FieldFlag.CLIENT_REQUIRED | FieldFlag.AGENT_REQUIRED) ? t("vis.required") : t("vis.optional"));
-    if (!(flags & (FieldFlag.CLIENT_EDIT | FieldFlag.AGENT_EDIT))) out.push(t("vis.immutable"));
+    out.push(flags & (DynamicFormField.CLIENT_REQUIRED | DynamicFormField.AGENT_REQUIRED) ? t("vis.required") : t("vis.optional"));
+    if (!(flags & (DynamicFormField.CLIENT_EDIT | DynamicFormField.AGENT_EDIT))) out.push(t("vis.immutable"));
   }
   return out.join(", ");
 }
@@ -59,7 +59,7 @@ export async function FormFields({ detail }: { detail: Detail | null }) {
               key: String(f.id),
               names: { sort: `sort-${f.id}`, label: `label-${f.id}`, type: `type-${f.id}`, name: `name-${f.id}`, delete: `delete-${f.id}` },
               values: { sort: String(f.sort), label: f.label, type: f.type, name: f.name, visibility: visibility(flags, f.type, vis) },
-              locked: { type: !!(flags & FieldFlag.MASK_CHANGE), name: !!(flags & FieldFlag.MASK_NAME), delete: !!(flags & FieldFlag.MASK_DELETE) },
+              locked: { type: !!(flags & DynamicFormField.MASK_CHANGE), name: !!(flags & DynamicFormField.MASK_NAME), delete: !!(flags & DynamicFormField.MASK_DELETE) },
             };
           })}
           newNames={{ sort: "sort-new-{i}", label: "label-new-{i}", type: "type-new-{i}", visibility: "visibility-new-{i}", name: "name-new-{i}" }}

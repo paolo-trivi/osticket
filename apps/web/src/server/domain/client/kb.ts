@@ -2,8 +2,11 @@ import "server-only";
 
 import { sql, type SqlBool } from "kysely";
 
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { db, table, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import { stripTags } from "../../format/html";
 import type { ClientIdentity } from "./identity";
 
@@ -138,7 +141,7 @@ export async function searchFaqs(opts: { q?: string; categoryId?: number; topicI
   if (opts.topicId) where.push(sql<SqlBool>`F.faq_id IN (SELECT faq_id FROM ${table("faq_topic")} WHERE topic_id = ${opts.topicId})`);
   const q = (opts.q ?? "").trim();
   if (q) {
-    const like = `%${q.replace(/([%_\\])/g, "\\$1")}%`;
+    const like = `%${likeEscape(q)}%`;
     where.push(sql<SqlBool>`(F.question LIKE ${like} OR F.answer LIKE ${like} OR F.keywords LIKE ${like} OR C.name LIKE ${like} OR C.description LIKE ${like})`);
   }
   const { rows } = await sql<{ faq_id: number; question: string; atts: number }>`
@@ -207,7 +210,7 @@ export async function publicFaq(id: number, executor: DbOrTx = db()): Promise<Kb
     .selectFrom("attachment as a")
     .innerJoin("file as fl", "fl.id", "a.file_id")
     .select(["a.id", "fl.key", "a.name", "fl.name as fname", "fl.size"])
-    .where("a.type", "=", "F")
+    .where("a.type", "=", AttachmentType.FAQ)
     .where("a.object_id", "=", id)
     .where("a.inline", "=", 0)
     .orderBy("a.id")
@@ -234,7 +237,7 @@ export async function publicFaqFile(key: string, executor: DbOrTx = db()): Promi
   const r = await executor
     .selectFrom("file as fl")
     .innerJoin("attachment as a", "a.file_id", "fl.id")
-    .innerJoin("faq as f", (j) => j.onRef("f.faq_id", "=", "a.object_id").on("a.type", "=", "F"))
+    .innerJoin("faq as f", (j) => j.onRef("f.faq_id", "=", "a.object_id").on("a.type", "=", AttachmentType.FAQ))
     .innerJoin("faq_category as c", "c.category_id", "f.category_id")
     .select(["fl.id", "a.name"])
     .where("fl.key", "=", key)

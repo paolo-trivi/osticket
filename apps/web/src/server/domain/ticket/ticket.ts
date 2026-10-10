@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Collaborator as CollaboratorFlag } from "@/lib/osticket/flags";
+import { AttachmentType, ObjectType } from "@/lib/osticket/object-types";
+
 import { db, table, type DbOrTx } from "../../db";
 import type { DbDateTime } from "../../db/schema.gen";
 import { phpJsonDecode } from "../../format/php-json";
@@ -24,7 +27,7 @@ export async function loadTicket(ticketId: number, viewerStaffId: number, execut
   if (!row) return null;
   const extra = await executor
     .selectFrom("ticket as t")
-    .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", "T"))
+    .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", ObjectType.TICKET))
     .leftJoin("user__cdata as uc", "uc.user_id", "t.user_id")
     .select(["th.id as thread_id", "t.topic_id", "t.sla_id", "t.reopened", "t.ip_address", "t.lock_id"])
     .select(sql<string | null>`uc.phone`.as("user_phone"))
@@ -34,7 +37,7 @@ export async function loadTicket(ticketId: number, viewerStaffId: number, execut
       // user__cdata può non esistere finché il PHP non la materializza
       executor
         .selectFrom("ticket as t")
-        .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", "T"))
+        .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", ObjectType.TICKET))
         .select(["th.id as thread_id", "t.topic_id", "t.sla_id", "t.reopened", "t.ip_address", "t.lock_id"])
         .select(sql<null>`NULL`.as("user_phone"))
         .where("t.ticket_id", "=", ticketId)
@@ -64,9 +67,9 @@ async function isReferredTo(t: TicketDetail, agent: Agent, executor: DbOrTx = db
   const refs = await referralsOf(t.thread_id, executor);
   return refs.some(
     (r) =>
-      (r.object_type === "S" && r.object_id === agent.id) ||
-      (r.object_type === "D" && agent.deptIds.includes(r.object_id)) ||
-      (r.object_type === "E" && agent.teamIds.includes(r.object_id)),
+      (r.object_type === ObjectType.STAFF && r.object_id === agent.id) ||
+      (r.object_type === ObjectType.DEPT && agent.deptIds.includes(r.object_id)) ||
+      (r.object_type === ObjectType.TEAM && agent.teamIds.includes(r.object_id)),
   );
 }
 
@@ -133,7 +136,7 @@ export interface ThreadEventView {
 export async function loadThreadEntries(threadId: number, executor: DbOrTx = db()): Promise<ThreadEntryView[]> {
   const entries = await executor
     .selectFrom("thread_entry as e")
-    .leftJoin("staff as ed", (j) => j.onRef("ed.staff_id", "=", "e.editor").on("e.editor_type", "=", "S"))
+    .leftJoin("staff as ed", (j) => j.onRef("ed.staff_id", "=", "e.editor").on("e.editor_type", "=", ObjectType.STAFF))
     .select([
       "e.id",
       "e.pid",
@@ -161,7 +164,7 @@ export async function loadThreadEntries(threadId: number, executor: DbOrTx = db(
         .selectFrom("attachment as a")
         .innerJoin("file as f", "f.id", "a.file_id")
         .select(["a.id", "a.object_id", "a.file_id", "a.inline", "a.name", "f.name as fname", "f.size", "f.type", "f.key"])
-        .where("a.type", "=", "H")
+        .where("a.type", "=", AttachmentType.THREAD_ENTRY)
         .where("a.object_id", "in", ids)
         .execute()
     : [];
@@ -270,6 +273,5 @@ export async function loadCollaborators(threadId: number, executor: DbOrTx = db(
     .select(["c.id", "c.user_id", "u.name", "ue.address as email", "c.flags", "c.role"])
     .where("c.thread_id", "=", threadId)
     .execute();
-  // Collaborator::FLAG_ACTIVE = 0x0001
-  return rows.map((r) => ({ id: r.id, user_id: r.user_id, name: r.name, email: r.email, active: (r.flags & 1) !== 0, role: r.role }));
+  return rows.map((r) => ({ id: r.id, user_id: r.user_id, name: r.name, email: r.email, active: (r.flags & CollaboratorFlag.ACTIVE) !== 0, role: r.role }));
 }

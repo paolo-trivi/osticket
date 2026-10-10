@@ -26,6 +26,8 @@ jobs:
       - run: npm run lint
       - run: npm run lint:unused   # codice, export e dipendenze inutilizzati (knip)
       - run: npm run typecheck
+      # il doc 17 §3 si genera da docs/contract/*.md: va modificato lì, non a mano
+      - run: npm run docs:contracts && git diff --exit-code -- ../../docs/reverse-engineering/17-contratto-scrittura.md
       - run: npx vitest run test/unit
       - run: npm run build
         env:

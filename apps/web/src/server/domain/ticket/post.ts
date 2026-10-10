@@ -1,6 +1,8 @@
 import "server-only";
 
-import type { DbOrTx } from "../../db";
+import { Collaborator, Dept } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, loadUserContact, staffVar, ticketLink, userPersonsName } from "../../mail/objects";
 import { loadSystemEmail, sendMail, type SystemEmail } from "../../mail/mailer";
 import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
@@ -8,17 +10,11 @@ import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { alertOrDefaultEmail } from "../directory/content-mail";
 import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
 import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, replaceAlertVars, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import { ticketThreadId } from "../thread/ids";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
 import { TicketRecord } from "./record";
-import { DeptFlag, isSelectableStatus, lastRespondentId, loadStatus, setTicketStatus, stateOf } from "./status";
-
-/** Thread del ticket */
-export async function ticketThreadId(executor: DbOrTx, ticketId: number): Promise<number> {
-  const th = await executor.selectFrom("thread").select("id").where("object_type", "=", "T").where("object_id", "=", ticketId).executeTakeFirst();
-  if (!th) throw new Error(`Thread del ticket ${ticketId} mancante`);
-  return th.id;
-}
+import { isSelectableStatus, lastRespondentId, loadStatus, setTicketStatus, stateOf } from "./status";
 
 interface Contact {
   kind: "owner" | "collab";
@@ -49,7 +45,7 @@ async function ticketRecipients(ctx: WriteContext, ticket: { user_id: number }, 
       .orderBy("c.id")
       .execute();
     for (const c of collabs) {
-      if (!(c.flags & 1)) continue;
+      if (!(c.flags & Collaborator.ACTIVE)) continue;
       if (whitelist?.length && !whitelist.includes(c.user_id)) continue;
       const u = await loadUserContact(ctx.tx, c.user_id);
       if (u) cc.push({ kind: "collab", listId: c.id, userId: c.user_id, name: nameOf(u), email: u.email });
@@ -164,7 +160,7 @@ export async function postNote(ctx: WriteContext, input: PostNoteInput): Promise
 
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "N",
+    type: ThreadEntryType.NOTE,
     body: input.note,
     format: input.format ?? (cfg.bool("enable_richtext") ? "html" : "text"),
     title: input.title ?? "",
@@ -220,7 +216,7 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
   const last = await lastMessage(tx, threadId);
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "R",
+    type: ThreadEntryType.RESPONSE,
     body: input.response,
     format: input.format ?? (cfg.bool("enable_richtext") ? "html" : "text"),
     staffId: agent.id,
@@ -242,7 +238,7 @@ export async function postReply(ctx: WriteContext, input: PostReplyInput): Promi
 
   // Claim on response
   const dept = await tx.selectFrom("department").select(["flags", "ispublic", "signature", "name"]).where("id", "=", rec.get("dept_id")).executeTakeFirst();
-  const claim = (input.claim ?? true) && cfg.bool("auto_claim_tickets") && !(dept && dept.flags & DeptFlag.DISABLE_AUTO_CLAIM);
+  const claim = (input.claim ?? true) && cfg.bool("auto_claim_tickets") && !(dept && dept.flags & Dept.DISABLE_AUTO_CLAIM);
   if (claim && (await stateOf(tx, rec.row)) === "open" && !rec.get("staff_id")) {
     rec.set("staff_id", agent.id);
     await rec.save();

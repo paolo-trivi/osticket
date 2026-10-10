@@ -1,5 +1,7 @@
 import "server-only";
 
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { localizeInlineImages } from "../../format/text";
@@ -79,7 +81,7 @@ export async function savePage(executor: DbOrTx, pageId: number | null, vars: Ph
   const keys = [...localizeInlineImages(str(vars.body)).matchAll(/"cid:([\w.-]{32})"/g)].map((m) => m[1]);
   const files = keys.length ? await executor.selectFrom("file").select(["id", "name"]).where("key", "in", keys).orderBy("id").execute() : [];
   const keep = new Map<number, number>(files.map((f, i) => [f.id, i]));
-  const current = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", "P").orderBy("id").execute();
+  const current = await executor.selectFrom("attachment").select(["id", "file_id", "inline", "lang"]).where("object_id", "=", id).where("type", "=", AttachmentType.PAGE).orderBy("id").execute();
   for (const a of current) {
     if (!keep.has(a.file_id) && !a.lang && a.inline) await executor.deleteFrom("attachment").where("id", "=", a.id).execute();
     keep.delete(a.file_id);
@@ -89,7 +91,7 @@ export async function savePage(executor: DbOrTx, pageId: number | null, vars: Ph
     const name = index && file && file.name.toLowerCase() !== String(index) ? String(index) : null;
     await executor
       .insertInto("attachment")
-      .values({ object_id: id, type: "P", file_id: fileId, inline: 1, ...(name !== null ? { name } : {}) } as never)
+      .values({ object_id: id, type: AttachmentType.PAGE, file_id: fileId, inline: 1, ...(name !== null ? { name } : {}) } as never)
       .execute();
   }
 

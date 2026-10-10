@@ -2,17 +2,21 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, Team } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
 import { loadStaffInfo, staffVar } from "../../mail/objects";
 import { VarBag } from "../../mail/variables";
 import { GlobalPerm, TicketPerm, type Agent } from "../staff/staff";
+import { ticketThreadId } from "../thread/ids";
 import { deptAlertEmail, deptAlertMembers, deptIsMember, loadDept, sendStaffAlerts, staffSortColumns, teamAlertMembers, type DeptRow } from "./alerts";
 import { agentDisplayName, type WriteContext } from "./context";
-import { logNote, postNote, ticketThreadId } from "./post";
+import { logNote, postNote } from "./post";
 import { logTicketEvent } from "./events";
 import { TicketRecord } from "./record";
-import { DeptFlag, stateOf } from "./status";
+import { stateOf } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
 import { reopenTicket, type ActionResult } from "./ticket-state";
 
@@ -23,9 +27,7 @@ import { reopenTicket, type ActionResult } from "./ticket-state";
  */
 
 /** ObjectModel::OBJECT_TYPE_* usati da thread_referral */
-type ReferralType = "S" | "E" | "D";
-
-const TeamFlag = { ENABLED: 0x1, NOALERTS: 0x2 } as const;
+type ReferralType = typeof ObjectType.STAFF | typeof ObjectType.TEAM | typeof ObjectType.DEPT;
 
 // --- Referral (Thread::refer / getReferral) ---------------------------------------------
 
@@ -80,8 +82,8 @@ const originalName = (s: { firstname: string; lastname: string }) => `${s.firstn
 
 /** Dept::canAssign($staff) */
 export async function deptCanAssignStaff(executor: DbOrTx, dept: DeptRow, staff: StaffBasic): Promise<boolean> {
-  if (dept.flags & DeptFlag.ASSIGN_PRIMARY_ONLY && staff.dept_id !== dept.id) return false;
-  if (dept.flags & DeptFlag.ASSIGN_MEMBERS_ONLY && !(await deptIsMember(executor, dept, staff.staff_id))) return false;
+  if (dept.flags & Dept.ASSIGN_PRIMARY_ONLY && staff.dept_id !== dept.id) return false;
+  if (dept.flags & Dept.ASSIGN_MEMBERS_ONLY && !(await deptIsMember(executor, dept, staff.staff_id))) return false;
   return available(staff);
 }
 
@@ -92,7 +94,7 @@ export async function deptCanAssignStaff(executor: DbOrTx, dept: DeptRow, staff:
 export async function assignableAgents(executor: DbOrTx, deptId: number, assigner: Agent, nameFormat: string): Promise<{ id: number; name: string }[]> {
   const dept = await loadDept(executor, deptId);
   if (!dept) return [];
-  const restricted = !!(dept.flags & (DeptFlag.ASSIGN_MEMBERS_ONLY | DeptFlag.ASSIGN_PRIMARY_ONLY));
+  const restricted = !!(dept.flags & (Dept.ASSIGN_MEMBERS_ONLY | Dept.ASSIGN_PRIMARY_ONLY));
   const visible = !assigner.hasGlobalPerm(GlobalPerm.VISIBILITY_AGENTS) && assigner.deptIds.length ? [...assigner.deptIds] : null;
   const [a, b] = staffSortColumns(nameFormat);
   const { rows } = await sql<{ staff_id: number; firstname: string | null; lastname: string | null }>`
@@ -101,7 +103,7 @@ export async function assignableAgents(executor: DbOrTx, deptId: number, assigne
     ${visible ? sql`LEFT JOIN ${table("staff_dept_access")} V ON (V.staff_id = S.staff_id)` : sql``}
     WHERE S.isactive = 1 AND S.onvacation = 0
     ${restricted ? sql`AND (S.dept_id = ${dept.id} OR S.staff_id = ${dept.manager_id} OR A.dept_id = ${dept.id})` : sql``}
-    ${dept.flags & DeptFlag.ASSIGN_PRIMARY_ONLY ? sql`AND S.dept_id = ${dept.id}` : sql``}
+    ${dept.flags & Dept.ASSIGN_PRIMARY_ONLY ? sql`AND S.dept_id = ${dept.id}` : sql``}
     ${visible ? sql`AND (S.dept_id IN (${sql.join(visible)}) OR V.dept_id IN (${sql.join(visible)}))` : sql``}
     ORDER BY S.${sql.ref(a)}, S.${sql.ref(b)}`.execute(executor);
   return rows.map((r) => ({ id: r.staff_id, name: new PersonsName({ first: r.firstname ?? "", last: r.lastname ?? "" }, nameFormat).toString() }));
@@ -112,7 +114,7 @@ export async function activeTeams(executor: DbOrTx): Promise<{ id: number; name:
   const { rows } = await sql<{ team_id: number; name: string }>`SELECT T.team_id, T.name FROM ${table("team")} T
     JOIN ${table("team_member")} M ON (M.team_id = T.team_id)
     JOIN ${table("staff")} S ON (S.staff_id = M.staff_id)
-    WHERE (T.flags & ${TeamFlag.ENABLED}) != 0 AND S.isactive = 1 AND S.onvacation = 0
+    WHERE (T.flags & ${Team.ENABLED}) != 0 AND S.isactive = 1 AND S.onvacation = 0
     GROUP BY T.team_id, T.name HAVING COUNT(M.staff_id) > 0 ORDER BY T.name`.execute(executor);
   return rows.map((r) => ({ id: r.team_id, name: r.name }));
 }
@@ -144,7 +146,7 @@ async function onAssign(ctx: WriteContext, rec: TicketRecord, threadId: number, 
   const recipients: number[] = [];
   if (assignee.kind === "staff") {
     if (cfg.bool("assigned_alert_staff")) recipients.push(assignee.staff.staff_id);
-  } else if (!(assignee.flags & TeamFlag.NOALERTS)) {
+  } else if (!(assignee.flags & Team.NOALERTS)) {
     const members = cfg.bool("assigned_alert_team_members") ? await teamAlertMembers(tx, assignee.id) : [];
     if (members.length) recipients.push(...members);
     else if (cfg.bool("assigned_alert_team_lead") && assignee.leadId) recipients.push(assignee.leadId);
@@ -223,7 +225,7 @@ export async function assignTicket(ctx: WriteContext, input: AssignInput): Promi
     if (!(await activeTeams(tx)).some((c) => c.id === id)) return { error: "unknown_assignee" };
     const team = await tx.selectFrom("team").select(["team_id", "name", "flags", "lead_id"]).where("team_id", "=", id).executeTakeFirst();
     if (!team) return { error: "unknown_assignee" };
-    if (!(team.flags & TeamFlag.ENABLED)) return { error: "team_disabled" };
+    if (!(team.flags & Team.ENABLED)) return { error: "team_disabled" };
     const members = await tx.selectFrom("team_member").select("staff_id").where("team_id", "=", id).execute();
     if (!members.length) return { error: "team_no_members" };
     assignee = { kind: "team", id: team.team_id, name: team.name, flags: team.flags, leadId: team.lead_id };
@@ -250,7 +252,7 @@ export async function assignTicket(ctx: WriteContext, input: AssignInput): Promi
   } else {
     if (rec.get("team_id") === assignee.id) return { error: "already_assigned_team" };
     // Dept::canAssign($team) → Team::isAvailable(): abilitato (la relazione members è sempre "vera")
-    if (!(assignee.flags & TeamFlag.ENABLED)) return { error: "denied" };
+    if (!(assignee.flags & Team.ENABLED)) return { error: "denied" };
     if (rec.get("team_id") && (await tx.selectFrom("team").select("team_id").where("team_id", "=", rec.get("team_id")).executeTakeFirst()))
       refer = { type: "E", id: rec.get("team_id") };
     rec.set("team_id", assignee.id);
@@ -375,7 +377,7 @@ export async function selectableDepts(executor: DbOrTx, agent: Agent, selected: 
   const rows = await executor
     .selectFrom("department")
     .select(["id", "name"])
-    .where(sql<boolean>`(flags & ${DeptFlag.ACTIVE}) != 0`)
+    .where(sql<boolean>`(flags & ${Dept.ACTIVE}) != 0`)
     .orderBy("name")
     .execute();
   const all = rows.map((r) => ({ id: r.id, name: r.name ?? "" }));

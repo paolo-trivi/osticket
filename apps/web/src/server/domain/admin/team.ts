@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Team, TeamMember } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { sanitizeText } from "../../format/text";
@@ -11,9 +13,6 @@ import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW, setFlag } from "./orm";
 
 /** Team: scp/teams.php → Team::update / Team::delete / mass_process (include/class.team.php). */
-export const TeamFlag = { ENABLED: 0x0001, NOALERTS: 0x0002 } as const;
-/** TeamMember::FLAG_ALERTS */
-export const MEMBER_ALERTS = 0x0001;
 
 const TEAM_OPTS = { touchUpdated: true };
 
@@ -35,13 +34,13 @@ export async function saveTeam(executor: DbOrTx, teamId: number | null, vars: Ph
     const row = await executor.selectFrom("team").select("team_id").where("name", "=", str(vars.name).trim()).executeTakeFirst();
     if (row?.team_id && !phpLooseEquals(row.team_id, vars.id as never)) errors.name = "exists";
   }
-  const noalerts = isset(vars, "noalerts") ? TeamFlag.NOALERTS : 0;
+  const noalerts = isset(vars, "noalerts") ? Team.NOALERTS : 0;
   // Il capo team rimosso dai membri viene azzerato
   let leadId: PhpVal = vars.lead_id;
   const curLead = team.get("lead_id");
   if (curLead !== null && phpLooseEquals(curLead, leadId as never) && truthy(vars.remove) && inArray(curLead as PhpVal, vars.remove)) leadId = 0;
 
-  team.set("flags", (truthy(vars.isenabled) ? TeamFlag.ENABLED : 0) | noalerts);
+  team.set("flags", (truthy(vars.isenabled) ? Team.ENABLED : 0) | noalerts);
   team.set("lead_id", truthy(leadId) ? str(leadId) : 0);
   team.set("name", stripTags(str(vars.name)));
   team.set("notes", sanitizeText(str(vars.notes)));
@@ -69,7 +68,7 @@ async function updateMembers(executor: DbOrTx, teamId: number, access: [PhpVal, 
       m.set("team_id", teamId);
       members.push(m);
     }
-    setFlag(m, MEMBER_ALERTS, truthy(alerts));
+    setFlag(m, TeamMember.ALERTS, truthy(alerts));
   }
   if (Object.keys(memberErrors).length) {
     errors.members = JSON.stringify(memberErrors);
@@ -97,7 +96,7 @@ export async function massTeams(executor: DbOrTx, action: TeamMassAction, ids: n
   switch (action) {
     case "enable":
     case "disable": {
-      const expr = action === "enable" ? sql<number>`flags | ${TeamFlag.ENABLED}` : sql<number>`flags & ${~TeamFlag.ENABLED >>> 0}`;
+      const expr = action === "enable" ? sql<number>`flags | ${Team.ENABLED}` : sql<number>`flags & ${~Team.ENABLED >>> 0}`;
       const res = await executor.updateTable("team").set({ flags: expr }).where("team_id", "in", ids).executeTakeFirst();
       const num = Number(res.numUpdatedRows);
       return { ok: num > 0, num };

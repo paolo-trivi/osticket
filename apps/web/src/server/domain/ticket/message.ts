@@ -1,5 +1,8 @@
 import "server-only";
 
+import { Collaborator } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { type DbOrTx } from "../../db";
 import { phpTrim, sanitizeText, editorSpacing, stripEmptyLines } from "../../format/text";
 import { loadSystemEmail, type MailContact, type SystemEmail, sendMail } from "../../mail/mailer";
@@ -8,11 +11,11 @@ import { loadMsgTemplate, templateGroupFor } from "../../mail/templates";
 import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { entryAttachmentsForMail, type AttachInput } from "../file/upload";
 import { deptAlertEmail, replaceAlertVars, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import { ticketThreadId } from "../thread/ids";
 import { createThreadEntry, lastMessage, touchThread, type EntryRecipients } from "../thread/write";
 import { addTicketCollaborator } from "./collaborators";
 import type { WriteContext } from "./context";
 import { mergeTypeOf } from "./merge-flags";
-import { ticketThreadId } from "./post";
 import { SQL_NOW, TicketRecord } from "./record";
 import { loadStatus, ticketIsReopenable } from "./status";
 import { reopenTicket } from "./ticket-state";
@@ -65,7 +68,7 @@ async function recipientsAll(ctx: WriteContext, ownerId: number, threadId: numbe
     .orderBy("c.id")
     .execute();
   for (const c of collabs) {
-    if (!(c.flags & 1)) continue;
+    if (!(c.flags & Collaborator.ACTIVE)) continue;
     const u = await loadUserContact(ctx.tx, c.user_id);
     if (u) out.push({ kind: "collab", listId: c.id, userId: c.user_id, name: userPersonsName(u, ctx.cfg).toString(), email: u.email });
   }
@@ -145,7 +148,7 @@ export async function postMessage(ctx: WriteContext, input: PostMessageInput): P
 
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "M",
+    type: ThreadEntryType.MESSAGE,
     body,
     format,
     staffId: 0,

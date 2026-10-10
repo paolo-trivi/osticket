@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { DynamicForm, DynamicFormField, DynamicList, DynamicListItem } from "@/lib/osticket/flags";
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import { loadConfigNamespace, type ConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
 import { phpJsonEncode, phpJsonDecode } from "../../format/php-json";
@@ -28,11 +31,10 @@ import { sanitizeHtml } from "./sanitize";
  * valore in modifica è verificata sul valore attuale (non su quello nuovo); "eliminare" un elemento
  * azzera solo list_id; addItem con un valore già presente (anche disattivato) riusa quell'elemento.
  */
-export const ListMask = { EDIT: 0x0001, ADD: 0x0002, DELETE: 0x0004, ABBREV: 0x0008 } as const;
-export const ItemStatus = { ENABLED: 0x0001, INTERNAL: 0x0002 } as const;
+
 export const SORT_MODES = ["Alpha", "-Alpha", "SortCol"] as const;
 const LIST_FIELDS = ["name", "name_plural", "sort_mode", "notes"] as const;
-const PROPERTY_FLAGS = 0x00001 | 0x01000 | 0x02000;
+const PROPERTY_FLAGS = DynamicFormField.ENABLED | DynamicFormField.AGENT_VIEW | DynamicFormField.AGENT_EDIT;
 
 async function loadList(executor: DbOrTx, id: number) {
   return (await executor.selectFrom("list").selectAll().where("id", "=", id).executeTakeFirst()) ?? null;
@@ -81,7 +83,7 @@ export function fieldTemplateErrors(field: OrmRow, extra: string[] = []): string
   if (!truthy(field.get("label") as PhpVal)) errors.push("label_required");
   const flags = field.num("flags");
   const name = str(field.get("name") as PhpVal);
-  if (flags & (0x04000 | 0x00400) && !name) errors.push("name_required");
+  if (flags & (DynamicFormField.AGENT_REQUIRED | DynamicFormField.CLIENT_REQUIRED) && !name) errors.push("name_required");
   // [[:alnum:]] con /u ma senza UCP: solo ASCII
   if (name && !/^(?!\d)[A-Za-z0-9_]+$/.test(name)) errors.push("name_invalid");
   return errors;
@@ -118,7 +120,7 @@ export async function updateList(executor: DbOrTx, listId: number, post: PhpVars
   const vars = htmlcharsVars(info, false);
   const errors: Errors = {};
   const list = OrmRow.from("list", "id", row as unknown as Record<string, unknown>, { touchUpdated: true });
-  const editable = !(row.masks & ListMask.EDIT);
+  const editable = !(row.masks & DynamicList.MASK_EDIT);
   for (const f of LIST_FIELDS) {
     if (f === "name" && editable && !truthy(vars[f])) errors[f] = "required";
     else if (isset(vars, f) && !phpLooseEquals(vars[f], list.get(f) as PhpVal)) list.set(f, str(vars[f]));
@@ -149,12 +151,12 @@ export async function updateList(executor: DbOrTx, listId: number, post: PhpVars
       const id = fr.id;
       const field = OrmRow.from("form_field", "id", fr as unknown as Record<string, unknown>, { touchUpdated: true });
       const flags = fr.flags ?? 0;
-      if (info[`delete-prop-${id}`] === "on" && !(flags & 0x00020)) {
+      if (info[`delete-prop-${id}`] === "on" && !(flags & DynamicFormField.MASK_DELETE)) {
         await deleteField(executor, fr);
         continue;
       }
-      if (isset(info, `type-${id}`) && !(flags & 0x00010)) field.set("type", str(info[`type-${id}`]));
-      if (isset(info, `name-${id}`) && !(flags & 0x40000)) field.set("name", str(info[`name-${id}`]));
+      if (isset(info, `type-${id}`) && !(flags & DynamicFormField.MASK_CHANGE)) field.set("type", str(info[`type-${id}`]));
+      if (isset(info, `name-${id}`) && !(flags & DynamicFormField.MASK_NAME)) field.set("name", str(info[`name-${id}`]));
       for (const f of ["sort", "label"]) if (isset(info, `prop-${f}-${id}`)) field.set(f, str(info[`prop-${f}-${id}`]));
       const extra: string[] = [];
       const name = str(field.get("name") as PhpVal);
@@ -176,8 +178,8 @@ export async function deleteField(executor: DbOrTx, fr: { id: number; type: stri
   const answers = await executor.selectFrom("form_entry_values").select("entry_id").where("field_id", "=", fr.id).executeTakeFirst();
   // db_cleanup: il campo "info" elimina i propri allegati inline (tipo I)
   if (fr.type === "info") {
-    const files = await executor.selectFrom("attachment").select("id").where("object_id", "=", fr.id).where("type", "=", "I").execute();
-    if (files.length) await executor.deleteFrom("attachment").where("object_id", "=", fr.id).where("type", "=", "I").execute();
+    const files = await executor.selectFrom("attachment").select("id").where("object_id", "=", fr.id).where("type", "=", AttachmentType.FORM_INFO).execute();
+    if (files.length) await executor.deleteFrom("attachment").where("object_id", "=", fr.id).where("type", "=", AttachmentType.FORM_INFO).execute();
   }
   const hasData = !["break", "info"].includes(fr.type);
   if (hasData && answers) {
@@ -187,22 +189,21 @@ export async function deleteField(executor: DbOrTx, fr: { id: number; type: stri
   await executor.deleteFrom("form_field").where("id", "=", fr.id).execute();
 }
 
-
 /** scp/lists.php do=mass_process a=delete */
 export async function deleteLists(executor: DbOrTx, ids: number[]): Promise<MassResult> {
   if (!ids.length) return { ok: false, num: 0, error: "select_one" };
   let i = 0;
   for (const id of ids) {
     const list = await loadList(executor, id);
-    if (!list || list.masks & ListMask.DELETE) continue;
+    if (!list || list.masks & DynamicList.MASK_DELETE) continue;
     const used = await executor.selectFrom("form_field").select("id").where("type", "=", `list-${id}`).executeTakeFirst();
     if (used) continue;
     await executor.deleteFrom("list").where("id", "=", id).execute();
     const form = await executor.selectFrom("form").selectAll().where("type", "=", `L${id}`).executeTakeFirst();
     if (form) {
-      if (form.flags & 0x0001) {
+      if (form.flags & DynamicForm.DELETABLE) {
         const f = OrmRow.from("form", "id", form as unknown as Record<string, unknown>, { touchUpdated: true });
-        f.set("flags", form.flags | 0x0002);
+        f.set("flags", form.flags | DynamicForm.DELETED);
         await f.save(executor);
       }
       await executor.deleteFrom("form_field").where("form_id", "=", form.id).execute();
@@ -284,7 +285,7 @@ export async function addListItem(executor: DbOrTx, listId: number, vars: PhpVar
   if (hasHandler(list)) return { ok: false, errors: { err: "system_list" } };
   const { value, extra, errors: formErrors } = await itemTextFields(executor, vars);
   if (formErrors.length) return { ok: false, errors: Object.fromEntries(formErrors) };
-  const dup = await executor.selectFrom("list_items").select("id").where("list_id", "=", listId).where("value", "=", value).where(sql<number>`status & ${ItemStatus.ENABLED}`, "<>", 0).executeTakeFirst();
+  const dup = await executor.selectFrom("list_items").select("id").where("list_id", "=", listId).where("value", "=", value).where(sql<number>`status & ${DynamicListItem.ENABLED}`, "<>", 0).executeTakeFirst();
   if (dup) return { ok: false, errors: { value: "value_in_use" } };
   const props = await itemProperties(executor, listId, vars);
   if (props === "unsupported") return { ok: false, errors: { err: "unsupported_property" } };
@@ -344,8 +345,8 @@ export async function massListItems(executor: DbOrTx, listId: number, action: It
     const row = await executor.selectFrom("list_items").selectAll().where("list_id", "=", listId).where("id", "=", id).executeTakeFirst();
     if (!row) return { ok: num > 0, num, error: "unknown_item" };
     const item = OrmRow.from("list_items", "id", row as unknown as Record<string, unknown>);
-    if (action === "enable") item.set("status", row.status | ItemStatus.ENABLED);
-    else if (action === "disable") item.set("status", row.status & ~ItemStatus.ENABLED);
+    if (action === "enable") item.set("status", row.status | DynamicListItem.ENABLED);
+    else if (action === "disable") item.set("status", row.status & ~DynamicListItem.ENABLED);
     else item.set("list_id", null);
     item.set("value", str(item.get("value") as PhpVal).trim());
     await item.save(executor);

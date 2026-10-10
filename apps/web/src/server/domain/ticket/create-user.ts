@@ -1,7 +1,10 @@
 import "server-only";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import { htmlDecode } from "../../format/html";
 import { sanitizeText, searchable } from "../../format/text";
 import { intval, isArray, isset, list, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
@@ -81,7 +84,7 @@ export async function organizationForDomain(executor: DbOrTx, domain: string): P
     .selectFrom("organization")
     .select(["id", "name", "manager", "status", "domain"])
     .where("domain", ">", "")
-    .where("domain", "like", `%${domain.replace(/([%_\\])/g, "\\$1")}%`)
+    .where("domain", "like", `%${likeEscape(domain)}%`)
     .orderBy("name")
     .execute();
   for (const r of rows) if (mappedToDomain(r.domain ?? "", domain)) return { ...r, manager: r.manager ?? "", domain: r.domain ?? "" };
@@ -144,7 +147,7 @@ export async function userFromVars(
   await executor.updateTable("user_email").set({ user_id: userId }).where("id", "=", emailRow.id).execute();
 
   // addDynamicData: form "Contact Information" con la sorgente ricevuta
-  const form = await loadFormDef(executor, cfg, { type: "U" });
+  const form = await loadFormDef(executor, cfg, { type: FormType.USER });
   let content = "";
   if (form) {
     const inst = new FormInstance(form, vars, 1, null, { dates: opts.dates });

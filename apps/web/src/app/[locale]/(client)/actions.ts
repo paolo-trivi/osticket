@@ -6,6 +6,8 @@ import { getLocale } from "next-intl/server";
 
 import { redirect } from "@/i18n/navigation";
 import type { DynamicFormView } from "@/lib/forms/dynamic-field";
+import { UserAccountStatus } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
 import { formNum, formStr, formStrs } from "@/server/actions/form-data";
 import {
   clientLogout,
@@ -21,7 +23,6 @@ import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { registerClientAccount, requestClientPasswordReset, updateClientProfile, type AccountFieldError } from "@/server/domain/client/account";
 import { performAccessLink, performClientLogin, performResetTokenLogin, type ClientAuthError } from "@/server/domain/client/auth";
-import { AccountStatus } from "@/server/domain/client/identity";
 import { openPortalTicket } from "@/server/domain/client/open";
 import { editClientTicket, postClientMessage } from "@/server/domain/client/reply";
 import { thankYouHtml } from "@/server/domain/client/ui";
@@ -53,7 +54,7 @@ export async function portalLoginAction(_prev: PortalLoginState, fd: FormData): 
   const locale = await getLocale();
   // client.inc.php: cambio password obbligatorio prima di continuare
   const client = await currentClient();
-  if (client?.account && client.account.status & AccountStatus.REQUIRE_PASSWD_RESET) redirect({ href: "/profile?pwchange=1", locale });
+  if (client?.account && client.account.status & UserAccountStatus.REQUIRE_PASSWD_RESET) redirect({ href: "/profile?pwchange=1", locale });
   redirect({ href: safeNext(formStr(fd, "next"), "/tickets"), locale });
   return {};
 }
@@ -94,7 +95,7 @@ const ACCOUNT_KEYS = new Set(["passwd1", "passwd2", "cpasswd", "timezone", "lang
 /** Campi del form utente (per nome) + preferenze dell'account dal POST */
 async function accountVars(fd: FormData): Promise<Record<string, unknown>> {
   const cfg = await coreConfig();
-  const user = await loadFormDef(db(), cfg, { type: "U" }, "client");
+  const user = await loadFormDef(db(), cfg, { type: FormType.USER }, "client");
   const vars: Record<string, unknown> = formDataToVars(fd, [user]);
   for (const k of ACCOUNT_KEYS) if (fd.has(k)) vars[k] = formStr(fd, k);
   return vars;
@@ -192,7 +193,7 @@ export async function editTicketAction(_prev: EditState, fd: FormData): Promise<
   if (!client) return { error: "session" };
   const ticketId = formNum(fd, "ticketId");
   const cfg = await coreConfig();
-  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", "T").where("object_id", "=", ticketId).execute();
+  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", FormType.TICKET).where("object_id", "=", ticketId).execute();
   const defs = await Promise.all(entries.map((e) => loadFormDef(db(), cfg, { id: e.form_id }, "client")));
   const vars = formDataToVars(fd, defs);
   const res = await editClientTicket(cfg, client, ticketId, vars, await clientIp());
@@ -220,11 +221,11 @@ export async function openTicketAction(_prev: OpenState, fd: FormData): Promise<
   const cfg = await coreConfig();
   const topicId = formNum(fd, "topicId") || 0;
   const [ticketDef, userDef, topicForms] = await Promise.all([
-    loadFormDef(db(), cfg, { type: "T" }, "client"),
-    client ? Promise.resolve(null) : loadFormDef(db(), cfg, { type: "U" }, "client"),
+    loadFormDef(db(), cfg, { type: FormType.TICKET }, "client"),
+    client ? Promise.resolve(null) : loadFormDef(db(), cfg, { type: FormType.USER }, "client"),
     topicId ? loadTopicForms(db(), cfg, topicId, "client") : Promise.resolve([]),
   ]);
-  const vars: Record<string, unknown> = formDataToVars(fd, [ticketDef, userDef, ...topicForms.filter((f) => f.type !== "T")]);
+  const vars: Record<string, unknown> = formDataToVars(fd, [ticketDef, userDef, ...topicForms.filter((f) => f.type !== FormType.TICKET)]);
   if (topicId) vars.topicId = topicId;
   const key = (await visitorKey()) || randomBytes(16).toString("hex");
   vars.files = verifyUploadTokens(formStrs(fd, "files"), client ? `U${client.id}` : `G${key}`);

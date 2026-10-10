@@ -3,10 +3,11 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AdminList from "@/components/admin/AdminList";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { Topic } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { deptOptions } from "@/server/domain/admin/lookups";
-import { helpTopicsSnapshot, sortByName, TopicFlag } from "@/server/domain/admin/topic";
+import { helpTopicsSnapshot, sortByName } from "@/server/domain/admin/topic";
 
 import { requireAdmin } from "../guard";
 import { massTopicsAction } from "./actions";
@@ -27,7 +28,7 @@ export default async function TopicsPage({ params, searchParams }: { params: Pro
   const byId = new Map(rows.map((r) => [r.topic_id, r]));
   const depts = new Map((await deptOptions()).map((d) => [d.value, d.label]));
   const list = mode === "a" ? sortByName(snapshot, cfg.str("system_language")) : [...snapshot].sort((a, b) => (byId.get(a.id)?.sort ?? 0) - (byId.get(b.id)?.sort ?? 0));
-  const statusOf = (f: number) => (f & TopicFlag.ACTIVE ? "active" : f & TopicFlag.ARCHIVED ? "archived" : "disabled");
+  const statusOf = (f: number) => (f & Topic.ACTIVE ? "active" : f & Topic.ARCHIVED ? "archived" : "disabled");
   return (
     <AdminList
       title={t("title")}

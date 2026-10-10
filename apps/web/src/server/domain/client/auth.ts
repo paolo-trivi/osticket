@@ -2,6 +2,9 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { UserAccountStatus } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import { checkPassword } from "../../auth/passwd";
 import { addStrike, isLockedOut, resetStrikes } from "../../auth/strikes";
 import { coreConfig, type ConfigNamespace } from "../../config/config";
@@ -195,7 +198,7 @@ async function ticketUser(executor: DbOrTx, ticket: { ticket_id: number; user_id
     .selectFrom("thread_collaborator as c")
     .innerJoin("thread as th", "th.id", "c.thread_id")
     .select("c.id")
-    .where("th.object_type", "=", "T")
+    .where("th.object_type", "=", ObjectType.TICKET)
     .where("th.object_id", "=", ticket.ticket_id)
     .where("c.user_id", "=", userId)
     .executeTakeFirst();
@@ -260,7 +263,7 @@ async function lookupByAuthToken(executor: DbOrTx, token: string): Promise<{ use
       .select(["c.id", "c.user_id", "th.object_id", "th.object_type"])
       .where("c.id", "=", uid)
       .executeTakeFirst();
-    if (c && c.object_type === "T" && c.object_id === tid) {
+    if (c && c.object_type === ObjectType.TICKET && c.object_id === tid) {
       userId = c.user_id;
       contactId = c.id;
       guest = { ticketId: tid, collabId: c.id };
@@ -352,7 +355,7 @@ export async function performResetTokenLogin(input: { userid: string; token: str
       if (!t || t.value !== `c${acct.user_id}`) return { ok: false, error: "invalid_token" };
       if (await tokenExpired(tx, cfg, t.updated)) return { ok: false, error: "invalid_token" };
       // UserAccount::forcePasswdReset
-      const status = acct.status | 0x0004;
+      const status = acct.status | UserAccountStatus.REQUIRE_PASSWD_RESET;
       if (status !== acct.status) await tx.updateTable("user_account").set({ status }).where("id", "=", acct.id).execute();
       const r = await loginWrites(tx, cfg, acct.user_id, { ip, interactive: false });
       if (!r.ok) return { ok: false, error: r.error };
@@ -383,7 +386,7 @@ export async function performConfirm(input: { token: string; ip: string }): Prom
       if (!t || !acct) return { ok: false, error: "not_found" };
       if (accountIsConfirmed(acct)) return { ok: true, confirmed: false, form: true };
       // UserAccount::confirm
-      await tx.updateTable("user_account").set({ status: acct.status | 0x0001 }).where("id", "=", acct.id).execute();
+      await tx.updateTable("user_account").set({ status: acct.status | UserAccountStatus.CONFIRMED }).where("id", "=", acct.id).execute();
       // processSignOn($errors): strike backend, poi ClientAcctConfirmationTokenBackend
       if (lockedOut(cfg, ip)) return { ok: false, error: "locked_out", strike: true };
       const r = await loginWrites(tx, cfg, acct.user_id, { ip, interactive: false });
@@ -394,7 +397,7 @@ export async function performConfirm(input: { token: string; ip: string }): Prom
       } else {
         forceReset = true;
         const cur = await tx.selectFrom("user_account").select("status").where("id", "=", acct.id).executeTakeFirstOrThrow();
-        if (!(cur.status & 0x0004)) await tx.updateTable("user_account").set({ status: cur.status | 0x0004 }).where("id", "=", acct.id).execute();
+        if (!(cur.status & UserAccountStatus.REQUIRE_PASSWD_RESET)) await tx.updateTable("user_account").set({ status: cur.status | UserAccountStatus.REQUIRE_PASSWD_RESET }).where("id", "=", acct.id).execute();
       }
       return { ok: true, confirmed: true, forceReset, userId: acct.user_id, pwv: r.pwv, guest: null, ...(forceReset ? { resetToken: input.token } : {}) };
     });

@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { UserModel } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
 import { searchable } from "../../format/text";
 import { phpLooseEquals, str, truthy } from "../../php/values";
@@ -39,8 +42,6 @@ export type DirError =
 export type DirResult<T = object> =
   | ({ ok: true } & T)
   | { ok: false; error: DirError; fields?: Record<string, string>; detail?: string };
-
-export const UserStatus = { PRIMARY_ORG_CONTACT: 0x0001 } as const;
 
 interface UserCore {
   id: number;
@@ -105,7 +106,7 @@ export async function createUser(ctx: WriteContext, input: Record<string, unknow
   if (email && (await lookupUserByEmail(tx, email))) fields.email = "in_use";
   if (Object.keys(fields).length) return { ok: false, error: "invalid", fields };
   // User::fromVars($form->getClean())
-  const inst = new FormInstance({ id: form.id, type: "U", title: "", instructions: "", fields: form.fields }, input, 1, null, { dates });
+  const inst = new FormInstance({ id: form.id, type: FormType.USER, title: "", instructions: "", fields: form.fields }, input, 1, null, { dates });
   const user = await userFromVars(tx, ctx.cfg, inst.cleanVars(), { dates });
   if (!user) return { ok: false, error: "invalid" };
   return { ok: true, id: user.id };
@@ -167,7 +168,7 @@ async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<s
   const fields: Record<string, string> = {};
   for (const e of entries) {
     Object.assign(fields, await validateInput(e.fields, input, isEditableToStaff, ctx.cfg, { timezone }));
-    if (e.form_type === "U") {
+    if (e.form_type === FormType.USER) {
       const f = e.fields.find((x) => x.name === "email");
       if (f && isEditableToStaff(f)) {
         const email = cleanOf(e.fields, input, "email", timezone);
@@ -181,7 +182,7 @@ async function updateUserInfo(ctx: WriteContext, userId: number, input: Record<s
   let name: string | undefined;
   let touch = false;
   for (const e of entries) {
-    if (e.form_type === "U") {
+    if (e.form_type === FormType.USER) {
       const nf = e.fields.find((x) => x.name === "name");
       if (nf && isEditableToStaff(nf)) name = cleanOf(e.fields, input, "name", timezone).trim();
       const ef = e.fields.find((x) => x.name === "email");
@@ -226,7 +227,7 @@ export async function setUserOrganization(ctx: WriteContext, userId: number, org
 export async function removeUserFromOrg(ctx: WriteContext, userId: number): Promise<boolean> {
   const user = await loadUserCore(ctx.tx, userId, true);
   if (!user) return false;
-  await saveUser(ctx.tx, user, { org_id: 0, status: user.status & ~UserStatus.PRIMARY_ORG_CONTACT });
+  await saveUser(ctx.tx, user, { org_id: 0, status: user.status & ~UserModel.PRIMARY_ORG_CONTACT });
   return true;
 }
 

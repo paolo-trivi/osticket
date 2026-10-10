@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AdminList from "@/components/admin/AdminList";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { RoleModel } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
-import { RoleFlag } from "@/server/domain/admin/role";
 
 import { requireAdmin } from "../guard";
 import { massRolesAction } from "./actions";
@@ -48,8 +48,8 @@ export default async function RolesPage({ params, searchParams }: { params: Prom
             </Link>
           ),
           status: (
-            <Badge size="sm" color={r.flags & RoleFlag.ENABLED ? "success" : "light"}>
-              {r.flags & RoleFlag.ENABLED ? u("status.active") : u("status.disabled")}
+            <Badge size="sm" color={r.flags & RoleModel.ENABLED ? "success" : "light"}>
+              {r.flags & RoleModel.ENABLED ? u("status.active") : u("status.disabled")}
             </Badge>
           ),
           created: String(r.created),

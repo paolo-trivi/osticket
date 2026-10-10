@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import { table, type DbOrTx } from "../../db";
 import type { FieldDef } from "./fields";
 
@@ -11,10 +13,10 @@ import type { FieldDef } from "./fields";
  * crea né le modifica (DDL): scrive solo le colonne che il PHP ha già materializzato.
  */
 const CDATA = {
-  T: { table: "ticket__cdata", key: "ticket_id" },
-  A: { table: "task__cdata", key: "task_id" },
-  U: { table: "user__cdata", key: "user_id" },
-  O: { table: "organization__cdata", key: "org_id" },
+  [FormType.TICKET]: { table: "ticket__cdata", key: "ticket_id" },
+  [FormType.TASK]: { table: "task__cdata", key: "task_id" },
+  [FormType.USER]: { table: "user__cdata", key: "user_id" },
+  [FormType.ORG]: { table: "organization__cdata", key: "org_id" },
 } as const;
 
 type CdataFormType = keyof typeof CDATA;

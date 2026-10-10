@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, StaffDeptAccess, TeamMember } from "@/lib/osticket/flags";
+
 import type { ConfigNamespace } from "../config/config";
 import { table, type DbOrTx } from "../db";
 import { PersonsName } from "../format/persons-name";
@@ -21,9 +23,6 @@ import type { WriteContext } from "./ticket/context";
  * e deduplica per indirizzo ($sentlist). Le email partono dopo il commit (ctx.after).
  */
 
-/** Dept::ALERTS_* (colonna department.group_membership) */
-export const DeptAlerts = { DEPT_AND_EXTENDED: 1, DISABLED: 2, ADMIN_ONLY: 3 } as const;
-
 /** Ordinamento di Staff::nsort secondo agent_name_format. */
 export function staffSortColumns(format: string): ["firstname" | "lastname", "firstname" | "lastname"] {
   return ["last", "lastfirst", "legal"].includes(format) ? ["lastname", "firstname"] : ["firstname", "lastname"];
@@ -40,13 +39,13 @@ interface AlertDept {
  * esteso con avvisi attivi se il reparto li estende; ordinati con Staff::nsort.
  */
 export async function deptAlertMembers(executor: DbOrTx, dept: AlertDept, nameFormat: string): Promise<number[]> {
-  if (dept.group_membership === DeptAlerts.DISABLED) return [];
+  if (dept.group_membership === Dept.ALERTS_DISABLED) return [];
   const [a, b] = staffSortColumns(nameFormat);
   const { rows } = await sql<{ staff_id: number }>`SELECT DISTINCT S.staff_id, S.${sql.ref(a)}, S.${sql.ref(b)} FROM ${table("staff")} S
     LEFT JOIN ${table("staff_dept_access")} A ON (A.staff_id = S.staff_id AND A.dept_id = ${dept.id})
     WHERE S.isactive = 1 AND S.onvacation = 0
       AND (S.dept_id = ${dept.id} OR S.staff_id = ${dept.manager_id} OR A.dept_id = ${dept.id})
-      AND (S.dept_id = ${dept.id} OR (${dept.group_membership} = ${DeptAlerts.DEPT_AND_EXTENDED} AND (A.flags & 1) != 0))
+      AND (S.dept_id = ${dept.id} OR (${dept.group_membership} = ${Dept.ALERTS_DEPT_AND_EXTENDED} AND (A.flags & ${sql.lit(StaffDeptAccess.ALERTS)}) != 0))
     ORDER BY S.${sql.ref(a)}, S.${sql.ref(b)}`.execute(executor);
   return rows.map((r) => r.staff_id);
 }
@@ -57,7 +56,7 @@ export async function teamAlertMembers(executor: DbOrTx, teamId: number): Promis
     .selectFrom("team_member")
     .select("staff_id")
     .where("team_id", "=", teamId)
-    .where(sql<boolean>`(flags & 1) != 0`)
+    .where(sql<boolean>`(flags & ${sql.lit(TeamMember.ALERTS)}) != 0`)
     .orderBy("staff_id")
     .execute();
   return rows.map((r) => r.staff_id);

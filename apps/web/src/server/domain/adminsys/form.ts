@@ -1,5 +1,8 @@
 import "server-only";
 
+import { DynamicForm, DynamicFormField } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { htmlDecode } from "../../format/html";
 import type { DbOrTx } from "../../db";
 import { htmlcharsVars, isset, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
@@ -7,7 +10,6 @@ import type { MassResult, SaveResult } from "../admin/common";
 import { OrmRow, SQL_NOW } from "../admin/orm";
 import type { Errors } from "../admin/validator";
 import { CDATA_FORM_TYPES } from "../forms/cdata";
-import { FieldFlag } from "../forms/fields";
 import { deleteField, fieldTemplateErrors } from "./list";
 import { pv } from "./orm-util";
 
@@ -28,9 +30,8 @@ import { pv } from "./orm-util";
  * poi i campi hanno errori; le eliminazioni dei campi avvengono subito; i valori del POST passano
  * per Format::htmlchars con sanitize (le istruzioni vengono poi decodificate).
  */
-export const FormFlag = { DELETABLE: 0x0001, DELETED: 0x0002 } as const;
 
-const F = FieldFlag;
+const F = DynamicFormField;
 /** DynamicFormField::allRequirementModes */
 export const REQUIREMENT_MODES: Record<string, number> = {
   a: F.CLIENT_VIEW | F.AGENT_VIEW | F.CLIENT_EDIT | F.AGENT_EDIT,
@@ -49,8 +50,8 @@ function setRequirementMode(field: OrmRow, mode: PhpVal): void {
   const m = str(mode);
   const bits = REQUIREMENT_MODES[m];
   if (bits === undefined || mode === undefined || mode === null) return;
-  if (flags & 0x20000 && bits & (F.CLIENT_VIEW | F.AGENT_VIEW)) return;
-  if (flags & 0x10000 && bits & (F.CLIENT_REQUIRED | F.AGENT_REQUIRED)) return;
+  if (flags & F.MASK_VIEW && bits & (F.CLIENT_VIEW | F.AGENT_VIEW)) return;
+  if (flags & F.MASK_REQUIRE && bits & (F.CLIENT_REQUIRED | F.AGENT_REQUIRED)) return;
   field.set("flags", bits | F.ENABLED);
 }
 
@@ -122,7 +123,7 @@ export async function saveForm(executor: DbOrTx, formId: number | null, rawPost:
       const extra: string[] = [];
       const name = str(pv(field.get("name"))).toLowerCase();
       if (names.includes(name)) extra.push("name_not_unique");
-      if (form.get("type") === "T" && str(pv(field.get("name"))) === "subject" && ["break", "info"].includes(str(pv(field.get("type"))))) extra.push("subject_needs_input");
+      if (form.get("type") === FormType.TICKET && str(pv(field.get("name"))) === "subject" && ["break", "info"].includes(str(pv(field.get("type"))))) extra.push("subject_needs_input");
       if (str(pv(field.get("name")))) names.push(name);
       if (!fieldTemplateErrors(field, extra).length) toSave.push(field);
       else errors[`field-${id}`] = "field_errors";
@@ -161,9 +162,9 @@ export async function deleteForms(executor: DbOrTx, ids: number[]): Promise<Mass
   let i = 0;
   for (const id of ids) {
     const row = await executor.selectFrom("form").selectAll().where("id", "=", id).executeTakeFirst();
-    if (!row || !(row.flags & FormFlag.DELETABLE)) continue;
+    if (!row || !(row.flags & DynamicForm.DELETABLE)) continue;
     const form = OrmRow.from("form", "id", row as unknown as Record<string, unknown>, { touchUpdated: true });
-    form.set("flags", row.flags | FormFlag.DELETED);
+    form.set("flags", row.flags | DynamicForm.DELETED);
     await form.save(executor);
     i++;
   }
@@ -182,10 +183,10 @@ export async function listForms(executor: DbOrTx) {
       "f.updated",
       eb.selectFrom("form_field as x").select((e) => e.fn.countAll<number>().as("n")).whereRef("x.form_id", "=", "f.id").as("fields"),
     ])
-    .where("f.type", "not like", "L%")
+    .where("f.type", "not like", `${FormType.LIST_PREFIX}%`)
     .orderBy("f.title")
     .execute();
-  return rows.filter((r) => !(r.flags & FormFlag.DELETED)).map((r) => ({ ...r, fields: Number(r.fields) }));
+  return rows.filter((r) => !(r.flags & DynamicForm.DELETED)).map((r) => ({ ...r, fields: Number(r.fields) }));
 }
 
 export async function formDetail(executor: DbOrTx, id: number) {

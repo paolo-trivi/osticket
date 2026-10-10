@@ -32,7 +32,7 @@ export default async function UserPage({
   const user = await loadUser(Number(id));
   if (!user) notFound();
   const tz = await agentTimeZone(agent);
-  // UserAccount: status & 1 = confermato, & 2 = bloccato
+  // UserAccount: status con i bit di UserAccountStatus (confermato, bloccato…)
   const [fields, acct, orgs] = await Promise.all([
     editFormFields("U", user.id, { name: user.name, email: user.email ?? "" }),
     db().selectFrom("user_account").select(["status", "username", "timezone"]).where("user_id", "=", user.id).executeTakeFirst(),

@@ -6,12 +6,13 @@ import NewTaskButton from "@/components/people/tasks/NewTaskButton";
 import TaskMassActions, { TaskSelect } from "@/components/people/tasks/TaskMassActions";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { TaskModel } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { pageSizeFor } from "@/server/domain/queue/context";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
-import { countTaskQueues, listTasks, TaskFlag, type TaskQueueName } from "@/server/domain/task/tasks";
+import { countTaskQueues, listTasks, type TaskQueueName } from "@/server/domain/task/tasks";
 import { selectableDepts } from "@/server/domain/ticket/assign";
 import { checkStaffPerm, loadTicket } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate } from "@/server/format/datetime";
@@ -129,7 +130,7 @@ export default async function TasksPage({
             title: (
               <span className="inline-flex items-center gap-2">
                 {k.title}
-                {(k.flags & TaskFlag.ISOPEN) === 0 && <Badge size="sm" color="light">{t("completed")}</Badge>}
+                {(k.flags & TaskModel.ISOPEN) === 0 && <Badge size="sm" color="light">{t("completed")}</Badge>}
               </span>
             ),
             dept: k.dept_name,

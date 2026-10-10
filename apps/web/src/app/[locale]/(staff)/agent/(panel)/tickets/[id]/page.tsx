@@ -9,11 +9,12 @@ import TicketExtraActions from "@/components/tickets/TicketExtraActions";
 import ThreadEntryCard from "@/components/tickets/ThreadEntryCard";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { TaskModel, ThreadEntry, TicketStatus } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { listCanned } from "@/server/domain/kb/kb";
-import { listTasks, TaskFlag } from "@/server/domain/task/tasks";
-import { STATUS_ENABLED } from "@/server/domain/ticket/status";
+import { listTasks } from "@/server/domain/task/tasks";
 import { TicketPerm } from "@/server/domain/staff/staff";
 import { formatAgentName } from "@/server/domain/ticket/rows";
 import {
@@ -63,7 +64,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
 
   const [entries, events, answers, collaborators] = await Promise.all([
     // Thread::getEntries() esclude le voci nascoste (versioni precedenti di una voce modificata)
-    ticket.thread_id ? loadThreadEntries(ticket.thread_id).then((l) => l.filter((e) => !(e.flags & 0x4))) : Promise.resolve([] as ThreadEntryView[]),
+    ticket.thread_id ? loadThreadEntries(ticket.thread_id).then((l) => l.filter((e) => !(e.flags & ThreadEntry.HIDDEN))) : Promise.resolve([] as ThreadEntryView[]),
     ticket.thread_id ? loadThreadEvents(ticket.thread_id) : Promise.resolve([] as ThreadEventView[]),
     loadTicketAnswers(ticket.ticket_id),
     ticket.thread_id ? loadCollaborators(ticket.thread_id) : Promise.resolve([]),
@@ -157,7 +158,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
   const taskRow = await db()
     .selectFrom("task")
     .select((eb) => eb.fn.countAll<number>().as("n"))
-    .where("object_type", "=", "T")
+    .where("object_type", "=", ObjectType.TICKET)
     .where("object_id", "=", ticket.ticket_id)
     .executeTakeFirst();
   const taskCount = Number(taskRow?.n ?? 0);
@@ -173,7 +174,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
       .select(["id", "name", "state"])
       .where("state", "in", canClose ? ["open", "closed"] : ["open"])
       // solo stati abilitati, come la select del PHP (isEnabled) e isSelectableStatus lato server
-      .where((eb) => eb(eb("mode", "&", STATUS_ENABLED), "!=", 0))
+      .where((eb) => eb(eb("mode", "&", TicketStatus.ENABLED), "!=", 0))
       .orderBy("sort")
       .orderBy("name")
       .execute(),
@@ -336,7 +337,7 @@ export default async function TicketViewPage({ params }: { params: Promise<{ loc
             <ComponentCard title={t("tasks", { count: ticketTasks.length })}>
               <ul className="divide-y divide-gray-100 dark:divide-gray-800">
                 {ticketTasks.map((k) => {
-                  const open = (k.flags & TaskFlag.ISOPEN) !== 0;
+                  const open = (k.flags & TaskModel.ISOPEN) !== 0;
                   return (
                     <li key={k.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                       <div className="min-w-0">

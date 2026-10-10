@@ -4,6 +4,7 @@ import { getLocale } from "next-intl/server";
 
 import { redirect } from "@/i18n/navigation";
 import type { DynamicFormView } from "@/lib/forms/dynamic-field";
+import { FormType } from "@/lib/osticket/object-types";
 import { formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { currentAgent } from "@/server/auth/staff-auth";
 import { clientIp } from "@/server/auth/session";
@@ -69,11 +70,11 @@ export async function openTicketAction(_prev: OpenTicketState, fd: FormData): Pr
   const topicId = formNum(fd, "topicId") || 0;
   const uid = formNum(fd, "uid") || 0;
   const [ticketDef, userDef, topicForms] = await Promise.all([
-    loadFormDef(db(), cfg, { type: "T" }, "staff"),
-    uid ? Promise.resolve(null) : loadFormDef(db(), cfg, { type: "U" }, "staff"),
+    loadFormDef(db(), cfg, { type: FormType.TICKET }, "staff"),
+    uid ? Promise.resolve(null) : loadFormDef(db(), cfg, { type: FormType.USER }, "staff"),
     topicId ? loadTopicForms(db(), cfg, topicId, "staff") : Promise.resolve([]),
   ]);
-  const vars: Record<string, unknown> = formDataToVars(fd, [ticketDef, userDef, ...topicForms.filter((f) => f.type !== "T")]);
+  const vars: Record<string, unknown> = formDataToVars(fd, [ticketDef, userDef, ...topicForms.filter((f) => f.type !== FormType.TICKET)]);
   if (uid) vars.uid = uid;
   for (const k of ["source", "topicId", "deptId", "slaId", "duedate", "assignId", "statusId", "reply-to", "response", "signature", "note"]) {
     if (fd.has(k) && formStr(fd, k) !== "") vars[k] = formStr(fd, k);

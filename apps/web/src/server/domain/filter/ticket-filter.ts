@@ -1,5 +1,7 @@
 import "server-only";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
 import { str, type PhpVal } from "../../php/values";
@@ -281,7 +283,7 @@ export async function prepareSupportedMatches(executor: DbOrTx): Promise<void> {
     const id = await firstOf(type);
     if (id) formIds.push(id);
   }
-  formIds.push(...(await executor.selectFrom("form").select("id").where("type", "=", "G").orderBy("id").execute()).map((f) => f.id));
+  formIds.push(...(await executor.selectFrom("form").select("id").where("type", "=", FormType.GENERIC).orderBy("id").execute()).map((f) => f.id));
   const org = await firstOf("O");
   if (org) formIds.push(org);
   for (const formId of formIds) {

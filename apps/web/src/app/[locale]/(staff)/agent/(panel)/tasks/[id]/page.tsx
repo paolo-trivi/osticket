@@ -9,15 +9,15 @@ import TaskComposer from "@/components/people/tasks/TaskComposer";
 import ThreadEntryCard from "@/components/tickets/ThreadEntryCard";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { Dept, TaskModel } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { editFormFields } from "@/server/domain/directory/ui";
 import { TaskPerm } from "@/server/domain/staff/staff";
 import { activeTeams, assignableAgents } from "@/server/domain/task/model";
-import { checkTaskPerm, loadTask, TaskFlag } from "@/server/domain/task/tasks";
+import { checkTaskPerm, loadTask } from "@/server/domain/task/tasks";
 import { missingRequiredFields } from "@/server/domain/task/write";
 import { selectableDepts } from "@/server/domain/ticket/assign";
-import { DeptFlag } from "@/server/domain/ticket/status";
 import { loadThreadEntries } from "@/server/domain/ticket/ticket";
 import { agentTimeZone, formatDbDate, isoOf } from "@/server/format/datetime";
 
@@ -33,14 +33,14 @@ export default async function TaskPage({ params }: { params: Promise<{ locale: s
   const tt = await getTranslations("ticket");
   const tz = await agentTimeZone(agent);
   const entries = task.thread_id ? await loadThreadEntries(task.thread_id) : [];
-  const open = (task.flags & TaskFlag.ISOPEN) !== 0;
+  const open = (task.flags & TaskModel.ISOPEN) !== 0;
 
   // task-view.tmpl.php: azioni secondo il ruolo dell'agente nel reparto del task
   const role = agent.roleFor(task.dept_id);
   const has = (p: string) => role.perms.has(p);
   const cfg = await coreConfig();
   const dept = await db().selectFrom("department").select(["flags"]).where("id", "=", task.dept_id).executeTakeFirst();
-  const membersOnly = !!dept && (dept.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) !== 0;
+  const membersOnly = !!dept && (dept.flags & Dept.ASSIGN_MEMBERS_ONLY) !== 0;
   const isMember = agent.deptId === task.dept_id || agent.deptIds.includes(task.dept_id);
   const [agents, teams, depts, fields, missing] = await Promise.all([
     has(TaskPerm.ASSIGN) && open ? assignableAgents(db(), task.dept_id, agent, cfg) : Promise.resolve([]),

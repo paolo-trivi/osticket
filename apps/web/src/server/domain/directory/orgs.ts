@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { OrganizationModel, UserModel } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { searchable } from "../../format/text";
@@ -24,19 +27,12 @@ import {
 import { currentTimezone, FormInstance } from "../forms/entry";
 import { hasAnswerRow, parseField, type FieldDef } from "../forms/fields";
 import { isEmail } from "../forms/validator";
-import { createUser, loadUserCore, reindexUser, removeUserFromOrg, setUserOrganization, UserStatus, type DirResult } from "./users";
+import { createUser, loadUserCore, reindexUser, removeUserFromOrg, setUserOrganization, type DirResult } from "./users";
 
 /**
  * Organizzazioni (include/class.organization.php, include/ajax.orgs.php, scp/orgs.php): righe
  * organization, form_entry(_values), organization__cdata, _search; stato e membri.
  */
-const OrgFlag = {
-  COLLAB_ALL_MEMBERS: 0x0001,
-  COLLAB_PRIMARY_CONTACT: 0x0002,
-  ASSIGN_AGENT_MANAGER: 0x0004,
-  SHARE_PRIMARY_CONTACT: 0x0008,
-  SHARE_EVERYBODY: 0x0010,
-} as const;
 
 interface OrgCore {
   id: number;
@@ -86,11 +82,11 @@ export async function createOrg(ctx: WriteContext, input: Record<string, unknown
   if (!org) {
     const r = await tx
       .insertInto("organization")
-      .values({ name, status: OrgFlag.SHARE_PRIMARY_CONTACT, created: NOW, updated: NOW })
+      .values({ name, status: OrganizationModel.SHARE_PRIMARY_CONTACT, created: NOW, updated: NOW })
       .executeTakeFirstOrThrow();
     org = { id: Number(r.insertId) };
     // addDynamicData($vars): getClean() del form con il nome già ripulito, riletto come sorgente
-    const inst = new FormInstance({ id: form.id, type: "O", title: "", instructions: "", fields: form.fields }, input, 1, null, { timezone });
+    const inst = new FormInstance({ id: form.id, type: FormType.ORG, title: "", instructions: "", fields: form.fields }, input, 1, null, { timezone });
     await createEntry(tx, form, "O", "O", org.id, { ...inst.cleanVars(), name }, { timezone });
   }
   // organization.created
@@ -149,7 +145,7 @@ async function orgUpdate(
   const fields: Record<string, string> = {};
   for (const e of entries) {
     Object.assign(fields, await validateInput(e.fields, input, () => true, ctx.cfg, { timezone }));
-    if (e.form_type === "O") {
+    if (e.form_type === FormType.ORG) {
       const clean = nameOf(e.fields, input, timezone);
       if (clean) {
         const other = await tx.selectFrom("organization").select("id").where("name", "=", clean).executeTakeFirst();
@@ -162,7 +158,7 @@ async function orgUpdate(
 
   let answersSaved = false;
   for (const e of entries) {
-    if (e.form_type === "O" && e.fields.some((f) => f.name === "name")) {
+    if (e.form_type === FormType.ORG && e.fields.some((f) => f.name === "name")) {
       const name = nameOf(e.fields, input, timezone);
       if (!phpLooseEquals(org.name, name)) {
         await tx.updateTable("organization").set({ name }).where("id", "=", orgId).execute();
@@ -176,12 +172,12 @@ async function orgUpdate(
 
   let status = org.status;
   const flags: [keyof OrgProfileVars, number][] = [
-    ["collab-all-flag", OrgFlag.COLLAB_ALL_MEMBERS],
-    ["collab-pc-flag", OrgFlag.COLLAB_PRIMARY_CONTACT],
-    ["assign-am-flag", OrgFlag.ASSIGN_AGENT_MANAGER],
+    ["collab-all-flag", OrganizationModel.COLLAB_ALL_MEMBERS],
+    ["collab-pc-flag", OrganizationModel.COLLAB_PRIMARY_CONTACT],
+    ["assign-am-flag", OrganizationModel.ASSIGN_AGENT_MANAGER],
   ];
   for (const [k, flag] of flags) status = vars[k] ? status | flag : status & ~flag;
-  for (const [k, flag] of [["sharing-primary", OrgFlag.SHARE_PRIMARY_CONTACT], ["sharing-all", OrgFlag.SHARE_EVERYBODY]] as const) {
+  for (const [k, flag] of [["sharing-primary", OrganizationModel.SHARE_PRIMARY_CONTACT], ["sharing-all", OrganizationModel.SHARE_EVERYBODY]] as const) {
     status = vars.sharing === k ? status | flag : status & ~flag;
   }
 
@@ -190,7 +186,7 @@ async function orgUpdate(
     const ids = vars.contacts.map((c) => String(c));
     for (const m of members) {
       const want = ids.includes(String(m.id));
-      const next = want ? m.status | UserStatus.PRIMARY_ORG_CONTACT : m.status & ~UserStatus.PRIMARY_ORG_CONTACT;
+      const next = want ? m.status | UserModel.PRIMARY_ORG_CONTACT : m.status & ~UserModel.PRIMARY_ORG_CONTACT;
       if (next !== m.status) {
         await tx.updateTable("user").set({ status: next, updated: NOW }).where("id", "=", m.id).execute();
         await reindexUser(tx, m.id);
@@ -198,7 +194,7 @@ async function orgUpdate(
     }
   } else if (members.length) {
     // QuerySet::update senza updated né reindicizzazione
-    await tx.updateTable("user").set({ status: sql<number>`status & ${~UserStatus.PRIMARY_ORG_CONTACT}` }).where("org_id", "=", orgId).execute();
+    await tx.updateTable("user").set({ status: sql<number>`status & ${~UserModel.PRIMARY_ORG_CONTACT}` }).where("org_id", "=", orgId).execute();
   }
   return { ok: true, state: { org, status, answersSaved, entries } };
 }

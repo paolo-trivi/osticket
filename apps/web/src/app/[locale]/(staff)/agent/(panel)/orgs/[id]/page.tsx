@@ -9,6 +9,7 @@ import { RowSelect } from "@/components/people/directory/DirectoryButtons";
 import OrgActions, { OrgMembersBar } from "@/components/people/directory/OrgActions";
 import PersonTickets, { type TicketStateFilter } from "@/components/people/PersonTickets";
 import { Link } from "@/i18n/navigation";
+import { UserModel } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { listUsers, loadOrg } from "@/server/domain/directory/directory";
@@ -73,7 +74,7 @@ export default async function OrgPage({
           userFields,
           profile: { domain: org.domain ?? "", manager: org.manager ?? "", status: org.status },
           managers: { agents, teams },
-          members: members.map((m) => ({ id: m.id, name: m.name, primary: (m.status & 1) !== 0 })),
+          members: members.map((m) => ({ id: m.id, name: m.name, primary: (m.status & UserModel.PRIMARY_ORG_CONTACT) !== 0 })),
           users: allUsers,
           can,
         }}

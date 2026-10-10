@@ -3,6 +3,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { ChatIcon } from "@/icons";
 import { safeColor } from "@/lib/color";
+import { Ticket } from "@/lib/osticket/flags";
 import type { QueueColumnDef } from "@/server/domain/queue/engine";
 import type { TicketRow } from "@/server/domain/ticket/rows";
 import { formatDbDate, isoOf, type DateStyle } from "@/server/format/datetime";
@@ -174,10 +175,10 @@ export default function TicketCell({ column, row, tz, locale, assigneeName, staf
         );
         break;
       case "MergedFlagDecoration":
-        if (row.flags & 0x3) target.push(<span key={a.c} title="Merged">⇉</span>);
+        if (row.flags & (Ticket.COMBINE_THREADS | Ticket.SEPARATE_THREADS)) target.push(<span key={a.c} title="Merged">⇉</span>);
         break;
       case "LinkedFlagDecoration":
-        if (row.flags & 0x8) target.push(<span key={a.c} title="Linked">🔗</span>);
+        if (row.flags & Ticket.LINKED) target.push(<span key={a.c} title="Linked">🔗</span>);
         break;
     }
   }

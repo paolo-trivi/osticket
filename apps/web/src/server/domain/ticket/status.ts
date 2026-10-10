@@ -3,6 +3,9 @@ import "server-only";
 import { sql } from "kysely";
 import { DateTime } from "luxon";
 
+import { Dept, DynamicFormField, TaskModel, TicketStatus, Topic } from "@/lib/osticket/flags";
+import { FormType, ObjectType } from "@/lib/osticket/object-types";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
 import { deleteDraftsForNamespace } from "../drafts";
@@ -12,18 +15,6 @@ import type { WriteContext } from "./context";
 import { logTicketEvent } from "./events";
 import { SQL_NOW, type TicketColumns, type TicketRecord } from "./record";
 
-/** Flag di Dept (include/class.dept.php) e Topic usati nelle scritture. */
-export const DeptFlag = {
-  ASSIGN_MEMBERS_ONLY: 0x0001,
-  DISABLE_AUTO_CLAIM: 0x0002,
-  ACTIVE: 0x0004,
-  ARCHIVED: 0x0008,
-  ASSIGN_PRIMARY_ONLY: 0x0010,
-  DISABLE_REOPEN_AUTO_ASSIGN: 0x0020,
-} as const;
-/** Topic::FLAG_* (include/class.topic.php: CUSTOM_NUMBERS 0x1, ACTIVE 0x2, ARCHIVED 0x4) */
-const TopicFlag = { ACTIVE: 0x0002, ARCHIVED: 0x0004 } as const;
-
 export interface StatusRow {
   id: number;
   name: string;
@@ -31,9 +22,6 @@ export interface StatusRow {
   mode: number;
   properties: string | null;
 }
-
-/** TicketStatus::ENABLED (include/class.list.php: bit 0x1 di ticket_status.mode) */
-export const STATUS_ENABLED = 0x0001;
 
 export async function loadStatus(executor: DbOrTx, id: number): Promise<StatusRow | null> {
   const r = await executor.selectFrom("ticket_status").select(["id", "name", "state", "mode", "properties"]).where("id", "=", id).executeTakeFirst();
@@ -49,7 +37,7 @@ export async function loadStatus(executor: DbOrTx, id: number): Promise<StatusRo
  * disabilitato. Gli stati "archived" li rifiuta già Ticket::setStatus. Differenza voluta (permessi): doc 17 §3.
  */
 export function isSelectableStatus(status: StatusRow | null): status is StatusRow {
-  return !!status && (status.mode & STATUS_ENABLED) !== 0 && (status.state === "open" || status.state === "closed");
+  return !!status && (status.mode & TicketStatus.ENABLED) !== 0 && (status.state === "open" || status.state === "closed");
 }
 
 export async function stateOf(executor: DbOrTx, row: TicketColumns): Promise<string> {
@@ -78,10 +66,10 @@ export function statusIsReopenable(s: StatusRow): boolean {
 export async function ticketIsReopenable(executor: DbOrTx, row: TicketColumns, status: StatusRow): Promise<boolean> {
   if (!statusIsReopenable(status)) return false;
   const dept = await executor.selectFrom("department").select("flags").where("id", "=", row.dept_id).executeTakeFirst();
-  if (dept && dept.flags & DeptFlag.ARCHIVED) return false;
+  if (dept && dept.flags & Dept.ARCHIVED) return false;
   if (row.topic_id) {
     const topic = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", row.topic_id).executeTakeFirst();
-    if (topic && (topic.flags ?? 0) & TopicFlag.ARCHIVED) return false;
+    if (topic && (topic.flags ?? 0) & Topic.ARCHIVED) return false;
   }
   return true;
 }
@@ -112,7 +100,7 @@ export async function updateEstDueDate(ctx: WriteContext, rec: TicketRecord, cle
 /** Ticket::getNumOpenTasks */
 async function numOpenTasks(executor: DbOrTx, ticketId: number): Promise<number> {
   const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("task")}
-    WHERE object_type = 'T' AND object_id = ${ticketId} AND (flags & 1) != 0`.execute(executor);
+    WHERE object_type = 'T' AND object_id = ${ticketId} AND (flags & ${sql.lit(TaskModel.ISOPEN)}) != 0`.execute(executor);
   return Number(rows[0]?.n ?? 0);
 }
 
@@ -121,18 +109,18 @@ async function missingRequiredFields(executor: DbOrTx, row: TicketColumns): Prom
   const disabled: number[] = [];
   const forms = row.topic_id
     ? await executor.selectFrom("help_topic_form").select("extra").where("topic_id", "=", row.topic_id).execute()
-    : await executor.selectFrom("form_entry").select("extra").where("object_type", "=", "T").where("object_id", "=", row.ticket_id).execute();
+    : await executor.selectFrom("form_entry").select("extra").where("object_type", "=", FormType.TICKET).where("object_id", "=", row.ticket_id).execute();
   for (const f of forms) {
     const extra = phpJsonDecode<{ disable?: number[] }>(f.extra, {});
     if (Array.isArray(extra.disable)) disabled.push(...extra.disable.map(Number));
   }
-  // DynamicFormField::FLAG_CLOSE_REQUIRED = 0x0004, solo campi abilitati (FLAG_ENABLED = 0x0001).
+  // DynamicFormField::FLAG_CLOSE_REQUIRED, solo campi abilitati (FLAG_ENABLED).
   // Differenza voluta: nel PHP l'array di criteri `flags__hasbit` sovrascrive FLAG_ENABLED, quindi un campo
   // disabilitato ma "obbligatorio in chiusura" (che l'agente non può più compilare) bloccava per sempre la chiusura.
   const { rows } = await sql<{ n: number }>`SELECT COUNT(DISTINCT V.field_id) AS n FROM ${table("form_entry")} E
     JOIN ${table("form_entry_values")} V ON (V.entry_id = E.id)
     JOIN ${table("form_field")} F ON (F.id = V.field_id)
-    WHERE E.object_type = 'T' AND E.object_id = ${row.ticket_id} AND (F.flags & ${0x0004}) != 0 AND (F.flags & ${0x0001}) != 0
+    WHERE E.object_type = 'T' AND E.object_id = ${row.ticket_id} AND (F.flags & ${DynamicFormField.CLOSE_REQUIRED}) != 0 AND (F.flags & ${DynamicFormField.ENABLED}) != 0
       AND V.value IS NULL
     ${disabled.length ? sql`AND V.field_id NOT IN (${sql.join(disabled)})` : sql``}`.execute(executor);
   return Number(rows[0]?.n ?? 0);
@@ -160,11 +148,11 @@ async function referThreadToStaff(executor: DbOrTx, threadId: number, staffId: n
     .selectFrom("thread_referral")
     .select("id")
     .where("thread_id", "=", threadId)
-    .where("object_type", "=", "S")
+    .where("object_type", "=", ObjectType.STAFF)
     .where("object_id", "=", staffId)
     .executeTakeFirst();
   if (exists) return false;
-  await executor.insertInto("thread_referral").values({ thread_id: threadId, object_id: staffId, object_type: "S", created: NOW }).execute();
+  await executor.insertInto("thread_referral").values({ thread_id: threadId, object_id: staffId, object_type: ObjectType.STAFF, created: NOW }).execute();
   return true;
 }
 
@@ -245,7 +233,7 @@ export async function setTicketStatus(
       if (isClosed && current && (await ticketIsReopenable(tx, rec.row, current))) {
         const dept = await tx.selectFrom("department").select(["id", "flags"]).where("id", "=", rec.get("dept_id")).executeTakeFirst();
         const candidate = rec.get("staff_id") || (await lastRespondentId(tx, threadId));
-        const autoassign = !(dept && dept.flags & DeptFlag.DISABLE_REOPEN_AUTO_ASSIGN);
+        const autoassign = !(dept && dept.flags & Dept.DISABLE_REOPEN_AUTO_ASSIGN);
         let assignee = 0;
         if (autoassign && candidate) {
           const staff = await loadAgent(candidate, tx);

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { CustomQueue } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import type { MassResult } from "../admin/common";
 import { OrmRow } from "../admin/orm";
@@ -12,16 +14,6 @@ import { OrmRow } from "../admin/orm";
  * VerySimpleModel::delete, le code figlie e le colonne restano). SavedQueue::clearCounts svuota
  * solo la cache APCu del PHP.
  */
-export const QueueFlag = {
-  PUBLIC: 0x0001,
-  QUEUE: 0x0002,
-  DISABLED: 0x0004,
-  INHERIT_CRITERIA: 0x0008,
-  INHERIT_COLUMNS: 0x0010,
-  INHERIT_SORTING: 0x0020,
-  INHERIT_DEF_SORT: 0x0040,
-  INHERIT_EXPORT: 0x0080,
-} as const;
 
 export async function listQueues(executor: DbOrTx) {
   const rows = await executor
@@ -63,7 +55,7 @@ export async function massQueues(executor: DbOrTx, action: QueueMassAction, ids:
     const q = OrmRow.from("queue", "id", r as unknown as Record<string, unknown>, { touchUpdated: true });
     if (action === "enable" || action === "disable") {
       const flags = q.num("flags");
-      q.set("flags", action === "disable" ? flags | QueueFlag.DISABLED : flags & ~QueueFlag.DISABLED);
+      q.set("flags", action === "disable" ? flags | CustomQueue.DISABLED : flags & ~CustomQueue.DISABLED);
       await q.save(executor);
       updated++;
     } else if (r.id === defaultId) {

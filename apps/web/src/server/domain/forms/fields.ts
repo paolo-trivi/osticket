@@ -2,6 +2,8 @@ import "server-only";
 
 import { DateTime } from "luxon";
 
+import { DynamicFormField } from "@/lib/osticket/flags";
+
 import type { ConfigNamespace } from "../../config/config";
 import { htmlChars, phpStripTags, stripTags } from "../../format/html";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
@@ -15,26 +17,6 @@ import { isFormula, isIp, isPhone, isValidEmail, phpIsNumeric } from "./validato
  * (`form_entry_values.value` / `value_id`), testo per filtri, indice e cdata. Unica definizione dei
  * campi per ticket, task, utenti, organizzazioni e azienda; i validatori sono in ./validator.
  */
-
-/** DynamicFormField::FLAG_* */
-export const FieldFlag = {
-  ENABLED: 0x00001,
-  EXT_STORED: 0x00002,
-  CLOSE_REQUIRED: 0x00004,
-  MASK_CHANGE: 0x00010,
-  MASK_DELETE: 0x00020,
-  MASK_EDIT: 0x00040,
-  MASK_DISABLE: 0x00080,
-  CLIENT_VIEW: 0x00100,
-  CLIENT_EDIT: 0x00200,
-  CLIENT_REQUIRED: 0x00400,
-  AGENT_VIEW: 0x01000,
-  AGENT_EDIT: 0x02000,
-  AGENT_REQUIRED: 0x04000,
-  MASK_REQUIRE: 0x10000,
-  MASK_VIEW: 0x20000,
-  MASK_NAME: 0x40000,
-} as const;
 
 /** Contesto di compilazione: agente (staff) o cliente (web). */
 export type FormAudience = "staff" | "client";
@@ -60,16 +42,16 @@ export function hasFlag(f: Pick<FieldDef, "flags">, flag: number): boolean {
   return (f.flags & flag) !== 0;
 }
 function isEnabled(f: FieldDef): boolean {
-  return !f.disabled && hasFlag(f, FieldFlag.ENABLED);
+  return !f.disabled && hasFlag(f, DynamicFormField.ENABLED);
 }
 export function isVisibleTo(f: FieldDef, who: FormAudience): boolean {
-  return isEnabled(f) && hasFlag(f, who === "staff" ? FieldFlag.AGENT_VIEW : FieldFlag.CLIENT_VIEW);
+  return isEnabled(f) && hasFlag(f, who === "staff" ? DynamicFormField.AGENT_VIEW : DynamicFormField.CLIENT_VIEW);
 }
 export function isEditableTo(f: FieldDef, who: FormAudience): boolean {
-  return isEnabled(f) && hasFlag(f, who === "staff" ? FieldFlag.AGENT_EDIT : FieldFlag.CLIENT_EDIT);
+  return isEnabled(f) && hasFlag(f, who === "staff" ? DynamicFormField.AGENT_EDIT : DynamicFormField.CLIENT_EDIT);
 }
 export function isRequiredFor(f: FieldDef, who: FormAudience): boolean {
-  return hasFlag(f, who === "staff" ? FieldFlag.AGENT_REQUIRED : FieldFlag.CLIENT_REQUIRED);
+  return hasFlag(f, who === "staff" ? DynamicFormField.AGENT_REQUIRED : DynamicFormField.CLIENT_REQUIRED);
 }
 /** Scorciatoie per il contesto agente (directory, task, azienda). */
 export const isVisibleToStaff = (f: FieldDef) => isVisibleTo(f, "staff");
@@ -81,7 +63,7 @@ export function hasData(f: FieldDef): boolean {
 }
 /** FormField::isStorable */
 export function isStorable(f: FieldDef): boolean {
-  return (f.flags & FieldFlag.EXT_STORED) === 0;
+  return (f.flags & DynamicFormField.EXT_STORED) === 0;
 }
 /** ThreadEntryField è "presentation only": il corpo diventa il primo messaggio */
 export function isPresentationOnly(f: FieldDef): boolean {

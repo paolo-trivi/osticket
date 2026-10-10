@@ -2,13 +2,15 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { TaskModel, ThreadEntry } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { table, type DbOrTx } from "../../db";
 import { deptVar, entryVar, FormattedDate, loadStaffInfo, staffVar, type EntryInfo } from "../../mail/objects";
 import { VarBag, VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { answerToString } from "../../mail/objects";
 import type { TaskDbRow } from "./model";
-import { TaskFlag } from "./tasks";
 
 /**
  * Oggetto `task` dei template email (Task::getVar / asVar, include/class.task.php:1095):
@@ -25,11 +27,11 @@ export async function taskVar(executor: DbOrTx, task: TaskDbRow, cfg: ConfigName
       JOIN ${table("form_field")} FF ON (FF.id = V.field_id)
       WHERE FE.object_type = 'A' AND FE.object_id = ${task.id} ORDER BY FE.sort, FF.sort`.execute(executor),
     sql<{ body: string }>`SELECT E.body FROM ${table("thread_entry")} E JOIN ${table("thread")} T ON (T.id = E.thread_id)
-      WHERE T.object_type = 'A' AND T.object_id = ${task.id} AND E.type = 'M' AND (E.flags & 1) != 0 ORDER BY E.id LIMIT 1`.execute(executor),
+      WHERE T.object_type = 'A' AND T.object_id = ${task.id} AND E.type = 'M' AND (E.flags & ${sql.lit(ThreadEntry.ORIGINAL_MESSAGE)}) != 0 ORDER BY E.id LIMIT 1`.execute(executor),
   ]);
   const ans = new Map<string, string>();
   for (const r of answers.rows) if (r.name && !ans.has(r.name.toLowerCase())) ans.set(r.name.toLowerCase(), answerToString(r.type, r.value));
-  const open = (task.flags & TaskFlag.ISOPEN) !== 0;
+  const open = (task.flags & TaskModel.ISOPEN) !== 0;
   const staffV = staff ? staffVar(staff, cfg) : null;
   const teamV = team ? new VarBag({ name: team.name, id: team.team_id }, team.name) : null;
   const assigned = [staffV ? staffV.asVar(new VariableReplacer()) : "", team?.name ?? ""].filter(Boolean).join("/");
@@ -49,7 +51,7 @@ export async function taskVar(executor: DbOrTx, task: TaskDbRow, cfg: ConfigName
     subject: () => title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"),
     staff_link: () => `${base}/scp/tasks.php?id=${task.id}`,
     ticket_link: () =>
-      task.object_type === "T" && task.object_id ? `${base}/scp/tickets.php?id=${task.object_id}#tasks` : `${base}/scp/tasks.php?id=${task.id}`,
+      task.object_type === ObjectType.TICKET && task.object_id ? `${base}/scp/tickets.php?id=${task.object_id}#tasks` : `${base}/scp/tasks.php?id=${task.id}`,
     create_date: () => date(task.created),
     due_date: () => date(task.duedate),
     close_date: () => (open ? false : date(task.closed)),

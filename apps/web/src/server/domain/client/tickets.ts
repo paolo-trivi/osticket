@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql, type SqlBool } from "kysely";
 
+import { DynamicFormField, Ticket } from "@/lib/osticket/flags";
+import { AttachmentType, FormType, ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { db, table, type DbOrTx } from "../../db";
 import { phpLooseEquals } from "../../php/values";
@@ -9,11 +12,12 @@ import { buildMatch } from "../queue/search";
 import { upsertCdata } from "../forms/cdata";
 import { cleanFromDb, fieldSearchKeys, fieldToDatabase, fieldToString, hasData, isEditableTo, isPresentationOnly, isRequiredFor, isStorable, isVisibleTo, parseField, validateField, type CleanValue, type FieldDef, type FieldErrorCode } from "../forms/fields";
 import { loadFormDef } from "../forms/load";
+import { findTicketThreadId, ticketThreadId } from "../thread/ids";
 import { logTicketEvent, type Actor } from "../ticket/events";
 import { TicketRecord } from "../ticket/record";
 import { ticketIsReopenable, loadStatus } from "../ticket/status";
 import { loadThreadEntries, loadThreadEvents, type ThreadEntryView, type ThreadEventView } from "../ticket/ticket";
-import { mergeTypeOf, TicketFlag } from "../ticket/merge-flags";
+import { mergeTypeOf } from "../ticket/merge-flags";
 import type { ClientIdentity } from "./identity";
 
 /**
@@ -27,7 +31,7 @@ export async function clientCanAccess(client: ClientIdentity, ticketId: number, 
   const t = await executor
     .selectFrom("ticket as t")
     .innerJoin("user as u", "u.id", "t.user_id")
-    .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", "T"))
+    .leftJoin("thread as th", (j) => j.onRef("th.object_id", "=", "t.ticket_id").on("th.object_type", "=", ObjectType.TICKET))
     .select(["t.ticket_id", "t.user_id", "t.flags", "u.org_id", "th.id as thread_id"])
     .where("t.ticket_id", "=", ticketId)
     .executeTakeFirst();
@@ -42,7 +46,7 @@ export async function clientCanAccess(client: ClientIdentity, ticketId: number, 
     if (c) return true;
   }
   // Ticket padre di un merge non "visual": accesso tramite uno dei figli
-  if (t.flags & TicketFlag.PARENT && mergeTypeOf(t.flags) !== "visual") {
+  if (t.flags & Ticket.PARENT && mergeTypeOf(t.flags) !== "visual") {
     const children = await executor.selectFrom("ticket").select("ticket_id").where("ticket_pid", "=", t.ticket_id).orderBy("sort").execute();
     for (const ch of children) if (await clientCanAccess({ ...client, guest: null }, ch.ticket_id, executor)) return true;
   }
@@ -221,8 +225,7 @@ export async function loadClientTicketView(cfg: ConfigNamespace, client: ClientI
     const d = await executor.selectFrom("department").select("name").where("id", "=", cfg.int("default_dept_id")).executeTakeFirst();
     dept = d?.name ?? "";
   }
-  const thread = await executor.selectFrom("thread").select("id").where("object_type", "=", "T").where("object_id", "=", ticketId).executeTakeFirst();
-  const threadId = thread?.id ?? 0;
+  const threadId = (await findTicketThreadId(executor, ticketId)) ?? 0;
   const rec = await TicketRecord.load(executor, ticketId);
   const status = await loadStatus(executor, rec!.get("status_id"));
   const closed = status?.state === "closed";
@@ -230,7 +233,7 @@ export async function loadClientTicketView(cfg: ConfigNamespace, client: ClientI
   const isChild = !!t.ticket_pid && mergeTypeOf(t.flags) !== "visual";
 
   // Campi visibili ai clienti con un valore (DynamicFormEntry::forTicket)
-  const entries = await executor.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", "T").where("object_id", "=", ticketId).orderBy("sort").orderBy("id").execute();
+  const entries = await executor.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", FormType.TICKET).where("object_id", "=", ticketId).orderBy("sort").orderBy("id").execute();
   const answers: ClientAnswer[] = [];
   let canEdit = false;
   let phone = "";
@@ -241,7 +244,7 @@ export async function loadClientTicketView(cfg: ConfigNamespace, client: ClientI
     for (const f of def.fields) {
       if (isEditableTo(f, "client") && isStorable(f) && hasData(f) && !isPresentationOnly(f)) canEdit = true;
       const v = vals.find((x) => x.field_id === f.id);
-      if (!v || !isStorable(f) || ["subject", "priority"].includes(f.name) || !(f.flags & 0x100)) continue;
+      if (!v || !isStorable(f) || ["subject", "priority"].includes(f.name) || !(f.flags & DynamicFormField.CLIENT_VIEW)) continue;
       const text = fieldToString(f, cleanFromDb(f, v.value, v.value_id));
       if (text) answers.push({ formTitle: def.title, label: f.label, value: text });
     }
@@ -251,7 +254,7 @@ export async function loadClientTicketView(cfg: ConfigNamespace, client: ClientI
   phone = phoneRow.rows[0]?.value ?? "";
 
   const all = threadId ? await loadThreadEntries(threadId, executor) : [];
-  const visible = all.filter((e) => e.type === "M" || e.type === "R" || (e.user_id && e.user_id === client.id));
+  const visible = all.filter((e) => e.type === ThreadEntryType.MESSAGE || e.type === ThreadEntryType.RESPONSE || (e.user_id && e.user_id === client.id));
   const events = threadId ? (await loadThreadEvents(threadId, executor)).filter((e) => CLIENT_EVENTS.has(e.name)) : [];
   return {
     id: t.ticket_id,
@@ -282,14 +285,14 @@ export async function clientAttachment(client: ClientIdentity, key: string, exec
   const ref = await executor
     .selectFrom("file as f")
     .innerJoin("attachment as a", "a.file_id", "f.id")
-    .innerJoin("thread_entry as e", (j) => j.onRef("e.id", "=", "a.object_id").on("a.type", "=", "H"))
+    .innerJoin("thread_entry as e", (j) => j.onRef("e.id", "=", "a.object_id").on("a.type", "=", AttachmentType.THREAD_ENTRY))
     .innerJoin("thread as th", "th.id", "e.thread_id")
     .select(["f.id as file_id", "a.name", "th.object_id", "th.object_type", "e.type", "e.user_id"])
     .where("f.key", "=", key)
     .execute();
   for (const r of ref) {
-    if (r.object_type !== "T") continue;
-    if (!(r.type === "M" || r.type === "R" || r.user_id === client.id)) continue;
+    if (r.object_type !== ObjectType.TICKET) continue;
+    if (!(r.type === ThreadEntryType.MESSAGE || r.type === ThreadEntryType.RESPONSE || r.user_id === client.id)) continue;
     if (await clientCanAccess(client, r.object_id, executor)) return { fileId: r.file_id, name: r.name };
   }
   return null;
@@ -297,7 +300,7 @@ export async function clientAttachment(client: ClientIdentity, key: string, exec
 
 /** Form dei campi modificabili dal cliente (tickets.php a=edit) con i valori attuali */
 export async function clientEditForms(cfg: ConfigNamespace, ticketId: number, executor: DbOrTx = db()) {
-  const entries = await executor.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", "T").where("object_id", "=", ticketId).orderBy("sort").orderBy("id").execute();
+  const entries = await executor.selectFrom("form_entry").select(["id", "form_id"]).where("object_type", "=", FormType.TICKET).where("object_id", "=", ticketId).orderBy("sort").orderBy("id").execute();
   const out: { entryId: number; title: string; fields: FieldDef[]; values: Map<number, CleanValue> }[] = [];
   for (const e of entries) {
     const def = await loadFormDef(executor, cfg, { id: e.form_id }, "client");
@@ -368,10 +371,10 @@ export async function editTicketAsClient(tx: DbOrTx, cfg: ConfigNamespace, actor
   }
   const n = Object.keys(changes).length;
   if (n) {
-    const th = await tx.selectFrom("thread").select("id").where("object_type", "=", "T").where("object_id", "=", ticketId).executeTakeFirstOrThrow();
+    const thId = await ticketThreadId(tx, ticketId);
     // $ticket->logEvent('edited', ['fields' => $changes], User::lookup($thisclient->getId()))
     const who: Actor = actor?.kind === "user" ? { ...actor } : actor;
-    await logTicketEvent(tx, rec.row, th.id, actor, "edited", { fields: changes }, who ?? undefined);
+    await logTicketEvent(tx, rec.row, thId, actor, "edited", { fields: changes }, who ?? undefined);
   }
   return { ok: true, changes: n };
 }

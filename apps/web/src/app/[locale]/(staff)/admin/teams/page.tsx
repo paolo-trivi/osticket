@@ -4,8 +4,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import AdminList from "@/components/admin/AdminList";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { Team } from "@/lib/osticket/flags";
 import { db, table } from "@/server/db";
-import { TeamFlag } from "@/server/domain/admin/team";
 
 import { requireAdmin } from "../guard";
 import { massTeamsAction } from "./actions";
@@ -52,8 +52,8 @@ export default async function TeamsPage({ params, searchParams }: { params: Prom
             </Link>
           ),
           status: (
-            <Badge size="sm" color={r.flags & TeamFlag.ENABLED ? "success" : "light"}>
-              {r.flags & TeamFlag.ENABLED ? u("status.active") : u("status.disabled")}
+            <Badge size="sm" color={r.flags & Team.ENABLED ? "success" : "light"}>
+              {r.flags & Team.ENABLED ? u("status.active") : u("status.disabled")}
             </Badge>
           ),
           members: Number(r.members),

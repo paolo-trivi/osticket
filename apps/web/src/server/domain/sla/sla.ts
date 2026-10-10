@@ -1,5 +1,7 @@
 import "server-only";
 
+import { SLA } from "@/lib/osticket/flags";
+
 import { loadConfigNamespace, type ConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
@@ -11,13 +13,6 @@ import { addWorkingHours, loadBusinessHoursSchedule, phpRound, type ScheduleData
  * (Ticket::getSLADueDate($recompute=true), include/class.ticket.php).
  */
 
-const SlaFlag = {
-  ACTIVE: 0x0001,
-  ESCALATE: 0x0002,
-  NOALERTS: 0x0004,
-  TRANSIENT: 0x0008,
-} as const;
-
 interface SlaData {
   id: number;
   flags: number;
@@ -27,7 +22,7 @@ interface SlaData {
 }
 
 function slaIsActive(sla: Pick<SlaData, "flags">): boolean {
-  return (sla.flags & SlaFlag.ACTIVE) !== 0;
+  return (sla.flags & SLA.ACTIVE) !== 0;
 }
 
 export async function loadSla(id: number, executor: DbOrTx = db()): Promise<SlaData | null> {

@@ -3,6 +3,8 @@ import "server-only";
 import { DateTime } from "luxon";
 import { sql, type RawBuilder } from "kysely";
 
+import { Ticket } from "@/lib/osticket/flags";
+
 import { dbTimezone, toDb } from "../../db/time";
 import { installConfig } from "../../env";
 import type { Agent } from "../staff/staff";
@@ -45,10 +47,6 @@ interface CriteriaContext {
   /** fuso dell'utente (OsticketConfig::getTimezone) per i periodi */
   userTz: string;
 }
-
-const TICKET_FLAG_COMBINE = 0x0001;
-const TICKET_FLAG_SEPARATE = 0x0002;
-const TICKET_FLAG_LINKED = 0x0008;
 
 /** Ordinamento per nome agente secondo agent_name_format (Staff::getsortby). */
 function staffSortCols(alias: string, nameFormat: string): string[] {
@@ -325,14 +323,14 @@ export function criterionSql(
 
     case "merged":
       if (method === "set")
-        return sql`((T.flags & ${TICKET_FLAG_SEPARATE}) != 0 OR (T.flags & ${TICKET_FLAG_COMBINE}) != 0)`;
+        return sql`((T.flags & ${Ticket.SEPARATE_THREADS}) != 0 OR (T.flags & ${Ticket.COMBINE_THREADS}) != 0)`;
       if (method === "nset")
-        return sql`(NOT ((T.flags & ${TICKET_FLAG_SEPARATE}) != 0) AND NOT ((T.flags & ${TICKET_FLAG_COMBINE}) != 0))`;
+        return sql`(NOT ((T.flags & ${Ticket.SEPARATE_THREADS}) != 0) AND NOT ((T.flags & ${Ticket.COMBINE_THREADS}) != 0))`;
       return null;
 
     case "linked":
-      if (method === "set") return sql`((T.flags & ${TICKET_FLAG_LINKED}) != 0)`;
-      if (method === "nset") return sql`(NOT ((T.flags & ${TICKET_FLAG_LINKED}) != 0))`;
+      if (method === "set") return sql`((T.flags & ${Ticket.LINKED}) != 0)`;
+      if (method === "nset") return sql`(NOT ((T.flags & ${Ticket.LINKED}) != 0))`;
       return null;
   }
   return null;

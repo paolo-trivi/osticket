@@ -4,8 +4,10 @@
 
 ## Regole di progetto (prevalgono su quelle del template)
 - Leggere `README.md` (regole di coesistenza) e `../../docs/reverse-engineering/` prima di toccare il dominio.
+- Il doc 17 §3 (contratti di scrittura) si genera da `docs/contract/*.md` con `npm run docs:contracts`: modificare i file di contratto, mai il doc 17 a mano (la CI lo verifica).
 - Mai DDL sul DB osTicket. Ogni scrittura deve riprodurre le righe che scrive il PHP: verificare con il codice `../../legacy/include/class.*.php` e con l'harness differenziale.
 - Accesso al DB solo da `src/server/**` (file con `import "server-only"`), tramite i servizi in `src/server/domain/`.
+- Costanti di bit/flag e codici dei tipi di oggetto del PHP: solo da `src/lib/osticket/{flags,object-types}.ts` (mai numeri magici o copie locali).
 - Nomi tabella senza prefisso in Kysely (`selectFrom("ticket")`); non usare alias uguali a nomi di tabella; nelle query `sql```...``` usare `table("ticket")`.
 - Datetime: stringhe nel fuso del DB, conversioni solo con `src/server/db/time.ts`; `NOW` per created/updated.
 - Lingue: `it` (default) ed `en`; ogni testo visibile va in `src/messages/*.json`.
@@ -27,7 +29,7 @@ src/
 │   ├── shell/                    # AppShell, UserMenu, AuthLayout
 │   ├── ui/, form/, common/       # primitive grafiche
 ├── context/                      # Sidebar, Theme (chiaro/scuro), Branding (tema configurato)
-├── lib/                          # codice condiviso client/server: theme/ (schema, palette, css), fonts
+├── lib/                          # codice condiviso client/server: theme/ (schema, palette, css), fonts, osticket/ (flag e tipi di oggetto del PHP)
 ├── server/                       # SOLO server: db/, config/, auth/, domain/, theme/, format/, system/
 ├── i18n/, messages/              # it (default), en
 ├── layout/                       # AppSidebar, AppHeader, nav-types

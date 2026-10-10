@@ -1,5 +1,7 @@
 import "server-only";
 
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import type { TicketColumns } from "./record";
@@ -95,7 +97,7 @@ export async function logThreadEvent(
       data,
       username,
       uid: uidActor ? uidActor.id : null,
-      uid_type: uidActor?.kind === "user" ? "U" : "S",
+      uid_type: uidActor?.kind === "user" ? ObjectType.USER : ObjectType.STAFF,
       timestamp: NOW,
     })
     .execute();
@@ -115,7 +117,7 @@ export async function logTicketEvent(
   const staffId = actor?.kind === "staff" && !ticket.staff_id ? actor.id : ticket.staff_id;
   await logThreadEvent(executor, {
     threadId,
-    threadType: "T",
+    threadType: ObjectType.TICKET,
     state,
     data,
     actor,

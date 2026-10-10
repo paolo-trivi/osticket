@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, StaffDeptAccess } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
 import { sanitizeText } from "../../format/text";
@@ -15,17 +17,6 @@ import { OrmRow, SQL_NOW, setFlag } from "./orm";
  * (include/class.dept.php). Accessi estesi degli agenti in staff_dept_access (Dept::updateAccess),
  * ruolo dei membri primari salvato sulla riga staff (members->saveAll → Staff::save, updated=NOW).
  */
-export const DeptFlag = {
-  ASSIGN_MEMBERS_ONLY: 0x0001,
-  DISABLE_AUTO_CLAIM: 0x0002,
-  ACTIVE: 0x0004,
-  ARCHIVED: 0x0008,
-  ASSIGN_PRIMARY_ONLY: 0x0010,
-  DISABLE_REOPEN_AUTO_ASSIGN: 0x0020,
-} as const;
-
-/** StaffDeptAccess::FLAG_ALERTS */
-export const ACCESS_ALERTS = 0x0001;
 
 const DEPT_OPTS = { touchUpdated: true };
 const STAFF_OPTS = { touchUpdated: true };
@@ -54,7 +45,7 @@ async function deptIdByName(executor: DbOrTx, name: string, pid: PhpVal): Promis
 
 /** StaffDeptAccess::setAlerts: flags |= / &= ~FLAG_ALERTS (sulle righe nuove 0 non è "dirty"). */
 function setAlerts(row: OrmRow, alerts: PhpVal): void {
-  setFlag(row, ACCESS_ALERTS, truthy(alerts));
+  setFlag(row, StaffDeptAccess.ALERTS, truthy(alerts));
 }
 
 /**
@@ -143,7 +134,7 @@ export async function saveDept(executor: DbOrTx, deptId: number | null, vars: Ph
   const parentId = idOf(vars.pid);
   const parent = parentId ? await executor.selectFrom("department").select(["id", "pid", "flags"]).where("id", "=", parentId).executeTakeFirst() : undefined;
   if (parent) {
-    if (!((parent.flags ?? 0) & DeptFlag.ACTIVE)) errors.dept_id = "parent_inactive";
+    if (!((parent.flags ?? 0) & Dept.ACTIVE)) errors.dept_id = "parent_inactive";
     else if ((await deptFullPath(executor, parent.pid, parent.id)).includes(`/${id ?? ""}/`)) errors.pid = "parent_loop";
   }
   if (truthy(vars.sla_id) && !(await exists(executor, "sla", vars.sla_id))) errors.sla_id = "invalid";
@@ -177,39 +168,39 @@ export async function saveDept(executor: DbOrTx, deptId: number | null, vars: Ph
   dept.set("message_auto_response", isset(vars, "message_auto_response") ? str(vars.message_auto_response) : 1);
   // $this->flags = $vars['flags'] ?: 0 → i flag si ricostruiscono (e la colonna risulta sempre modificata)
   dept.set("flags", truthy(vars.flags) ? intval(vars.flags) : 0);
-  setFlag(dept, DeptFlag.ASSIGN_MEMBERS_ONLY, isset(vars, "assign_members_only"));
-  setFlag(dept, DeptFlag.DISABLE_AUTO_CLAIM, disableAutoClaim);
-  setFlag(dept, DeptFlag.DISABLE_REOPEN_AUTO_ASSIGN, isset(vars, "disable_reopen_auto_assign"));
+  setFlag(dept, Dept.ASSIGN_MEMBERS_ONLY, isset(vars, "assign_members_only"));
+  setFlag(dept, Dept.DISABLE_AUTO_CLAIM, disableAutoClaim);
+  setFlag(dept, Dept.DISABLE_REOPEN_AUTO_ASSIGN, isset(vars, "disable_reopen_auto_assign"));
   // FilterAction::setFilterFlags(FLAG_INACTIVE_DEPT): nessuna scrittura (vedi filters.ts)
 
   let status = str(vars.status);
   if (id && id === defaults.deptId) status = "active";
   switch (status) {
     case "active":
-      setFlag(dept, DeptFlag.ACTIVE, true);
-      setFlag(dept, DeptFlag.ARCHIVED, false);
+      setFlag(dept, Dept.ACTIVE, true);
+      setFlag(dept, Dept.ARCHIVED, false);
       break;
     case "disabled":
-      setFlag(dept, DeptFlag.ACTIVE, false);
-      setFlag(dept, DeptFlag.ARCHIVED, false);
+      setFlag(dept, Dept.ACTIVE, false);
+      setFlag(dept, Dept.ARCHIVED, false);
       break;
     case "archived":
-      setFlag(dept, DeptFlag.ACTIVE, false);
-      setFlag(dept, DeptFlag.ARCHIVED, true);
+      setFlag(dept, Dept.ACTIVE, false);
+      setFlag(dept, Dept.ARCHIVED, true);
       break;
   }
   switch (str(vars.assignment_flag)) {
     case "all":
-      setFlag(dept, DeptFlag.ASSIGN_MEMBERS_ONLY, false);
-      setFlag(dept, DeptFlag.ASSIGN_PRIMARY_ONLY, false);
+      setFlag(dept, Dept.ASSIGN_MEMBERS_ONLY, false);
+      setFlag(dept, Dept.ASSIGN_PRIMARY_ONLY, false);
       break;
     case "members":
-      setFlag(dept, DeptFlag.ASSIGN_MEMBERS_ONLY, true);
-      setFlag(dept, DeptFlag.ASSIGN_PRIMARY_ONLY, false);
+      setFlag(dept, Dept.ASSIGN_MEMBERS_ONLY, true);
+      setFlag(dept, Dept.ASSIGN_PRIMARY_ONLY, false);
       break;
     case "primary":
-      setFlag(dept, DeptFlag.ASSIGN_MEMBERS_ONLY, false);
-      setFlag(dept, DeptFlag.ASSIGN_PRIMARY_ONLY, true);
+      setFlag(dept, Dept.ASSIGN_MEMBERS_ONLY, false);
+      setFlag(dept, Dept.ASSIGN_PRIMARY_ONLY, true);
       break;
   }
   dept.set("path", await deptFullPath(executor, dept.get("pid"), id));
@@ -270,8 +261,8 @@ export async function massDept(executor: DbOrTx, action: DeptMassAction, ids: nu
       const rows = await executor.selectFrom("department").selectAll().where("id", "in", ids).where("id", "!=", def).execute();
       for (const r of rows) {
         const d = OrmRow.from("department", "id", r, DEPT_OPTS);
-        setFlag(d, DeptFlag.ARCHIVED, action === "archive");
-        setFlag(d, DeptFlag.ACTIVE, action === "enable");
+        setFlag(d, Dept.ARCHIVED, action === "archive");
+        setFlag(d, Dept.ACTIVE, action === "enable");
         await d.save(executor);
         num++;
       }

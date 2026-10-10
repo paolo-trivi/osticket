@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { RoleModel } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode, phpJsonEncode } from "../../format/php-json";
 import { sanitizeText } from "../../format/text";
@@ -13,7 +15,6 @@ import { OrmRow, SQL_NOW } from "./orm";
  * Ruoli: scp/roles.php → Role::update / Role::delete / mass_process (include/class.role.php) e
  * permessi JSON come RolePermission.
  */
-export const RoleFlag = { ENABLED: 0x0001 } as const;
 
 interface PermissionDef {
   group: string;
@@ -131,7 +132,7 @@ export async function massRoles(executor: DbOrTx, action: RoleMassAction, ids: n
   switch (action) {
     case "enable":
     case "disable": {
-      const expr = action === "enable" ? sql<number>`flags | ${RoleFlag.ENABLED}` : sql<number>`flags & ${~RoleFlag.ENABLED >>> 0}`;
+      const expr = action === "enable" ? sql<number>`flags | ${RoleModel.ENABLED}` : sql<number>`flags & ${~RoleModel.ENABLED >>> 0}`;
       const res = await executor.updateTable("role").set({ flags: expr }).where("id", "in", ids).executeTakeFirst();
       const num = Number(res.numUpdatedRows);
       return { ok: num > 0, num };

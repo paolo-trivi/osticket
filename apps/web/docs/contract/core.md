@@ -99,6 +99,10 @@ Destinatari:
 
 Esclusi: agenti non disponibili, l'autore, i duplicati per email e, se il ticket è chiuso, gli agenti senza accesso.
 
+Doppia sostituzione come il PHP (`staff-alerts.ts`): prima `note`/`activity`/`comments` (+ ticket, url, company), poi
+`%{recipient}` sul messaggio risultante, per cui anche le variabili scritte nel testo della nota (es. `%{ticket.number}`)
+vengono risolte (scenario in `ticket-post.diff.test.ts`). Anche `message.alert` (portale) usa lo stesso ciclo condiviso.
+
 Invio dall'email di alert (`alert_email_id`) con header `Auto-Submitted: auto-generated`.
 
 ## Email (`src/server/mail/mailer.ts`)

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { redirect } from "@/i18n/navigation";
 import type { PeopleActionState } from "@/components/people/types";
+import { TaskModel } from "@/lib/osticket/flags";
 import { formHtml, formIds, formNum, formStr } from "@/server/actions/form-data";
 import { nonce } from "@/server/actions/result";
 import { clientIp } from "@/server/auth/session";
@@ -12,7 +13,7 @@ import { currentAgent } from "@/server/auth/staff-auth";
 import { db } from "@/server/db";
 import { TaskPerm, type Agent } from "@/server/domain/staff/staff";
 import { loadTaskRow, type TaskDbRow } from "@/server/domain/task/model";
-import { checkTaskPerm, loadTask, TaskFlag, type TaskRow } from "@/server/domain/task/tasks";
+import { checkTaskPerm, loadTask, type TaskRow } from "@/server/domain/task/tasks";
 import {
   assignTask,
   claimTask,
@@ -111,7 +112,7 @@ export async function taskStatusAction(_prev: PeopleActionState, form: FormData)
 /** ajax.tasks.php:assign (solo task aperti: AssignmentForm del PHP) */
 export async function taskAssignAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.ASSIGN, async (ctx, task) => {
-    if ((task.flags & TaskFlag.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
+    if ((task.flags & TaskModel.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
     const raw = formStr(form, "assignee");
     const m = /^([st])(\d+)$/.exec(raw);
     if (!m) return { error: "unknown_assignee", nonce: nonce() };
@@ -122,7 +123,7 @@ export async function taskAssignAction(_prev: PeopleActionState, form: FormData)
 /** ajax.tasks.php:claim */
 export async function taskClaimAction(_prev: PeopleActionState, form: FormData): Promise<PeopleActionState> {
   return withTask(form, TaskPerm.ASSIGN, async (ctx, task) => {
-    if ((task.flags & TaskFlag.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
+    if ((task.flags & TaskModel.ISOPEN) === 0) return { error: "closed", nonce: nonce() };
     return fromResult(await claimTask(ctx, task, formHtml(form, "comments")));
   });
 }

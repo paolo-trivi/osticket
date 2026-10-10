@@ -3,15 +3,17 @@ import "server-only";
 import { sql } from "kysely";
 
 import { fieldKey, type DynamicFieldKind, type DynamicFieldView, type DynamicFormView } from "@/lib/forms/dynamic-field";
+import { Dept, SLA, Team, Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
 
 import type { ConfigNamespace } from "../../config/config";
 import { table, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import { safeHtml } from "../../format/sanitize";
 import { str, type PhpVal } from "../../php/values";
 import { isEditableTo, isRequiredFor, isVisibleTo, plainLabel, type FieldDef, type FormAudience } from "../forms/fields";
 import { loadFormDef, loadTopicForms, type FormDef } from "../forms/load";
 import type { Agent } from "../staff/staff";
-import { DeptFlag } from "./status";
 
 /**
  * Dati per i form di apertura dei ticket (pannello agenti e portale clienti): descrizione dei campi
@@ -88,7 +90,7 @@ export function formView(def: FormDef, audience: FormAudience): DynamicFormView 
 
 /** Form del ticket e dell'utente per il contesto indicato */
 export async function baseForms(executor: DbOrTx, cfg: ConfigNamespace, audience: FormAudience) {
-  const [ticket, user] = await Promise.all([loadFormDef(executor, cfg, { type: "T" }, audience), loadFormDef(executor, cfg, { type: "U" }, audience)]);
+  const [ticket, user] = await Promise.all([loadFormDef(executor, cfg, { type: FormType.TICKET }, audience), loadFormDef(executor, cfg, { type: FormType.USER }, audience)]);
   return { ticket: ticket ? formView(ticket, audience) : null, user: user ? formView(user, audience) : null };
 }
 
@@ -101,7 +103,7 @@ export async function topicFormsView(executor: DbOrTx, cfg: ConfigNamespace, top
   const disabled: number[] = [];
   const out: DynamicFormView[] = [];
   for (const F of forms) {
-    if (F.type === "T") disabled.push(...F.disabled);
+    if (F.type === FormType.TICKET) disabled.push(...F.disabled);
     else out.push(formView(F, audience));
   }
   return { forms: out, disabled };
@@ -132,10 +134,10 @@ export async function openTicketOptions(executor: DbOrTx, cfg: ConfigNamespace, 
     }
     return parts.join(" / ");
   };
-  // Topic::getHelpTopics: attivi (flag 0x0002), ordinati per nome completo o per ordinamento manuale
+  // Topic::getHelpTopics: attivi (Topic::FLAG_ACTIVE), ordinati per nome completo o per ordinamento manuale
   const manual = cfg.str("help_topic_sort_mode") === "m";
   const topics = topicsRaw
-    .filter((t) => (t.flags ?? 0) & 0x0002)
+    .filter((t) => (t.flags ?? 0) & Topic.ACTIVE)
     .map((t) => ({ id: t.topic_id, name: fullName(t.topic_id), sort: t.sort }))
     .sort((a, b) => (manual ? a.sort - b.sort : a.name.localeCompare(b.name)))
     .map(({ id, name }) => ({ id, name }));
@@ -143,12 +145,12 @@ export async function openTicketOptions(executor: DbOrTx, cfg: ConfigNamespace, 
   const deptRows = await executor.selectFrom("department").select(["id", "name", "flags", "pid"]).orderBy("name").execute();
   const deptName = new Map(deptRows.map((d) => [d.id, d.name]));
   const depts = deptRows
-    .filter((d) => d.flags & DeptFlag.ACTIVE)
+    .filter((d) => d.flags & Dept.ACTIVE)
     .map((d) => ({ id: d.id, name: d.pid && deptName.get(d.pid) ? `${deptName.get(d.pid)} / ${d.name}` : d.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const slas = (await executor.selectFrom("sla").select(["id", "name", "flags"]).orderBy("name").execute())
-    .filter((s) => s.flags & 0x0001)
+    .filter((s) => s.flags & SLA.ACTIVE)
     .map((s) => ({ id: s.id, name: s.name }));
 
   const nameOrder = ["last", "lastfirst", "legal"].includes(cfg.str("agent_name_format"));
@@ -158,7 +160,7 @@ export async function openTicketOptions(executor: DbOrTx, cfg: ConfigNamespace, 
     .map((s) => ({ id: s.staff_id, name: nameOrder ? `${s.lastname ?? ""}, ${s.firstname ?? ""}` : `${s.firstname ?? ""} ${s.lastname ?? ""}`.trim() }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const teams = (await executor.selectFrom("team").select(["team_id", "name", "flags"]).orderBy("name").execute())
-    .filter((t) => t.flags & 0x0001)
+    .filter((t) => t.flags & Team.ENABLED)
     .map((t) => ({ id: t.team_id, name: t.name }));
   const statuses = (await executor.selectFrom("ticket_status").select(["id", "name", "state", "sort"]).where("state", "in", ["open", "closed"]).orderBy("sort").orderBy("name").execute()).map(
     (s) => ({ id: s.id, name: s.name, state: s.state ?? "" }),
@@ -177,7 +179,7 @@ export interface UserHit {
 export async function searchUsers(executor: DbOrTx, q: string, limit = 10): Promise<UserHit[]> {
   const term = q.trim();
   if (term.length < 2) return [];
-  const like = `%${term.replace(/([%_\\])/g, "\\$1")}%`;
+  const like = `%${likeEscape(term)}%`;
   const { rows } = await sql<{ id: number; name: string; address: string | null }>`
     SELECT U.id, U.name, E.address FROM ${table("user")} U
     LEFT JOIN ${table("user_email")} E ON (E.id = U.default_email_id)

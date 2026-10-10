@@ -1,18 +1,21 @@
 import "server-only";
 
+import { ThreadEntry, Ticket } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import type { DbOrTx } from "../../db";
 import { phpJsonEncode } from "../../format/php-json";
 import { bodySearchable } from "../../format/text";
 import { replaceSearchRow } from "../search/index-writer";
 import { TicketPerm } from "../staff/staff";
-import { EntryFlag } from "../thread/write";
+import { currentTicketThreadId, ticketThread } from "../thread/ids";
 import { threadRefer } from "./assign";
 import { addTicketCollaborator } from "./collaborators";
 import type { WriteContext } from "./context";
 import { deleteTicket } from "./delete";
 import type { EditResult } from "./edit";
 import { logTicketEvent } from "./events";
-import { childTickets, isParentFlags, mergeTypeOf, setMergeType, setPid, TicketFlag, ticketThread } from "./merge-flags";
+import { childTickets, isParentFlags, mergeTypeOf, setMergeType, setPid } from "./merge-flags";
 import { TicketRecord } from "./record";
 import { setTicketStatus } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
@@ -57,12 +60,8 @@ interface MergeInput {
 
 const eventData = (other: TicketRecord) => ({ ticket: `Ticket #${other.get("number")}`, id: other.id });
 
-async function threadIdOf(tx: DbOrTx, ticketId: number): Promise<number> {
-  return (await ticketThread(tx, ticketId))?.id ?? 0;
-}
-
 async function logEvent(ctx: WriteContext, rec: TicketRecord, state: "merged" | "linked" | "unlinked" | "referred", data: Record<string, unknown>) {
-  const threadId = await threadIdOf(ctx.tx, rec.id);
+  const threadId = await currentTicketThreadId(ctx.tx, rec.id);
   if (threadId) await logTicketEvent(ctx.tx, rec.row, threadId, ctx.actor, state, data);
 }
 
@@ -70,7 +69,7 @@ async function logEvent(ctx: WriteContext, rec: TicketRecord, state: "merged" | 
 async function unlinkChild(ctx: WriteContext, child: TicketRecord, parent: TicketRecord): Promise<void> {
   setPid(child, null);
   child.set("sort", 1);
-  child.set("flags", child.get("flags") & ~TicketFlag.LINKED);
+  child.set("flags", child.get("flags") & ~Ticket.LINKED);
   await child.save();
   await logEvent(ctx, child, "unlinked", eventData(parent));
   await logEvent(ctx, parent, "unlinked", eventData(child));
@@ -99,7 +98,7 @@ async function unlinkTicket(ctx: WriteContext, rec: TicketRecord): Promise<void>
     await unlinkChild(ctx, rec, parent);
   }
   if (isParent && count === 0) {
-    parent.set("flags", parent.get("flags") & ~TicketFlag.LINKED & ~TicketFlag.PARENT);
+    parent.set("flags", parent.get("flags") & ~Ticket.LINKED & ~Ticket.PARENT);
     await parent.save();
   }
 }
@@ -154,7 +153,7 @@ async function manageMerge(ctx: WriteContext, input: MergeInput, ids: number[]):
         await setMergeType(parent, combine, true);
         await setMergeType(ticket, combine);
         if (parent.get("dept_id") !== ticket.get("dept_id") && !isLink) {
-          await threadRefer(tx, await threadIdOf(tx, parent.id), "D", ticket.get("dept_id"));
+          await threadRefer(tx, await currentTicketThreadId(tx, parent.id), "D", ticket.get("dept_id"));
           await logEvent(ctx, parent, "referred", { dept: ticket.get("dept_id") });
         }
       }
@@ -176,13 +175,13 @@ async function moveThreadEntries(tx: DbOrTx, fromThread: { id: number; object_id
   for (const e of entries) {
     const info = await tx.selectFrom("thread_entry_merge").select("thread_entry_id").where("thread_entry_id", "=", e.id).executeTakeFirst();
     if (!info) await tx.insertInto("thread_entry_merge").values({ thread_entry_id: e.id, data: phpJsonEncode({ thread: fromThread.id }) }).execute();
-    await tx.updateTable("thread_entry").set({ flags: e.flags | EntryFlag.CHILD, thread_id: toThreadId }).where("id", "=", e.id).execute();
+    await tx.updateTable("thread_entry").set({ flags: e.flags | ThreadEntry.CHILD, thread_id: toThreadId }).where("id", "=", e.id).execute();
     if (e.staff_id || e.user_id) await replaceSearchRow(tx, "H", e.id, bodySearchable(e.body, e.format === "text" ? "text" : "html"), e.title ?? "");
   }
   const num = number ?? (await tx.selectFrom("ticket").select("number").where("ticket_id", "=", fromThread.object_id).executeTakeFirst())?.number ?? null;
   await tx
     .updateTable("thread")
-    .set({ object_type: "C", extra: phpJsonEncode({ ticket_id: parentTicketId, number: num }) })
+    .set({ object_type: ObjectType.CHILD_TICKET, extra: phpJsonEncode({ ticket_id: parentTicketId, number: num }) })
     .where("id", "=", fromThread.id)
     .execute();
 }
@@ -219,14 +218,14 @@ export async function mergeTickets(ctx: WriteContext, input: MergeInput): Promis
   }
   if (!parent || mergeTypeOf(parent.get("flags")) === "visual") return { ok: true, parentId: parent?.id };
 
-  const parentThreadId = await threadIdOf(tx, parent.id);
+  const parentThreadId = await currentTicketThreadId(tx, parent.id);
   for (let child of children) {
     if (input.participants === "all") {
       const collabs = await tx
         .selectFrom("thread_collaborator as c")
         .innerJoin("user as u", "u.id", "c.user_id")
         .select("c.user_id")
-        .where("c.thread_id", "=", await threadIdOf(tx, child.id))
+        .where("c.thread_id", "=", await currentTicketThreadId(tx, child.id))
         .orderBy("u.name")
         .execute();
       for (const c of collabs) {
@@ -255,7 +254,7 @@ export async function mergeTickets(ctx: WriteContext, input: MergeInput): Promis
     await setMergeType(child, input.combine);
     // Stato di chiusura del figlio (chiusura forzata, nessun commento)
     if (input.childStatusId) {
-      await setTicketStatus(ctx, child, await threadIdOf(tx, child.id), input.childStatusId, { setClosingAgent: true, forceClose: true });
+      await setTicketStatus(ctx, child, await currentTicketThreadId(tx, child.id), input.childStatusId, { setClosingAgent: true, forceClose: true });
     }
     if (input.parentStatusId) {
       parent = (await TicketRecord.load(tx, parent.id, true))!;

@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Lock } from "@/lib/osticket/flags";
+
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { randCode } from "../../mail/message-id";
@@ -12,7 +14,6 @@ import { TicketRecord } from "./record";
  * ajax.tickets.php): righe in `lock`, collegate a ticket.lock_id. Modalità core.ticket_lock:
  * 0 disattivato, 1 alla visualizzazione, 2 all'attività (default); durata core.autolock_minutes.
  */
-const LockMode = { DISABLED: 0, ON_VIEW: 1, ON_ACTIVITY: 2 } as const;
 
 const LOCK_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_=";
 
@@ -26,7 +27,7 @@ interface LockInfo {
 }
 
 export function lockEnabled(cfg: ConfigNamespace): boolean {
-  return cfg.int("ticket_lock", LockMode.ON_ACTIVITY) !== LockMode.DISABLED && cfg.int("autolock_minutes") > 0;
+  return cfg.int("ticket_lock", Lock.MODE_ON_ACTIVITY) !== Lock.MODE_DISABLED && cfg.int("autolock_minutes") > 0;
 }
 
 async function lockRow(executor: DbOrTx, lockId: number): Promise<LockInfo | null> {

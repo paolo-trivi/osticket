@@ -501,7 +501,8 @@ OST_DIFF_TAG=ticketedit MAILPIT_SMTP_PORT=1027 MAILPIT_HTTP_PORT=8027 \
 |---|---|---|
 | Dominio | `src/server/domain/ticket/edit.ts` | `updateTicket`, `updateTicketField`, `changeTicketOwner`, `selectSlaId`, helper `phpAssocJson`, `userDateToDb` |
 | Dominio | `src/server/domain/ticket/delete.ts` | `deleteTicket` (Ticket::delete), `deleteThread`, `deleteOrphanFiles`, `ticketHardDelete` (aggancio di `changeTicketStatus`) |
-| Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `ticketThread` (thread T o C), `childTickets` |
+| Dominio | `src/server/domain/ticket/merge-flags.ts` | flag di merge, `setMergeType`, `setPid`, `childTickets` |
+| Dominio | `src/server/domain/thread/ids.ts` | thread di ticket e task: `ticketThread` (thread T o C), `currentTicketThreadId`, `ticketThreadId`, `taskThreadId` |
 | Dominio | `src/server/domain/ticket/merge.ts` | `mergeTickets` (manageMerge + merge), `unlinkTicket(s)`, `relatedTickets` |
 | Dominio | `src/server/domain/ticket/collaborators.ts` | `addTicketCollaborator`, `addCollaborator`, `updateCollaborators` |
 | Dominio | `src/server/domain/ticket/overdue.ts` | `markTicketOverdue` (+ avvisi `ticket.overdue`), `setTicketEmailBan`, `emailInBanList` |

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { FormType } from "@/lib/osticket/object-types";
 import { formFlag, formHtml, formIds, formNum, formStr, formStrs } from "@/server/actions/form-data";
 import { clientIp } from "@/server/auth/session";
 import { currentAgent } from "@/server/auth/staff-auth";
@@ -56,7 +57,7 @@ const ticketIdOf = (form: FormData) => formNum(form, "ticketId");
 /** Valori dei campi dei form del ticket (chiavi `f.<id>`) → $_POST per nome del campo. */
 async function ticketFormVars(ticketId: number, form: FormData): Promise<Record<string, unknown>> {
   const cfg = await coreConfig();
-  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", "T").where("object_id", "=", ticketId).execute();
+  const entries = await db().selectFrom("form_entry").select("form_id").where("object_type", "=", FormType.TICKET).where("object_id", "=", ticketId).execute();
   const defs = [];
   for (const e of entries) defs.push(await loadFormDef(db(), cfg, { id: e.form_id }, "staff"));
   return formDataToVars(form, defs);

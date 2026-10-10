@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Link } from "@/i18n/navigation";
 import { CloseLineIcon, PadlockIcon } from "@/icons";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
 import { dropBlock } from "@/server/domain/board/grouping";
 import type {
   BoardCard,
@@ -239,11 +240,11 @@ export default function BoardPreviewPanel({
                     key={e.id}
                     className={cn(
                       "rounded-xl border p-3",
-                      e.type === "R" &&
+                      e.type === ThreadEntryType.RESPONSE &&
                         "border-brand-100 bg-brand-25 dark:border-brand-500/20 dark:bg-brand-500/5",
-                      e.type === "N" &&
+                      e.type === ThreadEntryType.NOTE &&
                         "border-warning-100 bg-warning-25 dark:border-warning-500/20 dark:bg-warning-500/5",
-                      e.type === "M" &&
+                      e.type === ThreadEntryType.MESSAGE &&
                         "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-white/2",
                     )}
                   >

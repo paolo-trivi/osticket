@@ -2,6 +2,8 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { OrganizationModel, UserAccountStatus, UserModel } from "@/lib/osticket/flags";
+
 import type { ConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
@@ -12,15 +14,6 @@ import { isEmail } from "../forms/validator";
  * Utente del portale clienti: equivalente di EndUser / ClientSession / ClientAccount
  * (include/class.client.php, class.user.php, class.usersession.php).
  */
-export const AccountStatus = {
-  CONFIRMED: 0x0001,
-  LOCKED: 0x0002,
-  REQUIRE_PASSWD_RESET: 0x0004,
-  FORBID_PASSWD_RESET: 0x0008,
-} as const;
-
-/** Organization::SHARE_* */
-const OrgShare = { PRIMARY_CONTACT: 0x0008, EVERYBODY: 0x0010 } as const;
 
 export interface ClientAccountRow {
   id: number;
@@ -55,8 +48,8 @@ export interface ClientIdentity {
   canSeeOrgTickets: boolean;
 }
 
-export const accountIsConfirmed = (a: Pick<ClientAccountRow, "status">) => (a.status & AccountStatus.CONFIRMED) !== 0;
-export const accountIsLocked = (a: Pick<ClientAccountRow, "status">) => (a.status & AccountStatus.LOCKED) !== 0;
+export const accountIsConfirmed = (a: Pick<ClientAccountRow, "status">) => (a.status & UserAccountStatus.CONFIRMED) !== 0;
+export const accountIsLocked = (a: Pick<ClientAccountRow, "status">) => (a.status & UserAccountStatus.LOCKED) !== 0;
 /** UserAccount::isActive */
 export const accountIsActive = (a: Pick<ClientAccountRow, "status">) => accountIsConfirmed(a) && !accountIsLocked(a);
 
@@ -118,7 +111,7 @@ export async function loadClientIdentity(userId: number, guest: GuestAccess | nu
   if (!u) return null;
   const account = await loadClientAccount(executor, userId);
   const ost = u.ostatus ?? 0;
-  const canSeeOrgTickets = !!u.oid && (!!(ost & OrgShare.EVERYBODY) || (!!(u.status & 0x0001) && !!(ost & OrgShare.PRIMARY_CONTACT)));
+  const canSeeOrgTickets = !!u.oid && (!!(ost & OrganizationModel.SHARE_EVERYBODY) || (!!(u.status & UserModel.PRIMARY_ORG_CONTACT) && !!(ost & OrganizationModel.SHARE_PRIMARY_CONTACT)));
   return { id: u.id, name: u.name, email: u.address ?? "", orgId: u.org_id, status: u.status, account, guest, canSeeOrgTickets };
 }
 

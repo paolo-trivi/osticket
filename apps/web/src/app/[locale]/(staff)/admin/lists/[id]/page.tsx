@@ -9,9 +9,10 @@ import Callout from "@/components/common/Callout";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { DynamicListItem } from "@/lib/osticket/flags";
 import { db } from "@/server/db";
 import { htmlDecode } from "@/server/format/html";
-import { ItemStatus, listDetail } from "@/server/domain/adminsys/list";
+import { listDetail } from "@/server/domain/adminsys/list";
 
 import { requireAdmin } from "../../guard";
 import { massListItemAction, saveListAction, saveListItemAction } from "../actions";
@@ -65,7 +66,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
               rows={detail.items.map((i) => ({
                 key: i.id,
                 cells: {
-                  sel: <input type="checkbox" name="ids[]" value={i.id} disabled={!!(i.status & ItemStatus.INTERNAL)} className="h-4 w-4 accent-brand-500" aria-label={i.value} />,
+                  sel: <input type="checkbox" name="ids[]" value={i.id} disabled={!!(i.status & DynamicListItem.INTERNAL)} className="h-4 w-4 accent-brand-500" aria-label={i.value} />,
                   value: (
                     <Link href={`/admin/lists/${listId}/items/${i.id}`} className="font-medium text-brand-500 hover:text-brand-600">
                       {i.value}
@@ -74,8 +75,8 @@ export default async function ListPage({ params, searchParams }: { params: Promi
                   extra: i.extra ?? "—",
                   sort: i.sort,
                   status: (
-                    <Badge size="sm" color={i.status & ItemStatus.ENABLED ? "success" : "light"}>
-                      {i.status & ItemStatus.ENABLED ? c("active") : c("disabled")}
+                    <Badge size="sm" color={i.status & DynamicListItem.ENABLED ? "success" : "light"}>
+                      {i.status & DynamicListItem.ENABLED ? c("active") : c("disabled")}
                     </Badge>
                   ),
                 },

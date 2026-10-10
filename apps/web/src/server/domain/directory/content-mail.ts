@@ -1,5 +1,7 @@
 import "server-only";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { stripTags } from "../../format/html";
@@ -38,7 +40,7 @@ export async function userTemplateVar(executor: DbOrTx, userId: number, cfg: Con
     .innerJoin("form_entry_values as v", "v.entry_id", "fe.id")
     .innerJoin("form_field as ff", "ff.id", "v.field_id")
     .select(["ff.name", "ff.type", "v.value"])
-    .where("fe.object_type", "=", "U")
+    .where("fe.object_type", "=", FormType.USER)
     .where("fe.object_id", "=", userId)
     .orderBy("fe.sort")
     .orderBy("ff.sort")

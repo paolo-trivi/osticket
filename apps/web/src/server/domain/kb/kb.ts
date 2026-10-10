@@ -2,8 +2,11 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import { coreConfig } from "../../config/config";
 import { db, table, type DbOrTx } from "../../db";
+import { likeEscape } from "../../db/like";
 import type { DbDateTime } from "../../db/schema.gen";
 import { htmlToPlain } from "../../mail/mailer";
 import { GlobalPerm, type Agent } from "../staff/staff";
@@ -20,8 +23,6 @@ import { faqTopicMap, faqVisibleForTopics, loadHelpTopics, staffTopicIds } from 
 /** Category::VISIBILITY_* e FAQ::VISIBILITY_*: 0 interna/privata, 1 pubblica, 2 in evidenza */
 type KbVisibility = 0 | 1 | 2;
 const visibilityOf = (v: number | null | undefined): KbVisibility => (v === 1 || v === 2 ? v : 0);
-
-const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 // ---------------------------------------------------------------------------------------------
 // Allegati di oggetti KB (attachment.type 'F' FAQ, 'C' risposta predefinita)
@@ -400,7 +401,7 @@ export async function listCanned(
       eb
         .selectFrom("attachment as a")
         .select(eb.fn.countAll<number>().as("n"))
-        .where("a.type", "=", "C")
+        .where("a.type", "=", AttachmentType.CANNED)
         .whereRef("a.object_id", "=", "c.canned_id")
         .where("a.inline", "=", 0)
         .as("files"),

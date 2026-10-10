@@ -2,13 +2,16 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { FormType, ObjectType } from "@/lib/osticket/object-types";
+
 import { table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
 import { deleteSearchRow } from "../search/index-writer";
 import { logSystem } from "../../system/syslog";
+import { ticketThread } from "../thread/ids";
 import type { WriteContext } from "./context";
 import { logTicketEvent } from "./events";
-import { childTickets, isParentFlags, setMergeType, setPid, ticketThread } from "./merge-flags";
+import { childTickets, isParentFlags, setMergeType, setPid } from "./merge-flags";
 import { TicketRecord } from "./record";
 import { deleteTicketDrafts, roleOnRow, setTicketStatus, stateOf } from "./status";
 import type { TicketHardDelete } from "./ticket-state";
@@ -52,8 +55,8 @@ export async function deleteTicket(ctx: WriteContext, rec: TicketRecord, comment
       await setMergeType(child, 3);
       const childThread = await ticketThread(tx, child.id);
       // $childThread->object_type = 'T'; save() scrive solo se cambia
-      if (childThread && childThread.object_type !== "T") {
-        await tx.updateTable("thread").set({ object_type: "T" }).where("id", "=", childThread.id).execute();
+      if (childThread && childThread.object_type !== ObjectType.TICKET) {
+        await tx.updateTable("thread").set({ object_type: ObjectType.TICKET }).where("id", "=", childThread.id).execute();
       }
     }
   }
@@ -71,7 +74,7 @@ export async function deleteTicket(ctx: WriteContext, rec: TicketRecord, comment
   if (thread) await logTicketEvent(tx, rec.row, thread.id, ctx.actor, "deleted");
 
   // DynamicFormEntry::delete: la riga dell'entry e poi le risposte una per una
-  const entries = await tx.selectFrom("form_entry").select("id").where("object_type", "=", "T").where("object_id", "=", id).orderBy("sort").orderBy("id").execute();
+  const entries = await tx.selectFrom("form_entry").select("id").where("object_type", "=", FormType.TICKET).where("object_id", "=", id).orderBy("sort").orderBy("id").execute();
   for (const e of entries) {
     await tx.deleteFrom("form_entry").where("id", "=", e.id).execute();
     await tx.deleteFrom("form_entry_values").where("entry_id", "=", e.id).execute();

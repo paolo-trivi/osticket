@@ -6,9 +6,9 @@ import MassBar from "@/components/admin/MassBar";
 import DataTable, { PageHeader } from "@/components/common/DataTable";
 import Badge from "@/components/ui/badge/Badge";
 import { Link } from "@/i18n/navigation";
+import { Dept } from "@/lib/osticket/flags";
 import { coreConfig } from "@/server/config/config";
 import { db, table } from "@/server/db";
-import { DeptFlag } from "@/server/domain/admin/dept";
 import { deptOptions } from "@/server/domain/admin/lookups";
 
 import { requireAdmin } from "../guard";
@@ -74,8 +74,8 @@ export default async function DepartmentsPage({ params, searchParams }: { params
                   </Link>
                 ),
                 status: (
-                  <Badge size="sm" color={d.flags & DeptFlag.ACTIVE ? "success" : d.flags & DeptFlag.ARCHIVED ? "warning" : "light"}>
-                    {u(`status.${d.flags & DeptFlag.ACTIVE ? "active" : d.flags & DeptFlag.ARCHIVED ? "archived" : "disabled"}`)}
+                  <Badge size="sm" color={d.flags & Dept.ACTIVE ? "success" : d.flags & Dept.ARCHIVED ? "warning" : "light"}>
+                    {u(`status.${d.flags & Dept.ACTIVE ? "active" : d.flags & Dept.ARCHIVED ? "archived" : "disabled"}`)}
                   </Badge>
                 ),
                 type: d.ispublic ? t("public") : t("private"),

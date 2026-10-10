@@ -1,5 +1,7 @@
 import "server-only";
 
+import { FormType } from "@/lib/osticket/object-types";
+
 import { loadConfigNamespace } from "../../config/config";
 import { NOW, type DbOrTx } from "../../db";
 import { phpLooseEquals, type PhpVars } from "../../php/values";
@@ -25,7 +27,7 @@ async function loadCompanyForm(executor: DbOrTx): Promise<Omit<CompanyForm, "inp
     .selectFrom("form_entry as e")
     .innerJoin("form as f", "f.id", "e.form_id")
     .select(["e.id", "e.form_id", "e.sort"])
-    .where("e.object_type", "=", "C")
+    .where("e.object_type", "=", FormType.COMPANY)
     .orderBy("e.id")
     .executeTakeFirst();
   if (row) {
@@ -33,9 +35,9 @@ async function loadCompanyForm(executor: DbOrTx): Promise<Omit<CompanyForm, "inp
     const vals = await executor.selectFrom("form_entry_values").select(["field_id", "value"]).where("entry_id", "=", row.id).execute();
     const byField = new Map(vals.map((v) => [v.field_id, v.value]));
     const answers = new Map(fields.map((f) => [f.id, { field: f, value: byField.get(f.id) ?? null, exists: byField.has(f.id) }]));
-    return { formId: row.form_id, fields, entry: { id: row.id, form_id: row.form_id, form_type: "C", sort: row.sort, fields, answers } };
+    return { formId: row.form_id, fields, entry: { id: row.id, form_id: row.form_id, form_type: FormType.COMPANY, sort: row.sort, fields, answers } };
   }
-  const form = await executor.selectFrom("form").select("id").where("type", "=", "C").orderBy("id").executeTakeFirst();
+  const form = await executor.selectFrom("form").select("id").where("type", "=", FormType.COMPANY).orderBy("id").executeTakeFirst();
   if (!form) return null;
   return { formId: form.id, fields: await loadFormFields(executor, form.id), entry: null };
 }
@@ -58,7 +60,7 @@ export async function saveCompanyForm(executor: DbOrTx, form: CompanyForm): Prom
   // DynamicForm::instanciate(): nuova entry con le risposte
   const res = await executor
     .insertInto("form_entry")
-    .values({ form_id: form.formId, object_type: "C", sort: 1, created: NOW, updated: NOW } as never)
+    .values({ form_id: form.formId, object_type: FormType.COMPANY, sort: 1, created: NOW, updated: NOW } as never)
     .executeTakeFirstOrThrow();
   const entryId = Number(res.insertId);
   for (const f of form.fields) {

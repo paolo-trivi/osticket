@@ -1,4 +1,6 @@
 import { renderThreadBody } from "@/components/common/thread-body";
+import { ThreadEntry } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
 import type { ThreadEntryView, ThreadEventView } from "@/server/domain/ticket/ticket";
 import { formatDbDate, isoOf } from "@/server/format/datetime";
 import { withBase } from "@/lib/base-path";
@@ -52,7 +54,7 @@ export default function PortalThread({
             id={`entry-${it.e.id}`}
             className={cn(
               "rounded-2xl border",
-              it.e.type === "R" ? "border-brand-200 bg-brand-25 dark:border-brand-800 dark:bg-brand-500/5" : "border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3",
+              it.e.type === ThreadEntryType.RESPONSE ? "border-brand-200 bg-brand-25 dark:border-brand-800 dark:bg-brand-500/5" : "border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3",
             )}
           >
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-inherit px-5 py-3">
@@ -63,7 +65,7 @@ export default function PortalThread({
               </p>
               <time dateTime={isoOf(it.e.created)} className="text-theme-xs text-gray-500 dark:text-gray-400">
                 {formatDbDate(it.e.created, tz, locale, "full")}
-                {it.e.flags & 0x0002 ? ` · ${labels.edited}` : ""}
+                {it.e.flags & ThreadEntry.EDITED ? ` · ${labels.edited}` : ""}
               </time>
             </header>
             <div className={cn("px-5 py-4", RICH_CLASS)} dangerouslySetInnerHTML={{ __html: renderThreadBody(it.e, { area: "portal" }) }} />

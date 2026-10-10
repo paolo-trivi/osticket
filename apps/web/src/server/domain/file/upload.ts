@@ -4,6 +4,8 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 
 import { sql } from "kysely";
 
+import { AttachmentType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
 import { installConfig } from "../../env";
@@ -178,7 +180,7 @@ export async function entryAttachmentsForMail(executor: DbOrTx, entryId: number)
     .innerJoin("file as f", "f.id", "a.file_id")
     .select(["f.id", "f.name", "f.type", "a.name as aname", "a.inline"])
     .where("a.object_id", "=", entryId)
-    .where("a.type", "=", "H")
+    .where("a.type", "=", AttachmentType.THREAD_ENTRY)
     .orderBy("a.id")
     .execute();
   const out: { filename: string; content: Buffer; contentType: string }[] = [];

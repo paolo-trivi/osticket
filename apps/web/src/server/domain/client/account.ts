@@ -1,5 +1,8 @@
 import "server-only";
 
+import { UserAccountStatus } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import { hashPassword, checkPassword } from "../../auth/passwd";
 import { coreConfig, type ConfigNamespace } from "../../config/config";
 import { NOW, db, type DbOrTx } from "../../db";
@@ -14,7 +17,6 @@ import { loadFormDef } from "../forms/load";
 import { lookupUserByEmail, normalizeUserName, userFromVars } from "../ticket/create-user";
 import { resetTokenValid } from "./auth";
 import {
-  AccountStatus,
   isUserId,
   loadClientAccount,
   lookupAccountByUsername,
@@ -112,7 +114,7 @@ async function clientAccountUpdate(
     values.passwd = passwd;
     // cancelResetTokens + clearStatus(REQUIRE_PASSWD_RESET)
     await tx.deleteFrom("config").where("namespace", "=", "pwreset").where("value", "=", `c${userId}`).execute();
-    status &= ~AccountStatus.REQUIRE_PASSWD_RESET;
+    status &= ~UserAccountStatus.REQUIRE_PASSWD_RESET;
     values.status = status;
   }
   if (!acct) {
@@ -170,7 +172,7 @@ async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId:
       const f = def.fields.find((x) => x.id === Number(id));
       fields[f?.name || id] = codes[0];
     }
-    if (!Object.keys(errs).length && e.form_type === "U") {
+    if (!Object.keys(errs).length && e.form_type === FormType.USER) {
       const ef = def.fields.find((x) => x.name === "email");
       const email = ef ? inst.get("email") : null;
       if (ef && isEditableTo(ef, "client") && typeof email === "string" && email) {
@@ -184,7 +186,7 @@ async function updateUserInfoForClient(tx: DbOrTx, cfg: ConfigNamespace, userId:
   let name: string | undefined;
   let touch = false;
   for (const e of entries) {
-    if (e.form_type === "U") {
+    if (e.form_type === FormType.USER) {
       const def = await loadFormDef(tx, cfg, { id: e.form_id }, "client");
       const inst = def ? new FormInstance(def, input, 1, null, { timezone }) : null;
       const nf = e.fields.find((x) => x.name === "name");
@@ -257,7 +259,7 @@ export async function registerClientAccount(vars: ClientAccountVars, guest: Clie
   const res = await db()
     .transaction()
     .execute(async (tx): Promise<AccountResult<{ userId: number }>> => {
-      const def = await loadFormDef(tx, cfg, { type: "U" }, "client");
+      const def = await loadFormDef(tx, cfg, { type: FormType.USER }, "client");
       if (!def) return { ok: false, err: "internal" };
       const timezone = cfg.str("default_timezone") || "UTC";
       const inst = new FormInstance(def, input, 1, null, { timezone });
@@ -328,7 +330,7 @@ export async function requestClientPasswordReset(userid: string, opts: { pad?: b
       .execute(async (tx) => {
         const acct = await lookupAccountByUsername(tx, id);
         if (!acct) return;
-        if (acct.status & AccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
+        if (acct.status & UserAccountStatus.FORBID_PASSWD_RESET) out = { ok: false, error: "disabled" };
         else if (!acct.passwd || (acct.backend && acct.backend !== "client")) out = { ok: false, error: "unavailable" };
         else {
           send = await prepareUnlockMail(tx, cfg, acct.user_id, "pwreset-client");

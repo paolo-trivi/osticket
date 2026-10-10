@@ -2,6 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Dept, Team } from "@/lib/osticket/flags";
+import { ObjectType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { NOW, table, type DbOrTx } from "../../db";
 import { PersonsName } from "../../format/persons-name";
@@ -9,7 +12,6 @@ import { staffSortColumns } from "../staff-alerts";
 import type { Agent } from "../staff/staff";
 import type { WriteContext } from "../ticket/context";
 import { logThreadEvent, type Actor, type EventState } from "../ticket/events";
-import { DeptFlag } from "../ticket/status";
 
 /** Riga `task` (TaskModel) */
 export interface TaskDbRow {
@@ -35,11 +37,6 @@ export async function loadTaskRow(executor: DbOrTx, id: number, forUpdate = fals
   return (row as unknown as TaskDbRow | undefined) ?? null;
 }
 
-export async function taskThreadId(executor: DbOrTx, taskId: number): Promise<number> {
-  const th = await executor.selectFrom("thread").select("id").where("object_type", "=", "A").where("object_id", "=", taskId).executeTakeFirst();
-  return th?.id ?? 0;
-}
-
 /** Task::logEvent → ThreadEvents::log con ThreadEvent::forTask (staff/team/reparto del task). */
 export async function logTaskEvent(
   ctx: WriteContext,
@@ -53,7 +50,7 @@ export async function logTaskEvent(
   const empty = !data || (typeof data === "object" && !Array.isArray(data) && Object.keys(data).length === 0);
   await logThreadEvent(ctx.tx, {
     threadId,
-    threadType: "A",
+    threadType: ObjectType.TASK,
     state,
     data: empty ? null : data,
     actor: ctx.actor,
@@ -92,8 +89,8 @@ async function deptMembers(executor: DbOrTx, deptId: number, cfg: ConfigNamespac
 export async function deptCanAssign(executor: DbOrTx, deptId: number, staff: Agent, cfg: ConfigNamespace): Promise<boolean> {
   const d = await executor.selectFrom("department").select(["flags"]).where("id", "=", deptId).executeTakeFirst();
   if (!d) return false;
-  if (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY && staff.deptId !== deptId) return false;
-  if (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg)).includes(staff.id)) return false;
+  if (d.flags & Dept.ASSIGN_PRIMARY_ONLY && staff.deptId !== deptId) return false;
+  if (d.flags & Dept.ASSIGN_MEMBERS_ONLY && !(await deptMembers(executor, deptId, cfg)).includes(staff.id)) return false;
   return staff.isAvailable;
 }
 
@@ -131,8 +128,8 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
   const conds = [sql`S.isactive = 1 AND S.onvacation = 0`];
   if (deptId) {
     const d = await executor.selectFrom("department").select(["flags"]).where("id", "=", deptId).executeTakeFirst();
-    const primaryOnly = !!d && (d.flags & DeptFlag.ASSIGN_PRIMARY_ONLY) !== 0;
-    const membersOnly = !!d && (d.flags & DeptFlag.ASSIGN_MEMBERS_ONLY) !== 0;
+    const primaryOnly = !!d && (d.flags & Dept.ASSIGN_PRIMARY_ONLY) !== 0;
+    const membersOnly = !!d && (d.flags & Dept.ASSIGN_MEMBERS_ONLY) !== 0;
     if (primaryOnly) conds.push(sql`S.dept_id = ${deptId}`);
     else if (membersOnly) {
       const ids = await deptMembers(executor, deptId, cfg);
@@ -155,6 +152,6 @@ export async function assignableAgents(executor: DbOrTx, deptId: number | null, 
 /** Team::getActiveTeams() */
 export async function activeTeams(executor: DbOrTx) {
   const { rows } = await sql<{ team_id: number; name: string }>`SELECT T.team_id, T.name FROM ${table("team")} T
-    WHERE (T.flags & 1) != 0 AND EXISTS (SELECT 1 FROM ${table("team_member")} M WHERE M.team_id = T.team_id) ORDER BY T.name`.execute(executor);
+    WHERE (T.flags & ${sql.lit(Team.ENABLED)}) != 0 AND EXISTS (SELECT 1 FROM ${table("team_member")} M WHERE M.team_id = T.team_id) ORDER BY T.name`.execute(executor);
   return rows.map((r) => ({ id: r.team_id, name: r.name }));
 }

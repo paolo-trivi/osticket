@@ -2,6 +2,8 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { SLA } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
 import { htmlcharsVars, intval, isNumeric, isset, phpLooseEquals, str, truthy, type PhpVars } from "../../php/values";
@@ -10,7 +12,6 @@ import { FILTER_REFS, filterActionsReferencing } from "./filters";
 import { OrmRow, SQL_NOW } from "./orm";
 
 /** SLA: scp/slas.php → SLA::update / SLA::delete / mass_process (include/class.sla.php). */
-export const SlaFlag = { ACTIVE: 0x0001, ESCALATE: 0x0002, NOALERTS: 0x0004, TRANSIENT: 0x0008 } as const;
 
 const SLA_OPTS = { touchUpdated: true };
 
@@ -38,13 +39,13 @@ export async function saveSla(executor: DbOrTx, slaId: number | null, input: Php
   }
   if (Object.keys(errors).length) return { ok: false, errors };
 
-  const noAlerts = isset(vars, "disable_overdue_alerts") ? SlaFlag.NOALERTS : 0;
-  const transient = isset(vars, "transient") ? SlaFlag.TRANSIENT : 0;
+  const noAlerts = isset(vars, "disable_overdue_alerts") ? SLA.NOALERTS : 0;
+  const transient = isset(vars, "transient") ? SLA.TRANSIENT : 0;
   sla.set("name", str(vars.name));
   sla.set("schedule_id", vars.schedule_id === undefined || vars.schedule_id === null ? null : str(vars.schedule_id));
   sla.set("grace_period", str(vars.grace_period));
   sla.set("notes", sanitizeText(str(vars.notes)));
-  sla.set("flags", (truthy(vars.isactive) ? SlaFlag.ACTIVE : 0) | noAlerts | intval(vars.enable_priority_escalation) | transient);
+  sla.set("flags", (truthy(vars.isactive) ? SLA.ACTIVE : 0) | noAlerts | intval(vars.enable_priority_escalation) | transient);
   await sla.save(executor);
   return { ok: true, id: sla.num("id"), errors: {} };
 }
@@ -73,7 +74,7 @@ export async function massSla(executor: DbOrTx, action: SlaMassAction, ids: numb
   switch (action) {
     case "enable":
     case "disable": {
-      const expr = action === "enable" ? sql<number>`flags | ${SlaFlag.ACTIVE}` : sql<number>`flags & ${~SlaFlag.ACTIVE >>> 0}`;
+      const expr = action === "enable" ? sql<number>`flags | ${SLA.ACTIVE}` : sql<number>`flags & ${~SLA.ACTIVE >>> 0}`;
       const res = await executor.updateTable("sla").set({ flags: expr }).where("id", "in", ids).executeTakeFirst();
       const num = Number(res.numUpdatedRows);
       return { ok: num > 0, num };

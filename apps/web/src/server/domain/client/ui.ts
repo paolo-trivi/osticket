@@ -1,5 +1,8 @@
 import "server-only";
 
+import { Topic } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { detectDbTimezone } from "../../db/time";
@@ -21,14 +24,14 @@ export async function publicTopics(cfg: ConfigNamespace, executor: DbOrTx = db()
   const out: { id: number; name: string; sort: number }[] = [];
   for (const t of rows) {
     let name = t.topic;
-    let disabled = !((t.flags ?? 0) & 0x0002);
+    let disabled = !((t.flags ?? 0) & Topic.ACTIVE);
     const seen = new Set([t.topic_id]);
     let cur = t;
     let parent: typeof t | undefined;
     while (cur.topic_pid && byId.has(cur.topic_pid) && !seen.has(cur.topic_pid)) {
       const p = byId.get(cur.topic_pid)!;
       name = `${p.topic} / ${name}`;
-      if (parent && !((parent.flags ?? 0) & 0x0002)) disabled = true;
+      if (parent && !((parent.flags ?? 0) & Topic.ACTIVE)) disabled = true;
       seen.add(p.topic_id);
       parent = p;
       cur = p;
@@ -70,7 +73,7 @@ export async function renderedContent(cfg: ConfigNamespace, type: string, execut
 export async function profileFormValues(cfg: ConfigNamespace, userId: number, executor: DbOrTx = db()): Promise<Record<string, string[]>> {
   const { loadFormDef } = await import("../forms/load");
   const { cleanFromDb, fieldToString } = await import("../forms/fields");
-  const def = await loadFormDef(executor, cfg, { type: "U" }, "client");
+  const def = await loadFormDef(executor, cfg, { type: FormType.USER }, "client");
   if (!def) return {};
   const u = await executor
     .selectFrom("user as u")
@@ -82,7 +85,7 @@ export async function profileFormValues(cfg: ConfigNamespace, userId: number, ex
     .selectFrom("form_entry as fe")
     .innerJoin("form_entry_values as v", "v.entry_id", "fe.id")
     .select(["v.field_id", "v.value", "v.value_id"])
-    .where("fe.object_type", "=", "U")
+    .where("fe.object_type", "=", FormType.USER)
     .where("fe.object_id", "=", userId)
     .execute();
   const out: Record<string, string[]> = {};

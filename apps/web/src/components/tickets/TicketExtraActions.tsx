@@ -1,5 +1,7 @@
 import { sql } from "kysely";
 
+import { ThreadEntry, Ticket, TicketStatus } from "@/lib/osticket/flags";
+import { FormType } from "@/lib/osticket/object-types";
 import { coreConfig } from "@/server/config/config";
 import { db } from "@/server/db";
 import { detectDbTimezone } from "@/server/db/time";
@@ -57,7 +59,7 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
 
   // Voci modificabili (non nascoste): TEA_EditThreadEntry / Edit and Resend
   const editable = entryPerms
-    ? entries.filter((e) => !(e.flags & 0x4) && canEditEntry({ staff_id: e.staff_id, user_id: e.user_id, type: e.type }, agent, entryPerms))
+    ? entries.filter((e) => !(e.flags & ThreadEntry.HIDDEN) && canEditEntry({ staff_id: e.staff_id, user_id: e.user_id, type: e.type }, agent, entryPerms))
     : [];
   can.editEntries = editable.length > 0;
 
@@ -69,7 +71,7 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
     const formEntries = await executor
       .selectFrom("form_entry")
       .select(["id", "form_id"])
-      .where("object_type", "=", "T")
+      .where("object_type", "=", FormType.TICKET)
       .where("object_id", "=", ticket.ticket_id)
       .orderBy("sort")
       .orderBy("id")
@@ -111,12 +113,12 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
 
   const topics = options?.topics ?? [];
   if (options && ticket.topic_id && !topics.some((t) => t.id === ticket.topic_id)) topics.push({ id: ticket.topic_id, name: ticket.topic_name ?? `#${ticket.topic_id}` });
-  // merge-tickets.tmpl.php: preselezionato lo stato chiuso non disattivabile (TicketStatus::INTERNAL = 2)
+  // merge-tickets.tmpl.php: preselezionato lo stato chiuso non disattivabile (TicketStatus::INTERNAL)
   const internalClosed = await executor
     .selectFrom("ticket_status")
     .select("id")
     .where("state", "=", "closed")
-    .where(sql<boolean>`(mode & 2) != 0`)
+    .where(sql<boolean>`(mode & ${sql.lit(TicketStatus.INTERNAL)}) != 0`)
     .orderBy("sort")
     .execute();
   const duedateRow = await executor.selectFrom("ticket").select("duedate").where("ticket_id", "=", ticket.ticket_id).executeTakeFirst();
@@ -150,7 +152,7 @@ export default async function TicketExtraActions({ ticket, agent }: { ticket: Ti
     ownerEmail: ticket.user_email ?? "",
     banned,
     deletedStatusId: deleted?.id ?? null,
-    hasChildren: !!(ticket.flags & 0x10) && children.length > 0,
+    hasChildren: !!(ticket.flags & Ticket.PARENT) && children.length > 0,
     entries: editable.map((e) => ({ id: e.id, type: e.type, poster: e.poster, created: e.created, title: e.title ?? "", body: e.body })),
   };
   if (!can.delete || !data.deletedStatusId) data.can.delete = false;

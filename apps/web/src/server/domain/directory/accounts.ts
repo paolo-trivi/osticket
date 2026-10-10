@@ -1,5 +1,7 @@
 import "server-only";
 
+import { UserAccountStatus } from "@/lib/osticket/flags";
+
 import { NOW } from "../../db";
 import { hashPassword } from "../../auth/passwd";
 import { randCode } from "../../mail/message-id";
@@ -15,12 +17,6 @@ import { deleteUser, loadUserCore, setUserOrganization, type DirError, type DirR
  * Account dei clienti (UserAccount in include/class.user.php; ajax.users.php register/manage,
  * scp/users.php confirmlink/pwreset/mass_process). Stato: bit di UserAccountStatus.
  */
-const AccountStatus = {
-  CONFIRMED: 0x0001,
-  LOCKED: 0x0002,
-  REQUIRE_PASSWD_RESET: 0x0004,
-  FORBID_PASSWD_RESET: 0x0008,
-} as const;
 
 /** Alfabeto predefinito di Misc::randCode */
 export const MISC_RAND_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_=";
@@ -102,7 +98,7 @@ export async function sendUserResetEmail(ctx: WriteContext, userId: number): Pro
 export async function sendUserConfirmEmail(ctx: WriteContext, userId: number, checkConfirmed = true): Promise<DirResult> {
   const acct = await loadAccount(ctx, userId);
   if (!acct) return { ok: false, error: "no_account" };
-  if (checkConfirmed && acct.status & AccountStatus.CONFIRMED) return { ok: false, error: "already_confirmed" };
+  if (checkConfirmed && acct.status & UserAccountStatus.CONFIRMED) return { ok: false, error: "already_confirmed" };
   return (await sendUnlockEmail(ctx, userId, "registration-client")) ? { ok: true } : { ok: false, error: "send_failed" };
 }
 
@@ -135,15 +131,15 @@ export async function registerAccount(ctx: WriteContext, userId: number, vars: A
   }
   if (vars.passwd1 && !vars.sendemail) {
     values.passwd = hashPassword(vars.passwd1);
-    status |= AccountStatus.CONFIRMED;
-    if (vars["pwreset-flag"]) status |= AccountStatus.REQUIRE_PASSWD_RESET;
-    if (vars["forbid-pwreset-flag"]) status |= AccountStatus.FORBID_PASSWD_RESET;
+    status |= UserAccountStatus.CONFIRMED;
+    if (vars["pwreset-flag"]) status |= UserAccountStatus.REQUIRE_PASSWD_RESET;
+    if (vars["forbid-pwreset-flag"]) status |= UserAccountStatus.FORBID_PASSWD_RESET;
   } else if (vars.backend && vars.backend !== "client") {
-    status |= AccountStatus.CONFIRMED;
+    status |= UserAccountStatus.CONFIRMED;
   }
   if (status) values.status = status;
   await tx.insertInto("user_account").values(values as never).execute();
-  if (!(status & AccountStatus.CONFIRMED) && vars.sendemail) await sendUnlockEmail(ctx, userId, "registration-client");
+  if (!(status & UserAccountStatus.CONFIRMED) && vars.sendemail) await sendUnlockEmail(ctx, userId, "registration-client");
   return { ok: true };
 }
 
@@ -175,12 +171,12 @@ export async function updateAccount(ctx: WriteContext, userId: number, vars: Acc
   let status = acct.status;
   if (vars.passwd1) {
     set.passwd = hashPassword(vars.passwd1);
-    status |= AccountStatus.CONFIRMED;
+    status |= UserAccountStatus.CONFIRMED;
   }
   const flags: [keyof AccountVars, number][] = [
-    ["pwreset-flag", AccountStatus.REQUIRE_PASSWD_RESET],
-    ["locked-flag", AccountStatus.LOCKED],
-    ["forbid-pwchange-flag", AccountStatus.FORBID_PASSWD_RESET],
+    ["pwreset-flag", UserAccountStatus.REQUIRE_PASSWD_RESET],
+    ["locked-flag", UserAccountStatus.LOCKED],
+    ["forbid-pwchange-flag", UserAccountStatus.FORBID_PASSWD_RESET],
   ];
   for (const [k, flag] of flags) status = vars[k] ? status | flag : status & ~flag;
   assign("status", status);
@@ -192,7 +188,7 @@ export async function updateAccount(ctx: WriteContext, userId: number, vars: Acc
 async function setLocked(ctx: WriteContext, userId: number, locked: boolean): Promise<boolean> {
   const acct = await loadAccount(ctx, userId);
   if (!acct) return false;
-  const status = locked ? acct.status | AccountStatus.LOCKED : acct.status & ~AccountStatus.LOCKED;
+  const status = locked ? acct.status | UserAccountStatus.LOCKED : acct.status & ~UserAccountStatus.LOCKED;
   if (status !== acct.status) await ctx.tx.updateTable("user_account").set({ status }).where("id", "=", acct.id).execute();
   return true;
 }

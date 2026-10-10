@@ -3,6 +3,9 @@ import "server-only";
 import { sql } from "kysely";
 import { DateTime } from "luxon";
 
+import { Dept, DynamicFormField, TaskModel, Team, ThreadEntry } from "@/lib/osticket/flags";
+import { ObjectType, ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import type { SystemEmail } from "../../mail/mailer";
 import { companyVar, loadStaffInfo, staffVar } from "../../mail/objects";
@@ -12,14 +15,13 @@ import { logSystem } from "../../system/syslog";
 import { alertOrDefaultEmail } from "../directory/content-mail";
 import { defaultFormOf, createEntry, deleteEntries, entriesFor, saveEntryAnswers, validateInput } from "../forms/answers";
 import { currentTimezone } from "../forms/entry";
-import { FieldFlag, hasAnswerRow, isEditableToStaff } from "../forms/fields";
+import { hasAnswerRow, isEditableToStaff } from "../forms/fields";
 import { deleteDraftsForNamespace } from "../drafts";
 import { deleteSearchRow } from "../search/index-writer";
 import { nextSequenceNumber } from "../sequence";
 import {
   deptAlertEmail as deptEmailOf,
   deptAlertMembers,
-  DeptAlerts,
   deptMsgTemplate,
   replaceAlertVars,
   sendAdminAlert,
@@ -27,9 +29,10 @@ import {
   teamAlertMembers,
 } from "../staff-alerts";
 import { loadAgent, TaskPerm, type Agent } from "../staff/staff";
+import { taskThreadId, ticketThreadId } from "../thread/ids";
 import { createThreadEntry, lastMessage, touchThread } from "../thread/write";
 import type { WriteContext } from "../ticket/context";
-import { logNote, ticketThreadId } from "../ticket/post";
+import { logNote } from "../ticket/post";
 import { TicketRecord } from "../ticket/record";
 import { reopenTicket } from "../ticket/ticket-state";
 import {
@@ -40,11 +43,10 @@ import {
   loadTaskRow,
   loadTeam,
   logTaskEvent,
-  taskThreadId,
   updateTaskRow,
   type TaskDbRow,
 } from "./model";
-import { checkTaskPerm, loadTask, TaskFlag } from "./tasks";
+import { checkTaskPerm, loadTask } from "./tasks";
 import { activityVar, taskVar, threadEntryVar } from "./vars";
 
 /**
@@ -59,7 +61,7 @@ export type TaskError =
 
 export type TaskResult<T = object> = ({ ok: true } & T) | { ok: false; error: TaskError };
 
-const isOpen = (t: TaskDbRow) => (t.flags & TaskFlag.ISOPEN) !== 0;
+const isOpen = (t: TaskDbRow) => (t.flags & TaskModel.ISOPEN) !== 0;
 
 function bodyFormat(ctx: WriteContext): "html" | "text" {
   return ctx.cfg.bool("enable_richtext") ? "html" : "text";
@@ -179,10 +181,10 @@ async function onNewTask(ctx: WriteContext, task: TaskDbRow): Promise<void> {
   const { tx, cfg } = ctx;
   if (!cfg.bool("task_alert_active")) return;
   const dept = await tx.selectFrom("department").select(["group_membership", "manager_id"]).where("id", "=", task.dept_id).executeTakeFirst();
-  if (!dept || dept.group_membership === DeptAlerts.DISABLED) return;
+  if (!dept || dept.group_membership === Dept.ALERTS_DISABLED) return;
   const email = await alertEmail(ctx);
   if (!email) return;
-  const adminOnly = dept.group_membership === DeptAlerts.ADMIN_ONLY;
+  const adminOnly = dept.group_membership === Dept.ALERTS_ADMIN_ONLY;
   const recipients: number[] = [];
   if (cfg.bool("task_alert_dept_manager") && dept.manager_id && !adminOnly) recipients.push(dept.manager_id);
   if (cfg.bool("task_alert_dept_members") && !adminOnly) recipients.push(...(await deptMembersForAlerts(ctx, task.dept_id)));
@@ -224,7 +226,7 @@ export async function postTaskNote(
   const posterName = poster && typeof poster === "object" ? agentName(poster, cfg) : poster || "SYSTEM";
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "N",
+    type: ThreadEntryType.NOTE,
     body: input.note,
     format: bodyFormat(ctx),
     title: input.title ?? "",
@@ -247,7 +249,7 @@ export async function postTaskReply(ctx: WriteContext, task: TaskDbRow, input: {
   const last = await lastMessage(tx, threadId);
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "R",
+    type: ThreadEntryType.RESPONSE,
     body: input.response,
     format: bodyFormat(ctx),
     staffId: agent.id,
@@ -278,7 +280,7 @@ export async function missingRequiredFields(executor: DbOrTx, taskId: number): P
   const { rows } = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${table("form_entry")} E
     JOIN ${table("form_entry_values")} V ON (V.entry_id = E.id)
     JOIN ${table("form_field")} F ON (F.id = V.field_id)
-    WHERE E.object_type = 'A' AND E.object_id = ${taskId} AND (F.flags & ${FieldFlag.CLOSE_REQUIRED}) != 0 AND V.value IS NULL`.execute(executor);
+    WHERE E.object_type = 'A' AND E.object_id = ${taskId} AND (F.flags & ${DynamicFormField.CLOSE_REQUIRED}) != 0 AND V.value IS NULL`.execute(executor);
   return Number(rows[0]?.n ?? 0);
 }
 
@@ -289,10 +291,10 @@ export async function setTaskStatus(ctx: WriteContext, task: TaskDbRow, status: 
   let ecb: () => Promise<void>;
   if (status === "open") {
     if (isOpen(task)) return { ok: false, error: "already_status" };
-    await updateTaskRow(tx, task, { flags: task.flags | TaskFlag.ISOPEN, ...(task.closed !== null ? { closed: null } : {}) });
+    await updateTaskRow(tx, task, { flags: task.flags | TaskModel.ISOPEN, ...(task.closed !== null ? { closed: null } : {}) });
     ecb = async () => {
       await logTaskEvent(ctx, task, threadId, "reopened", null, undefined, "closed");
-      if (task.object_type === "T" && task.object_id) {
+      if (task.object_type === ObjectType.TICKET && task.object_id) {
         await reopenParentTicket(ctx, task.object_id);
         await logNote(ctx, task.object_id, `Task ${task.number} Reopened`, "Task reopened");
       }
@@ -300,10 +302,10 @@ export async function setTaskStatus(ctx: WriteContext, task: TaskDbRow, status: 
   } else {
     if (!isOpen(task)) return { ok: false, error: "already_status" };
     if (await missingRequiredFields(tx, task.id)) return { ok: false, error: "not_closeable" };
-    await updateTaskRow(tx, task, { flags: task.flags & ~TaskFlag.ISOPEN, closed: "NOW" });
+    await updateTaskRow(tx, task, { flags: task.flags & ~TaskModel.ISOPEN, closed: "NOW" });
     ecb = async () => {
       await logTaskEvent(ctx, task, threadId, "closed");
-      if (task.object_type === "T" && task.object_id) await logNote(ctx, task.object_id, `Task ${task.number} Closed`, "Task closed");
+      if (task.object_type === ObjectType.TICKET && task.object_id) await logNote(ctx, task.object_id, `Task ${task.number} Closed`, "Task closed");
     };
   }
   await ecb();
@@ -331,7 +333,7 @@ async function onAssignment(ctx: WriteContext, task: TaskDbRow, assignee: { staf
   const recipients: number[] = [];
   if (assignee.staff) {
     if (cfg.bool("task_assignment_alert_staff")) recipients.push(assignee.staff.id);
-  } else if (assignee.team && !(assignee.team.flags & 0x0002)) {
+  } else if (assignee.team && !(assignee.team.flags & Team.NOALERTS)) {
     const members = await teamAlertMembers(tx, assignee.team.team_id);
     if (cfg.bool("task_assignment_alert_team_members") && members.length) recipients.push(...members);
     else if (cfg.bool("task_assignment_alert_team_lead") && assignee.team.lead_id) recipients.push(assignee.team.lead_id);
@@ -377,7 +379,7 @@ export async function assignTask(ctx: WriteContext, task: TaskDbRow, to: TaskAss
   }
   const team = await loadTeam(tx, to.id);
   if (!team) return { ok: false, error: "unknown_assignee" };
-  if (!(team.flags & 0x0001)) return { ok: false, error: "team_disabled" };
+  if (!(team.flags & Team.ENABLED)) return { ok: false, error: "team_disabled" };
   if (!team.members) return { ok: false, error: "team_empty" };
   if (task.team_id === team.team_id) return { ok: false, error: "already_assigned" };
   await updateTaskRow(tx, task, { team_id: team.team_id });
@@ -492,7 +494,7 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
       if (!(await assignableAgents(tx, null, agent, cfg)).some((x) => x.id === s.id)) return { ok: false, error: "unknown_assignee" };
     } else {
       const t = await loadTeam(tx, a.id);
-      if (!t || !(t.flags & 1)) return { ok: false, error: "team_disabled" };
+      if (!t || !(t.flags & Team.ENABLED)) return { ok: false, error: "team_disabled" };
       if (!t.members) return { ok: false, error: "team_empty" };
     }
   }
@@ -501,8 +503,8 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   const res = await tx
     .insertInto("task")
     .values({
-      flags: TaskFlag.ISOPEN,
-      ...(input.ticketId ? { object_id: input.ticketId, object_type: "T" } : { object_type: "" }),
+      flags: TaskModel.ISOPEN,
+      ...(input.ticketId ? { object_id: input.ticketId, object_type: ObjectType.TICKET } : { object_type: "" }),
       number,
       created: NOW,
       updated: NOW,
@@ -517,11 +519,11 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
   await createEntry(tx, form, "A", "A", id, values, { timezone });
 
   // TaskThread::create + addDescription (MessageThreadEntry con flag ORIGINAL_MESSAGE)
-  const th = await tx.insertInto("thread").values({ object_id: id, object_type: "A", created: NOW }).executeTakeFirstOrThrow();
+  const th = await tx.insertInto("thread").values({ object_id: id, object_type: ObjectType.TASK, created: NOW }).executeTakeFirstOrThrow();
   const threadId = Number(th.insertId);
   const entry = await createThreadEntry(tx, cfg, {
     threadId,
-    type: "M",
+    type: ThreadEntryType.MESSAGE,
     body: input.description,
     format: bodyFormat(ctx),
     staffId: agent.id,
@@ -529,7 +531,7 @@ export async function createTask(ctx: WriteContext, input: NewTaskInput): Promis
     poster: agentName(agent, cfg),
     ip: ctx.actor?.ip ?? "",
   });
-  await tx.updateTable("thread_entry").set({ flags: entry.flags | 0x0001 }).where("id", "=", entry.id).execute();
+  await tx.updateTable("thread_entry").set({ flags: entry.flags | ThreadEntry.ORIGINAL_MESSAGE }).where("id", "=", entry.id).execute();
 
   await logTaskEvent(ctx, task, threadId, "created", null, ctx.actor);
 

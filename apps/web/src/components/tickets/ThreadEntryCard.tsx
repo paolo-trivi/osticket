@@ -1,4 +1,5 @@
 import { renderThreadBody } from "@/components/common/thread-body";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
 import type { ThreadEntryView } from "@/server/domain/ticket/ticket";
 import { formatDbDate, isoOf } from "@/server/format/datetime";
 import { cn } from "@/utils";
@@ -24,7 +25,7 @@ export default function ThreadEntryCard({
   labels: { note: string; reply: string; message: string; edited: string; via: string };
   iframeWhitelist: string[];
 }) {
-  const kindLabel = entry.type === "N" ? labels.note : entry.type === "R" ? labels.reply : labels.message;
+  const kindLabel = entry.type === ThreadEntryType.NOTE ? labels.note : entry.type === ThreadEntryType.RESPONSE ? labels.reply : labels.message;
   const files = entry.attachments.filter((a) => !a.inline);
   return (
     <article id={`entry-${entry.id}`} className={cn("rounded-2xl border", KIND_STYLE[entry.type])}>
@@ -33,7 +34,7 @@ export default function ThreadEntryCard({
           <span
             className={cn(
               "flex size-9 items-center justify-center rounded-full text-sm font-semibold",
-              entry.type === "M" ? "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300" : "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
+              entry.type === ThreadEntryType.MESSAGE ? "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300" : "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
             )}
           >
             {entry.poster.slice(0, 2).toUpperCase()}
@@ -51,7 +52,7 @@ export default function ThreadEntryCard({
           {entry.editor_name ? ` · ${labels.edited} ${entry.editor_name}` : ""}
         </time>
       </header>
-      {entry.title && entry.type === "N" && (
+      {entry.title && entry.type === ThreadEntryType.NOTE && (
         <p className="px-5 pt-3 text-sm font-semibold text-gray-700 dark:text-gray-300">{entry.title}</p>
       )}
       <div

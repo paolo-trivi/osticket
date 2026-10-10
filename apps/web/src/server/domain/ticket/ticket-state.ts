@@ -2,12 +2,16 @@ import "server-only";
 
 import { sql } from "kysely";
 
+import { Ticket, TicketStatus } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import type { ConfigNamespace } from "../../config/config";
 import type { DbOrTx } from "../../db";
 import { phpJsonDecode } from "../../format/php-json";
+import { ticketThreadId } from "../thread/ids";
 import { createThreadEntry } from "../thread/write";
 import { agentDisplayName, type WriteContext } from "./context";
-import { logNote, postNote, ticketThreadId } from "./post";
+import { logNote, postNote } from "./post";
 import { TicketRecord } from "./record";
 import { isCloseable, isSelectableStatus, loadStatus, roleOnRow, setTicketStatus, statusIsReopenable, stateOf, type StatusRow } from "./status";
 import { checkStaffPerm, loadTicket } from "./ticket";
@@ -17,9 +21,6 @@ import { TicketPerm } from "../staff/staff";
  * Cambio stato da menu, riapertura e "segna come risposto/non risposto" (include/ajax.tickets.php
  * setTicketStatus/markAs, Ticket::reopen, Ticket::markAnswered/markUnAnswered).
  */
-
-/** Ticket::FLAG_PARENT */
-const TICKET_FLAG_PARENT = 0x0010;
 
 export type ActionResult = { ok: true; warn?: string } | { error: string; detail?: string };
 
@@ -60,8 +61,8 @@ export async function ticketStatusChoices(executor: DbOrTx): Promise<StatusChoic
     .selectFrom("ticket_status")
     .select(["id", "name", "state", "mode"])
     .where("state", "in", ["open", "closed"])
-    // TicketStatus::ENABLED = 1 (mode__hasbit)
-    .where(sql<boolean>`(mode & 1) != 0`);
+    // TicketStatus::ENABLED (mode__hasbit)
+    .where(sql<boolean>`(mode & ${sql.lit(TicketStatus.ENABLED)}) != 0`);
   switch (list?.sort_mode) {
     case "SortCol":
       q = q.orderBy("sort");
@@ -159,7 +160,7 @@ export async function changeTicketStatus(
 
   const failures: string[] = [];
   // Ticket::getChildren(): solo per i ticket padre (FLAG_PARENT), figli con ticket_pid = id ordinati per sort
-  if (input.children && rec.get("flags") & TICKET_FLAG_PARENT) {
+  if (input.children && rec.get("flags") & Ticket.PARENT) {
     const children = await tx
       .selectFrom("ticket")
       .select(["ticket_id", "number"])
@@ -216,7 +217,7 @@ export async function markTicketAnswered(
   const threadId = await ticketThreadId(tx, rec.id);
   await createThreadEntry(tx, cfg, {
     threadId,
-    type: "N",
+    type: ThreadEntryType.NOTE,
     body: `Ticket flagged as ${action} by ${agentDisplayName(agent, cfg)}`,
     format: "html",
     title,

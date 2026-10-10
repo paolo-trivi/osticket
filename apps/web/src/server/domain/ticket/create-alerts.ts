@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Dept, Team } from "@/lib/osticket/flags";
+
 import type { DbOrTx } from "../../db";
 import { loadSystemEmail, sendMail, type MailContact, type SystemEmail } from "../../mail/mailer";
 import { buildTicketVars, companyVar, entryVar, loadStaffInfo, staffVar } from "../../mail/objects";
@@ -7,7 +9,7 @@ import { VariableReplacer, type TemplateVariable } from "../../mail/variables";
 import { adminAlertMail, logWithAdminAlert } from "../../system/admin-alert";
 import { entryAttachmentsForMail } from "../file/upload";
 import { parseAddressList } from "../forms/validator";
-import { deptAlertEmail, deptAlertMembers, DeptAlerts, deptMsgTemplate, replaceAlertVars, sendAdminAlert, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
+import { deptAlertEmail, deptAlertMembers, deptMsgTemplate, replaceAlertVars, sendAdminAlert, sendStaffAlerts, teamAlertMembers } from "../staff-alerts";
 import type { WriteContext } from "./context";
 
 /**
@@ -135,7 +137,7 @@ export async function onNewTicket(
     }
     sent = await sendStaffAlerts(ctx, { email: alertEmail, msg, vars: common, recipients, thread });
   }
-  if (cfg.bool("ticket_alert_admin") && !sent.includes(cfg.str("admin_email")) && dept.group_membership !== DeptAlerts.DISABLED) {
+  if (cfg.bool("ticket_alert_admin") && !sent.includes(cfg.str("admin_email")) && dept.group_membership !== Dept.ALERTS_DISABLED) {
     sendAdminAlert(ctx, { email: alertEmail, msg, vars: common, utype: "M", thread });
   }
 }
@@ -165,7 +167,7 @@ export async function onAssignAlert(
     if (team) {
       const { VarBag } = await import("../../mail/variables");
       assigneeVar = new VarBag({ name: team.name, id: team.team_id }, team.name);
-      if (!(team.flags & 0x0002)) {
+      if (!(team.flags & Team.NOALERTS)) {
         const members = await teamAlertMembers(tx, team.team_id);
         if (cfg.bool("assigned_alert_team_members") && members.length) recipients.push(...members);
         else if (cfg.bool("assigned_alert_team_lead") && team.lead_id) recipients.push(team.lead_id);

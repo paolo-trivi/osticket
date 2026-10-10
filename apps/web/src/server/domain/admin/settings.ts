@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 
 import { sql } from "kysely";
 
+import { CustomQueue, Topic } from "@/lib/osticket/flags";
+
 import { NOW, table, type DbOrTx } from "../../db";
 import { sanitizeText } from "../../format/text";
 import { htmlcharsVars, inArray, intval, isNumeric, isset, list, phpLooseEquals, str, truthy, type PhpVal, type PhpVars } from "../../php/values";
@@ -229,7 +231,7 @@ async function updateTicketsSettings(executor: DbOrTx, cfg: ConfigWriter, vars: 
 
   if (truthy(vars.default_help_topic)) {
     const t = await executor.selectFrom("help_topic").select("flags").where("topic_id", "=", intval(vars.default_help_topic)).executeTakeFirst();
-    if (t && !((t.flags ?? 0) & 0x0002)) errors.default_help_topic = "inactive";
+    if (t && !((t.flags ?? 0) & Topic.ACTIVE)) errors.default_help_topic = "inactive";
   }
   if (!hasHash(vars.ticket_number_format)) errors.ticket_number_format = "hash";
   if (!isset(vars, "default_ticket_queue")) errors.default_ticket_queue = "required";
@@ -246,7 +248,7 @@ async function updateTicketsSettings(executor: DbOrTx, cfg: ConfigWriter, vars: 
   const qsort = vars.qsort;
   if (qsort && typeof qsort === "object" && !Array.isArray(qsort)) {
     for (const [qid, sort] of Object.entries(qsort)) {
-      const q = await executor.selectFrom("queue").select(["id", "sort"]).where("id", "=", intval(qid)).where(sql<boolean>`(flags & 2) != 0`).executeTakeFirst();
+      const q = await executor.selectFrom("queue").select(["id", "sort"]).where("id", "=", intval(qid)).where(sql<boolean>`(flags & ${sql.lit(CustomQueue.QUEUE)}) != 0`).executeTakeFirst();
       if (!q) continue;
       if (phpLooseEquals(q.sort, sort as never)) continue;
       await executor.updateTable("queue").set({ sort: intval(sort), updated: NOW }).where("id", "=", q.id).execute();

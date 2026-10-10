@@ -3,6 +3,8 @@ import "server-only";
 import { sql } from "kysely";
 import { DateTime } from "luxon";
 
+import { Schedule } from "@/lib/osticket/flags";
+
 import { loadConfigNamespace } from "../../config/config";
 import { db, type DbOrTx } from "../../db";
 import { PhpDateTime, strtotimeDateUtc, strtotimeUtc, timeOfDaySeconds } from "./php-datetime";
@@ -15,9 +17,6 @@ import { PhpDateTime, strtotimeDateUtc, strtotimeUtc, timeOfDaySeconds } from ".
  * "STRANEZZA PHP"): serve che le scadenze calcolate qui coincidano al secondo con quelle già
  * salvate dal PHP (ticket.est_duedate). Le date sono `PhpDateTime`, che replica DateTime::modify().
  */
-
-/** Schedule::FLAG_BIZHRS: orario lavorativo; senza il flag è un calendario di festività. */
-const ScheduleFlag = { BIZHRS: 0x0001 } as const;
 
 /** Riga di ost_schedule_entry (solo le colonne usate dal calcolo). */
 export interface ScheduleEntryData {
@@ -451,7 +450,7 @@ async function loadEntries(scheduleId: number, executor: DbOrTx): Promise<Schedu
 
 async function loadScheduleRow(id: number, requireBizHours: boolean, executor: DbOrTx) {
   let q = executor.selectFrom("schedule").select(["id", "name", "flags", "timezone"]).where("id", "=", id);
-  if (requireBizHours) q = q.where(sql<boolean>`(flags & ${ScheduleFlag.BIZHRS}) != 0`);
+  if (requireBizHours) q = q.where(sql<boolean>`(flags & ${Schedule.BIZHRS}) != 0`);
   return q.executeTakeFirst();
 }
 

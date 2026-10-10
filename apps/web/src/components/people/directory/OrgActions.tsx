@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 
 import { orgAddUserAction, orgDeleteAction, orgProfileAction, orgRemoveUsersAction, orgUpdateAction } from "@/app/[locale]/(staff)/agent/(panel)/orgs/actions";
 import Button from "@/components/ui/button/Button";
+import { OrganizationModel } from "@/lib/osticket/flags";
 
 import { CheckField, DynamicField, SelectField, TextField } from "../FormControls";
 import PeopleDialog from "../PeopleDialog";
@@ -23,8 +24,6 @@ interface OrgActionsData {
   can: { edit: boolean; delete: boolean; addUser: boolean; createUser: boolean; import: boolean };
 }
 
-const F = { COLLAB_ALL: 0x1, COLLAB_PC: 0x2, ASSIGN_AM: 0x4, SHARE_PC: 0x8, SHARE_ALL: 0x10 };
-
 type Kind = "edit" | "settings" | "addUser" | "delete";
 
 /** Azioni sulla scheda organizzazione (org-view.inc.php, ajax.orgs.php). */
@@ -35,7 +34,7 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
   const close = useCallback(() => setOpen(null), []);
   const hidden = { orgId: data.orgId };
   const st = data.profile.status;
-  const sharing = st & F.SHARE_ALL ? "sharing-all" : st & F.SHARE_PC ? "sharing-primary" : "";
+  const sharing = st & OrganizationModel.SHARE_EVERYBODY ? "sharing-all" : st & OrganizationModel.SHARE_PRIMARY_CONTACT ? "sharing-primary" : "";
   const buttons: { kind: Kind; show: boolean }[] = [
     { kind: "edit", show: data.can.edit },
     { kind: "settings", show: data.can.edit },
@@ -95,9 +94,9 @@ export default function OrgActions({ data }: { data: OrgActionsData }) {
               </fieldset>
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-theme-sm font-medium text-gray-700 dark:text-gray-400">{t("autoCollab")}</legend>
-                <CheckField name="collab-pc-flag" label={t("collabPrimary")} defaultChecked={!!(st & F.COLLAB_PC)} />
-                <CheckField name="collab-all-flag" label={t("collabAll")} defaultChecked={!!(st & F.COLLAB_ALL)} />
-                <CheckField name="assign-am-flag" label={t("assignManager")} defaultChecked={!!(st & F.ASSIGN_AM)} />
+                <CheckField name="collab-pc-flag" label={t("collabPrimary")} defaultChecked={!!(st & OrganizationModel.COLLAB_PRIMARY_CONTACT)} />
+                <CheckField name="collab-all-flag" label={t("collabAll")} defaultChecked={!!(st & OrganizationModel.COLLAB_ALL_MEMBERS)} />
+                <CheckField name="assign-am-flag" label={t("assignManager")} defaultChecked={!!(st & OrganizationModel.ASSIGN_AGENT_MANAGER)} />
               </fieldset>
               {data.members.length > 0 && (
                 <fieldset className="space-y-2">

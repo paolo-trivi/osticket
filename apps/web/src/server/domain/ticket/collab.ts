@@ -2,9 +2,9 @@ import "server-only";
 
 import { sql } from "kysely";
 
-import { NOW, table, type DbOrTx } from "../../db";
+import { Collaborator } from "@/lib/osticket/flags";
 
-export const CollabFlag = { ACTIVE: 0x0001, CC: 0x0002 } as const;
+import { NOW, table, type DbOrTx } from "../../db";
 
 /**
  * scp/tickets.php (reply): riattiva i collaboratori riselezionati, disattiva quelli deselezionati;
@@ -13,11 +13,11 @@ export const CollabFlag = { ACTIVE: 0x0001, CC: 0x0002 } as const;
 export async function syncActiveCollaborators(executor: DbOrTx, threadId: number, selectedUserIds: number[]): Promise<void> {
   const collabs = await executor.selectFrom("thread_collaborator").select(["id", "user_id", "flags"]).where("thread_id", "=", threadId).execute();
   for (const c of collabs) {
-    const active = !!(c.flags & CollabFlag.ACTIVE);
+    const active = !!(c.flags & Collaborator.ACTIVE);
     const selected = selectedUserIds.includes(c.user_id);
     let flags = c.flags;
-    if (!active && selected) flags |= CollabFlag.ACTIVE;
-    else if (active && !selected) flags &= ~CollabFlag.ACTIVE;
+    if (!active && selected) flags |= Collaborator.ACTIVE;
+    else if (active && !selected) flags &= ~Collaborator.ACTIVE;
     if (flags !== c.flags) {
       await executor.updateTable("thread_collaborator").set({ flags, updated: NOW }).where("id", "=", c.id).execute();
     }

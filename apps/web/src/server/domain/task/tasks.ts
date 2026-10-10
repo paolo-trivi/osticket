@@ -2,12 +2,13 @@ import "server-only";
 
 import { sql, type RawBuilder } from "kysely";
 
+import { TaskModel } from "@/lib/osticket/flags";
+
 import { db, table, type DbOrTx } from "../../db";
 import type { DbDateTime } from "../../db/schema.gen";
 import type { Agent } from "../staff/staff";
 
 /** Task (class.task.php, include/staff/tasks.inc.php) in sola lettura. */
-export const TaskFlag = { ISOPEN: 0x0001, ISOVERDUE: 0x0002 } as const;
 
 export type TaskQueueName = "open" | "closed" | "assigned" | "overdue";
 
@@ -34,12 +35,12 @@ export interface TaskRow {
 /** Visibilità della lista task (tasks.inc.php). */
 function taskVisibility(agent: Agent): RawBuilder<unknown> {
   const parts: RawBuilder<unknown>[] = [
-    sql`((K.flags & ${TaskFlag.ISOPEN}) != 0 AND K.staff_id = ${agent.id})`,
+    sql`((K.flags & ${TaskModel.ISOPEN}) != 0 AND K.staff_id = ${agent.id})`,
     sql`(TK.staff_id = ${agent.id} AND TS.state = 'open')`,
   ];
   if (!agent.isAccessLimited && agent.deptIds.length) parts.push(sql`K.dept_id IN (${sql.join([...agent.deptIds])})`);
   const teams = agent.teamIds.filter(Boolean);
-  if (teams.length) parts.push(sql`(K.team_id IN (${sql.join(teams)}) AND (K.flags & ${TaskFlag.ISOPEN}) != 0)`);
+  if (teams.length) parts.push(sql`(K.team_id IN (${sql.join(teams)}) AND (K.flags & ${TaskModel.ISOPEN}) != 0)`);
   return sql`(${sql.join(parts, sql` OR `)})`;
 }
 
@@ -58,12 +59,12 @@ const SELECT = sql`SELECT K.id, K.number, KC.title, K.created, K.updated, K.clos
 
 /** Condizione di una coda di task (tasks.inc.php), condivisa da lista e contatori. */
 function queueCondition(agent: Agent, queue: TaskQueueName): RawBuilder<unknown> {
-  const open = sql`(K.flags & ${TaskFlag.ISOPEN}) != 0`;
+  const open = sql`(K.flags & ${TaskModel.ISOPEN}) != 0`;
   switch (queue) {
     case "closed":
-      return sql`(K.flags & ${TaskFlag.ISOPEN}) = 0`;
+      return sql`(K.flags & ${TaskModel.ISOPEN}) = 0`;
     case "overdue":
-      return sql`${open} AND (K.flags & ${TaskFlag.ISOVERDUE}) != 0`;
+      return sql`${open} AND (K.flags & ${TaskModel.ISOVERDUE}) != 0`;
     case "assigned":
       return sql`${open} AND K.staff_id = ${agent.id}`;
     default:
@@ -108,7 +109,7 @@ export async function loadTask(id: number, executor: DbOrTx = db()): Promise<Tas
  * visibili a chiunque, bug documentato in doc 14); qui l'accesso richiede sempre reparto o assegnazione.
  */
 export function checkTaskPerm(task: TaskRow, agent: Agent, perm?: string): boolean {
-  const assigned = (task.flags & TaskFlag.ISOPEN) !== 0 && (task.staff_id === agent.id || agent.isTeamMember(task.team_id));
+  const assigned = (task.flags & TaskModel.ISOPEN) !== 0 && (task.staff_id === agent.id || agent.isTeamMember(task.team_id));
   if (!agent.canAccessDept(task.dept_id) && !assigned) return false;
   if (!perm) return true;
   return agent.roleFor(task.dept_id).perms.has(perm);

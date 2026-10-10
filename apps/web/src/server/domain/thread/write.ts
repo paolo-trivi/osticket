@@ -1,26 +1,14 @@
 import "server-only";
 
+import { ThreadEntry } from "@/lib/osticket/flags";
+import { ThreadEntryType } from "@/lib/osticket/object-types";
+
 import { NOW, type DbOrTx } from "../../db";
 import type { ConfigNamespace } from "../../config/config";
 import { phpJsonEncode } from "../../format/php-json";
 import { bodySearchable, cleanEntryBody, sanitizeText, stripEmoticons, type BodyFormat } from "../../format/text";
 import { attachFilesToEntry, type AttachInput } from "../file/upload";
 import { replaceSearchRow } from "../search/index-writer";
-
-/** Flag di ThreadEntry (include/class.thread.php). */
-export const EntryFlag = {
-  ORIGINAL_MESSAGE: 0x0001,
-  EDITED: 0x0002,
-  HIDDEN: 0x0004,
-  GUARDED: 0x0008,
-  RESENT: 0x0010,
-  COLLABORATOR: 0x0020,
-  BALANCED: 0x0040,
-  SYSTEM: 0x0080,
-  REPLY_ALL: 0x0100,
-  REPLY_USER: 0x0200,
-  CHILD: 0x0400,
-} as const;
 
 /**
  * Destinatari come MailingList::getEmailAddresses(): {to|cc|bcc: {id: "Nome <email>"}}. Una lista può
@@ -85,7 +73,7 @@ export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: New
   let recipients: string | null = null;
   if (e.recipients && Object.keys(e.recipients).length) {
     const count = Object.values(e.recipients).reduce((n, list) => n + recipientPairs(list).length, 0);
-    flags |= count > 1 ? EntryFlag.REPLY_ALL : EntryFlag.REPLY_USER;
+    flags |= count > 1 ? ThreadEntry.REPLY_ALL : ThreadEntry.REPLY_USER;
     recipients = encodeRecipients(e.recipients);
   }
   if (e.userId) {
@@ -95,10 +83,10 @@ export async function createThreadEntry(tx: DbOrTx, cfg: ConfigNamespace, e: New
       .where("user_id", "=", e.userId)
       .where("thread_id", "=", e.threadId)
       .executeTakeFirst();
-    if (collab) flags |= EntryFlag.COLLABORATOR;
+    if (collab) flags |= ThreadEntry.COLLABORATOR;
   }
-  if (e.format === "html") flags |= EntryFlag.BALANCED;
-  if (!e.staffId && !e.userId) flags |= EntryFlag.SYSTEM;
+  if (e.format === "html") flags |= ThreadEntry.BALANCED;
+  if (!e.staffId && !e.userId) flags |= ThreadEntry.SYSTEM;
 
   const res = await tx
     .insertInto("thread_entry")
@@ -137,7 +125,7 @@ export async function lastMessage(tx: DbOrTx, threadId: number, opts: { emailOnl
     .leftJoin("thread_entry_email as em", "em.thread_entry_id", "e.id")
     .select(["e.id", "e.user_id", "em.mid", "em.headers"])
     .where("e.thread_id", "=", threadId)
-    .where("e.type", "=", "M");
+    .where("e.type", "=", ThreadEntryType.MESSAGE);
   if (opts.emailOnly) q = q.where("e.source", "=", "Email").where("em.headers", "is not", null);
   if (opts.userId) q = q.where("e.user_id", "=", opts.userId);
   return q.orderBy("e.id", "desc").limit(1).executeTakeFirst();

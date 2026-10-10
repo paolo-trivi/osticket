@@ -1,10 +1,9 @@
 import "server-only";
 
+import { StaffDeptAccess } from "@/lib/osticket/flags";
+
 import { db, type DbOrTx } from "../../db";
 import type { Agent } from "./staff";
-
-/** StaffDeptAccess::FLAG_ALERTS (include/class.staff.php): avvisi email per il reparto. */
-const ACCESS_FLAG_ALERTS = 0x0001;
 
 interface AgentAccess {
   primary: { dept: string; role: string };
@@ -27,7 +26,7 @@ export async function loadAgentAccess(agent: Agent, executor: DbOrTx = db()): Pr
   return {
     primary: { dept: deptName.get(agent.deptId) ?? "", role: agent.primaryRole.name },
     extended: agent.extendedAccess
-      .map((a) => ({ dept: deptName.get(a.deptId) ?? "", role: roleName.get(a.roleId) ?? "", alerts: (a.flags & ACCESS_FLAG_ALERTS) !== 0 }))
+      .map((a) => ({ dept: deptName.get(a.deptId) ?? "", role: roleName.get(a.roleId) ?? "", alerts: (a.flags & StaffDeptAccess.ALERTS) !== 0 }))
       .sort((a, b) => a.dept.localeCompare(b.dept)),
     teams: teams.map((t) => t.name),
   };
